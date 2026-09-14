@@ -73,6 +73,7 @@ func _run() -> void:
 
 		await _test_a_refused_game_load_unwinds()
 		await _test_a_refused_attach_unwinds()
+		await _test_services_without_the_addons()
 
 	_teardown()
 
@@ -492,6 +493,64 @@ func _unload_module() -> void:
 ## The roster only reads `userid`, `peer_id` and `display_name`, and building one here
 ## keeps every roster check deterministic -- a real connection would make the section
 ## about the transport instead.
+## [DotGameServices] in a project that has none of the three addons it drives.
+##
+## [b]This is the path most deployments are NOT on, and it is the only one this addon can
+## test.[/b] dot-chat, dot-voice and dot-moderation are deliberately not dependencies here
+## — a game with no chat is a legitimate game, and naming an absent class fails to parse —
+## so the base loads each layer by path and skips what is missing. What has to be true is
+## that skipping is *quiet and complete*: setup succeeds, admission passes, the peer
+## fan-out is a no-op rather than a crash, and asking it to carry a line is refused in a
+## way a caller can act on.
+##
+## The other half — chat actually routing, a gag actually silencing somebody — is asserted
+## in a game that has the addons: `game-buses-from-hell/examples/headless_net.tscn`.
+func _test_services_without_the_addons() -> void:
+	_section("the services layer, in a build with none of its addons")
+
+	var services := DotGameServices.new()
+	services.name = "Services"
+	add_child(services)
+
+	var ready_now: DotResult = await services.setup(_server, _game, null)
+
+	_check(ready_now.ok, "it sets up", str(ready_now.error) if not ready_now.ok else "")
+	_check(services.chat == null, "and builds no chat, because there is none to build")
+	_check(services.voice == null, "no voice")
+	_check(services.moderation == null, "and no moderation")
+
+	_check(
+		services.check_admission(_fake_session(9, 9, "Ada")).ok,
+		"admission passes when there is no moderation to ask"
+	)
+
+	# The fan-out a module calls on every join and leave. With no layers at all these are
+	# the calls that would crash a server that installed nothing.
+	services.add_peer(9)
+	services.remove_peer(9)
+	services.relay_voice(9, PackedByteArray([1, 2, 3]))
+	_check(true, "the peer fan-out and a voice frame are no-ops rather than crashes")
+
+	var said := services.say(9, &"all", "hello")
+	_check(
+		not said.ok and said.error.code == DotError.CODE_UNSUPPORTED,
+		"and a line is refused as unsupported rather than silently dropped",
+		str(said.error.code)
+	)
+
+	var lines := services.describe_lines()
+	var mentions_relay := false
+
+	for line in lines:
+		if line.findn("relay") >= 0:
+			mentions_relay = true
+
+	_check(mentions_relay, "describe_lines says whether the website relay is on")
+
+	services.queue_free()
+	_done()
+
+
 func _fake_session(peer_id: int, userid: int, who: String) -> DotClientSession:
 	var session := DotClientSession.new()
 	session.peer_id = peer_id

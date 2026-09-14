@@ -71,15 +71,28 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 52 checks, 8 sections
+timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 60 checks, 9 sections
 ```
+
+**Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
 
 The suite boots a real `DotServer` with a real `DotModuleHost` and loads the fixture module by path, because that is how a game is loaded in production — `load_module` takes a path so an operator can name one in a config file, which means a pre-built instance with its fields already assigned is thrown away and a fresh one made with them null.
 
 **The fixtures suspend on purpose.** `test_identity.setup()` and `test_services.setup()` both await a frame, because every real one reaches a network and a skeleton that only worked with collaborators which happen to finish synchronously would pass a suite and fail on the first deployment. That is precisely what found the `load_module` bug above.
 
+## `DotGameServices`, and why it names none of the three addons it drives
+
+The second extraction, done on 2026-09-14 and measured the same way: five services layers of 557, 559, 635, 716 and 718 lines, differing in their channels, their rules and a voice range. The relay is identical in all five, comments included; so are the admission check, the peer fan-out, the punishment subject, and the ORDER — which is the part with a bug behind it. **Moderation is built first because it publishes `dot_mute_source`, and both routers look that name up when they START.** A chat router built first finds nothing, warns once, and then enforces no gag for the life of the server.
+
+**dot-chat, dot-voice and dot-moderation are NOT dependencies of this addon and must not become them.** A game with no chat is a legitimate game; a game with no voice is most of them. So each layer is loaded BY PATH and driven through `set()` and `call()`, exactly as this module loads dot-platform's — and a missing addon is a layer skipped with a line, not a server that will not boot. What a subclass hands back — channels, rules, a voice config — it may name freely, because a game that configures chat is a game that has dot-chat.
+
+The cost of that is real and worth stating: the base cannot type-check anything it builds. What protects it is that every property it sets is set in one place, and `game_selftest` runs the whole sequence in a project that has **none** of the three — which is the only path this addon can test and the one that has to be quiet and complete. The other half, a line actually crossing a wire and a gag actually silencing somebody, is asserted in `game-buses-from-hell/examples/headless_net.tscn`.
+
 ## Still to do
 
-- **The five games have not been converted.** This addon was extracted from them and is tested against a fixture; not one of them subclasses it yet. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
-- **`<Game>Services` is the next extraction and is bigger.** Five services layers of 557–718 lines, diffing down to renamed preloads and two method names: chat rules, the send, the relay, voice, `check_admission`, `_player_of`. It wants the same treatment and a `DotGameServices` base.
-- **The identity layer after that.** 215 and 262 lines in the two that have one, near-identical.
+- **The five games have not been converted.** This addon was extracted from them and is tested against a fixture and one real game; not one of the five subclasses either base yet. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
+- **The identity layer is the last extraction.** 215 and 262 lines in the two that have one, near-identical.
+
+## What uses this
+
+`game-buses-from-hell`, since 2026-09-14, and it is the first. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
