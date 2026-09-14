@@ -1,0 +1,23 @@
+# Godot 4
+.godot/
+/android/
+
+# Every dot-* addon is a separate repository. For local development, symlink them:
+#   ln -s ../../dot-core/addons/dot_core     addons/dot_core
+#   ln -s ../../dot-server/addons/dot_server addons/dot_server
+#   ln -s ../../dot-net/addons/dot_net       addons/dot_net
+# Consumers copy what they need into their own project.
+/addons/dot_core
+/addons/dot_server
+/addons/dot_net
+
+# Exports
+build/
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/

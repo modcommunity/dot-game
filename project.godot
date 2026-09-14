@@ -1,0 +1,32 @@
+; dot-game — the wiring every server game repeats, once.
+;
+; The distributable is `addons/dot_game/`. This project exists so the addon can
+; be opened and validated standalone.
+;
+; `addons/dot_core/`, `addons/dot_server/` and `addons/dot_net/` are LOCAL
+; SYMLINKS to their own repositories and are gitignored. See CLAUDE.md.
+
+config_version=5
+
+[application]
+
+config/name="dot-game"
+config/description="The module skeleton a server game repeats: resolve the game, build the netcode, build identity and services, drive one authoritative tick, keep the roster, and tear it all down in the order it went up."
+config/version="0.1.0"
+run/main_scene="res://examples/game_selftest.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/dot_core/plugin.cfg", "res://addons/dot_net/plugin.cfg", "res://addons/dot_server/plugin.cfg", "res://addons/dot_game/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
