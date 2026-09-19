@@ -86,7 +86,7 @@ The second extraction, done on 2026-09-14 and measured the same way: five servic
 
 **dot-chat, dot-voice and dot-moderation are NOT dependencies of this addon and must not become them.** A game with no chat is a legitimate game; a game with no voice is most of them. So each layer is loaded BY PATH and driven through `set()` and `call()`, exactly as this module loads dot-platform's — and a missing addon is a layer skipped with a line, not a server that will not boot. What a subclass hands back — channels, rules, a voice config — it may name freely, because a game that configures chat is a game that has dot-chat.
 
-The cost of that is real and worth stating: the base cannot type-check anything it builds. What protects it is that every property it sets is set in one place, and `game_selftest` runs the whole sequence in a project that has **none** of the three — which is the only path this addon can test and the one that has to be quiet and complete. The other half, a line actually crossing a wire and a gag actually silencing somebody, is asserted in `game-buses-from-hell/examples/headless_net.tscn`.
+The cost of that is real and worth stating: the base cannot type-check anything it builds. What protects it is that every property it sets is set in one place, and `game_selftest` runs the whole sequence in a project that has **none** of the three — which is the only path this addon can test and the one that has to be quiet and complete. The other half, a line actually crossing a wire and a gag actually silencing somebody, is asserted in `mg-buses-from-hell/examples/headless_net.tscn`.
 
 ## Still to do
 
@@ -95,4 +95,4 @@ The cost of that is real and worth stating: the base cannot type-check anything 
 
 ## What uses this
 
-`game-buses-from-hell`, since 2026-09-14, and it is the first. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
+`mg-buses-from-hell`, since 2026-09-14, and it is the first. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
