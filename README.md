@@ -1,6 +1,17 @@
-# dot-game
+This is the **game** asset for TMC's **Dot** collection. It is the server-side wiring every game here was repeating — netcode, identity, services, a roster, one authoritative tick, and a teardown in reverse — extracted once so a game only writes what is actually its own.
 
-The wiring every server game repeats, written once.
+This collection of assets provides modular building blocks for creating games and applications within the TMC ecosystem, ensuring consistency and interoperability across all `dot-*` assets. This includes core functionality, networking, authentication, cloud integration, and more.
+
+**These assets are COMPLETELY OPEN SOURCE**. You are free to use, modify, and distribute them under the terms of the MIT license. The only thing not open source is the back-end web infrastructure. So if you opt into using your own authentication backend instead of integrating with TMC, you will need to build and integrate your own back-end infrastructure.
+
+## From Maintainer & WARNING
+This asset, along with all the others, was built initially with **Claude Code** and will continue to be maintained and extended using it. This is because I (`gamemann`) cannot build the entire TMC platform alone (I wish I could lol).
+
+**Please treat this as partially tested.** Every asset has its own headless test suite and those suites pass, but very little of this has been in front of real players yet. Expect rough edges, and please report anything you run into.
+
+I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
+
+## The Wiring Every Server Game Repeats, Written Once
 
 A game in this family is a `DotModule` the server loads. Five of them exist, and before this addon each one contained the same two hundred lines: find the game object, build a `DotNetManager` with the same four non-obvious settings, construct a bridge, attach it, open its link under the server node, seal the message schema, build an identity layer and await it, load the platform module by path, build a services layer and hand it the link, keep track of who is actually playing, drive one authoritative tick, and take it all down in the reverse order. The parts that genuinely differed between them were the class names and a handful of numbers.
 
@@ -76,4 +87,4 @@ timeout 200 godot --headless --path . res://examples/game_selftest.tscn
 
 ## Licence
 
-MIT.
+MIT. See [LICENSE](LICENSE).
