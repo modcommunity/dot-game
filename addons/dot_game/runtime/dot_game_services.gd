@@ -44,6 +44,8 @@ const CHAT_RELAY_SCRIPT := "res://addons/dot_chat/net/dot_chat_relay.gd"
 const CHAT_RELAY_CONFIG_SCRIPT := "res://addons/dot_chat/core/dot_chat_relay_config.gd"
 const VOICE_ROUTER_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_router.gd"
 const MODERATION_SCRIPT := "res://addons/dot_moderation/runtime/dot_moderation_manager.gd"
+const MOD_TOOLS_SCRIPT := "res://addons/dot_moderation/tools/dot_mod_tools.gd"
+const MOD_COMMANDS_SCRIPT := "res://addons/dot_moderation/integrations/dot_mod_tool_commands.gd"
 const PUNISHMENT_STORE_SCRIPT := "res://addons/dot_moderation/store/dot_punishment_store_file.gd"
 
 ## The registry names dot-chat and dot-moderation agree on. Written out rather than read
@@ -76,6 +78,11 @@ signal said(peer_id: int, wire: Dictionary)
 ## is the only case most deployments are in and the one dot-moderation shipped a bug about.
 @export var server_scope: String = ""
 
+## Build dot-moderation's live tools — noclip, god, freeze, slay, bring and the rest — and
+## put their commands on the server's console. What each one DOES is the subclass's; see
+## [method _mod_abilities].
+@export var mod_tools_enabled: bool = true
+
 @export_group("Website chat")
 
 ## Left null, a default is built and layered, and the relay stays OFF unless configured.
@@ -98,6 +105,12 @@ var chat: Node = null
 var voice: Node = null
 var moderation: Node = null
 var relay: Node = null
+
+## dot-moderation's `DotModTools`, when it is installed and [member mod_tools_enabled].
+var mod_tools: Node = null
+
+## Its `DotModToolCommands`, bound to the server's console.
+var mod_commands: Object = null
 
 ## The backbone client the relay posts through. Assigned by a host BEFORE setup, or found.
 ##
@@ -135,6 +148,12 @@ func setup(p_server: DotServer, p_game: Object, p_link: Object) -> DotResult:
 	# they start, and a router that starts before it enforces no gag, for ever, silently.
 	var moderated := _build_moderation()
 	DotLog.result(CHANNEL, "moderation", moderated)
+
+	# After moderation, so every action lands on the target's history; reported rather
+	# than fatal, because a server with no noclip is a server.
+	if mod_tools_enabled:
+		var tooled := _build_mod_tools()
+		DotLog.result(CHANNEL, "the live mod tools", tooled)
 
 	var chatted := _build_chat()
 
@@ -186,6 +205,67 @@ func _build_moderation() -> DotResult:
 	punishments_loaded = true
 
 	return DotResult.success(moderation)
+
+
+## The live tools and their commands.
+##
+## [b]By path, like the manager.[/b] dot-moderation is not a dependency of this addon, and
+## `DotModToolCommands` binds to the console duck-typed so neither side names the other.
+## What every ability does is [method _mod_abilities]; the rest — immunity, the audit
+## record, who has what toggled on, clearing it on a respawn — is the tools' own, which is
+## the reason a game gets it from here rather than writing it a sixth time.
+func _build_mod_tools() -> DotResult:
+	var made := _instance(MOD_TOOLS_SCRIPT, "the mod tools")
+
+	if made == null:
+		return DotResult.success(null)
+
+	mod_tools = made
+	mod_tools.name = "ModTools"
+	# Two servers in one process (a test, a listen server) must not fight over one registry
+	# name, and nothing here looks the tools up by name.
+	mod_tools.set("register_service", false)
+
+	if moderation != null:
+		mod_tools.set("manager", moderation)
+
+	mod_tools.set("immunity_fn", Callable(self, "_mod_immunity"))
+
+	if _mod_can_teleport():
+		mod_tools.set("position_fn", Callable(self, "_mod_position"))
+		mod_tools.set("teleport_fn", Callable(self, "_mod_teleport"))
+
+	var handlers: Dictionary = mod_tools.get("handlers")
+	var abilities := _mod_abilities()
+	for action: Variant in abilities:
+		handlers[StringName(action)] = abilities[action]
+
+	var reasons: Dictionary = mod_tools.get("unsupported_reasons")
+	var refusals := _mod_unsupported()
+	for action: Variant in refusals:
+		reasons[StringName(action)] = str(refusals[action])
+
+	add_child(mod_tools)
+
+	if server == null or server.console == null:
+		return DotResult.success(mod_tools)
+
+	var commands_script: Variant = load(MOD_COMMANDS_SCRIPT) if ResourceLoader.exists(MOD_COMMANDS_SCRIPT) else null
+
+	if not (commands_script is GDScript):
+		return DotResult.success(mod_tools)
+
+	mod_commands = (commands_script as GDScript).new()
+	mod_commands.set("tools", mod_tools)
+	mod_commands.set("server", server)
+	_mod_configure_commands(mod_commands)
+
+	var bound: Variant = mod_commands.call("bind", server.console)
+
+	if bound is DotResult and not (bound as DotResult).ok:
+		return (bound as DotResult).wrap("the mod tool commands would not bind")
+
+	return DotResult.success(mod_tools)
 
 
 func _punishments_path() -> String:
@@ -438,6 +518,63 @@ func _position_of(_peer_id: int) -> Vector3:
 	return Vector3.ZERO
 
 
+## What each live admin ability does in this game: `{DotModTools.ACTION_*: Callable}`.
+##
+## Each callable is `func(id: StringName, args: Dictionary) -> DotResult`, where `id` is
+## the player's userid as a string — the id [method _mod_session] resolves. The keys are
+## plain strings (`"noclip"`, `"slay"`) so a subclass need not name dot-moderation either.
+## Empty is a game with no live tools but the teleport verbs, and every command then
+## answers with [method _mod_unsupported]'s reason.
+##
+## [b]Called once, at setup.[/b] A handler that reaches the world should look the player up
+## each time, not capture one — the player a handler was built next to may have left.
+func _mod_abilities() -> Dictionary:
+	return {}
+
+
+## Why this game refuses the abilities it has no handler for: `{"noclip": "…"}`.
+func _mod_unsupported() -> Dictionary:
+	return {}
+
+
+## Whether [method _mod_position] and [method _mod_teleport] mean anything here.
+##
+## Off by default, and deliberately: a services layer that set both callables to the
+## defaults below would answer "cannot find where you are" to every bring, which reads as
+## a bug rather than as a game with no positions.
+func _mod_can_teleport() -> bool:
+	return false
+
+
+## Where a player is, for bring, goto, send and return. Vector2 or Vector3, or null.
+func _mod_position(_id: StringName) -> Variant:
+	return null
+
+
+func _mod_teleport(_id: StringName, _to: Variant) -> void:
+	pass
+
+
+## A last chance to set the commands' `alive_fn`, `team_fn`, `items_fn`, `names` or
+## `permissions` before they are bound. `commands` is a `DotModToolCommands`.
+func _mod_configure_commands(_commands: Object) -> void:
+	pass
+
+
+## The session behind a live-tools id.
+func _mod_session(id: StringName) -> DotClientSession:
+	if server == null or not String(id).is_valid_int():
+		return null
+
+	return server.session_by_userid(String(id).to_int())
+
+
+## A player's immunity, from their session. A player who has left has none.
+func _mod_immunity(id: StringName) -> int:
+	var session := _mod_session(id)
+	return session.immunity if session != null else 0
+
+
 ## The name this services layer keeps its files under. Override for a nicer filename.
 func _services_name() -> String:
 	return "game"
@@ -589,6 +726,20 @@ func add_peer(peer_id: int) -> void:
 		_send_chat(row, PackedInt32Array([peer_id]))
 
 
+## Everything the live tools hold about a person who has left. [DotGameRoster] calls it.
+func forget_player(id: StringName) -> void:
+	if mod_tools != null:
+		mod_tools.call("forget", id)
+
+
+## A player came back with a new body. A game calls this from its own spawn path, so the
+## tools can switch a freeze or a noclip off and put god back on — see
+## `DotModTools.respawned`.
+func mod_player_respawned(id: StringName) -> void:
+	if mod_tools != null:
+		mod_tools.call("respawned", id)
+
+
 func remove_peer(peer_id: int) -> void:
 	if voice != null:
 		voice.call("remove_peer", peer_id)
@@ -598,6 +749,14 @@ func remove_peer(peer_id: int) -> void:
 		# reconnecting player inherits whatever the last holder of that peer id had been
 		# saying, and is told they are repeating themselves on their first line.
 		chat.call("forget", peer_id)
+
+
+func _exit_tree() -> void:
+	# The commands were bound to the server's console, which outlives this layer. Left
+	# there, the next `noclip` calls into a freed object.
+	if mod_commands != null and server != null and is_instance_valid(server) and server.console != null:
+		mod_commands.call("unbind", server.console)
+	mod_commands = null
 
 
 # --- Building things this addon may not name -------------------------------
@@ -651,6 +810,7 @@ func describe() -> Dictionary:
 		"chat": chat.call("describe") if chat != null else {},
 		"voice": voice.call("describe") if voice != null else {},
 		"moderation": moderation.call("describe") if moderation != null else {},
+		"mod_tools": mod_tools.call("describe") if mod_tools != null else {},
 		"relay": relay != null,
 		"punishments_loaded": punishments_loaded,
 	}
@@ -659,7 +819,7 @@ func describe() -> Dictionary:
 func describe_lines() -> PackedStringArray:
 	var out := PackedStringArray()
 
-	for layer in [chat, voice, moderation]:
+	for layer in [chat, voice, moderation, mod_tools]:
 		if layer != null and layer.has_method("describe_lines"):
 			out.append_array(layer.call("describe_lines"))
 

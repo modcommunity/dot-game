@@ -17,7 +17,7 @@ extends RefCounted
 ## roster.server = server
 ## roster.add_fn = func(s): return bridge.add_player(s.peer_id, s.userid, s.display_name)
 ## roster.remove_fn = func(s): bridge.remove_peer(s.peer_id)
-## roster.follow(services)      # anything with add_peer / remove_peer / forget_voter
+## roster.follow(services)      # anything with add_peer / remove_peer / forget_voter / forget_player
 ## roster.follow(maps)
 ## roster.follow(vote)
 ## [/codeblock]
@@ -178,6 +178,12 @@ func remove(session: DotClientSession) -> void:
 		# `rtv_forgets_leavers` cannot do its job if nothing tells it they went.
 		if follower.has_method("forget_voter"):
 			follower.call("forget_voter", StringName(str(session.userid)))
+
+		# Everything else keyed on the person — who they are frozen or noclipped by, where
+		# a moderator would return them to. The same userid a vote uses, because it is the
+		# id the live tools key a player on too.
+		if follower.has_method("forget_player"):
+			follower.call("forget_player", StringName(str(session.userid)))
 
 	DotLog.info(CHANNEL, "player left", {"userid": session.userid})
 

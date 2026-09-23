@@ -88,6 +88,17 @@ The second extraction, done on 2026-09-14 and measured the same way: five servic
 
 The cost of that is real and worth stating: the base cannot type-check anything it builds. What protects it is that every property it sets is set in one place, and `game_selftest` runs the whole sequence in a project that has **none** of the three — which is the only path this addon can test and the one that has to be quiet and complete. The other half, a line actually crossing a wire and a gag actually silencing somebody, is asserted in `mg-buses-from-hell/examples/headless_net.tscn`.
 
+## The live tools are a fourth layer, and the verbs are the subclass's
+
+`DotGameServices` builds dot-moderation's `DotModTools` straight after the manager — by path, like every layer here — and binds `DotModToolCommands` onto the server's console, so a subclass gets noclip, god, slay, bring and the rest by answering `_mod_abilities()` with a table of callables keyed by plain strings (`"noclip"`), which needs no dot-moderation name either. `_mod_unsupported()` is the reasons for what it refuses, `_mod_can_teleport()` / `_mod_position()` / `_mod_teleport()` the teleport verbs, `_mod_configure_commands()` the last word on `alive_fn` and `team_fn`. The ids are the session userid as a string, and `_mod_session` resolves one.
+
+Two things are the base's rather than the game's, and both have a bug behind them in the obvious alternative:
+
+- **The commands are unbound in `_exit_tree`.** They are registered on the server's console, which outlives this layer; a module unload that left them there hands the next `noclip` to a freed object. mg-buses-from-hell's `dedicated` unloads and reloads the module and asserts the commands leave and come back.
+- **`DotGameRoster` calls `forget_player(userid)` on every follower as somebody leaves**, beside `forget_voter`. Who a player was frozen or noclipped by is keyed on a userid, and the next person given that userid must not inherit it.
+
+What a respawn means is the game's, so a subclass calls `mod_player_respawned(id)` from its own spawn path — buses from the start of every round.
+
 ## Still to do
 
 - **The five games have not been converted.** This addon was extracted from them and is tested against a fixture and one real game; not one of the five subclasses either base yet. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
