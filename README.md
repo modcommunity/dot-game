@@ -83,7 +83,7 @@ done
 timeout 200 godot --headless --path . res://examples/game_selftest.tscn
 ```
 
-52 checks across eight sections: the sequence in order, the roster driven by the events a real server fires, the tick reaching the bridge before the game, an unload that leaves nothing running, and every path that has to unwind what it had already built.
+60 checks across nine sections, and a total that fails the run if any never ran: the sequence in order, the roster driven by the events a real server fires, the tick reaching the bridge before the game, an unload that leaves nothing running, and every path that has to unwind what it had already built.
 
 ## Licence
 

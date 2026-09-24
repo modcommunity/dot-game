@@ -37,6 +37,12 @@ const MODULE_PATH := "res://examples/fixtures/test_module.gd"
 
 const PORT := 27919
 
+## Every check this suite runs, the section guard's own included. The total the section
+## counter cannot be: a runtime error inside a section aborts that function after the
+## section has announced itself, so the counter is satisfied and the checks after the
+## error simply never happen. See docs/testing.md.
+const CHECKS := 60
+
 var _entered := 0
 var _completed := 0
 var _passed := 0
@@ -90,6 +96,12 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	if _passed + _failed != CHECKS:
+		print("ERROR: %d checks ran, %d expected. A section aborted part-way." % [
+			_passed + _failed, CHECKS
+		])
+		get_tree().quit(1)
+		return
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
