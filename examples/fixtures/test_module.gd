@@ -22,6 +22,9 @@ static var refuse_attach := false
 static var skip_identity := false
 static var skip_services := false
 
+## While true, [method _can_tick] says no — the lobby's "the world under me was freed".
+static var hold_ticks := false
+
 var game_loaded := 0
 var game_unloaded := 0
 var game_ticks: Array[int] = []
@@ -58,6 +61,10 @@ func _make_identity() -> Node:
 ## it, rather than logging an error in every other section.
 func _wants_platform_module() -> bool:
 	return false
+
+
+func _can_tick() -> bool:
+	return not hold_ticks
 
 
 func _make_services() -> Node:

@@ -385,7 +385,7 @@ func _on_client_spawn(event: DotEvent) -> void:
 
 ## One authoritative tick.
 func _physics_process(delta: float) -> void:
-	if not loaded or Engine.is_editor_hint():
+	if not loaded or Engine.is_editor_hint() or not _can_tick():
 		return
 
 	tick += 1
@@ -394,6 +394,17 @@ func _physics_process(delta: float) -> void:
 		bridge.call("server_tick", tick)
 
 	_game_tick(tick, delta)
+
+
+## Whether this frame may tick at all. Asked before the counter moves, so a skipped frame
+## is not a tick anybody sees.
+##
+## [b]True by default.[/b] A game whose world can go away underneath a loaded module —
+## game-simple-lobby's game change frees the scene before the module hears about it, and a
+## freed Object is not null — answers false while there is nothing to tick, rather than
+## overriding `_physics_process` and re-implementing the order above.
+func _can_tick() -> bool:
+	return true
 
 
 func _module_unload() -> void:

@@ -71,7 +71,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 60 checks, 9 sections
+timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 68 checks, 10 sections
 ```
 
 **Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
@@ -99,11 +99,25 @@ Two things are the base's rather than the game's, and both have a bug behind the
 
 What a respawn means is the game's, so a subclass calls `mod_player_respawned(id)` from its own spawn path — buses from the start of every round.
 
+## The hooks the first converted game needed
+
+game-simple-lobby was the first of the five hand-written games moved onto both bases (2026-09-25), and it found five places the base had no question to ask, each worked round in its subclass. They are hooks now, each with a default that is exactly the old behaviour:
+
+| Hook | Default | What it replaced in the lobby |
+| --- | --- | --- |
+| `DotGameServices.setup(null, …)` | allowed; only what is bound to a server is skipped (the tool commands, the relay's "tell the clients", the admin and audit seams — each already answered "no server") | `_setup_offline`, a copy of the whole sequence minus the one guard that refused a null server — the duplication this addon exists to end |
+| `_can_hear(listener, speaker, listener_at, speaker_at) -> bool` | `true`, wired into both routers' `can_hear_fn` | `chat.set("can_hear_fn", …)` and the same on voice, after `super.setup` |
+| `_mod_configure_tools(tools)` | nothing; called after the handlers and refusals, before the tools enter the tree or a command is bound | a `_build_mod_tools` override calling `super` and then setting `goto_standoff` and `persist_on_respawn` |
+| `_peer_can_receive(peer_id) -> bool`, and `send_backlog(peer_id)` | `true`: `add_peer` sends the backlog at seating | an `add_peer` override that dropped the backlog, because a lobby's client builds its scene after it is seated and a line sent then is a "Node not found" |
+| `DotGameModule._can_tick() -> bool` | `true` | a `_physics_process` override that skipped the tick while a game change had freed the world |
+
+`_can_hear` is asked only of listeners already inside a proximity channel's range, so the default costs one call per such listener and nothing elsewhere. Section 7 of the suite checks the null server, the held backlog and the default ear, and section 4 the refused tick; the wiring into the two routers can only run where dot-chat and dot-voice are installed, so it is checked by the lobby's `sandbox` (through the partition) and the tools hook by its `dedicated` (blind and beacon across a game change).
+
 ## Still to do
 
-- **The five games have not been converted.** This addon was extracted from them and is tested against a fixture and one real game; not one of the five subclasses either base yet. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
+- **Four of the five games have not been converted.** game-simple-lobby moved onto both bases on 2026-09-25 and found the five hooks above; arena, g2gfast, hungario and playground still carry their own copies. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
 - **The identity layer is the last extraction.** 215 and 262 lines in the two that have one, near-identical.
 
 ## What uses this
 
-`mg-buses-from-hell`, since 2026-09-14, and it is the first. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
+`mg-buses-from-hell`, since 2026-09-14, and it is the first; `mg-smash-copter`; and `game-simple-lobby` since 2026-09-25, the first of the five hand-written games converted (see its CLAUDE.md for the measurement). Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.

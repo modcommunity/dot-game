@@ -133,12 +133,22 @@ var _started: bool = false
 ## [b]Not a coroutine, and that is enforced by its caller.[/b] [DotGameModule] awaits this
 ## — but dot-moderation's `load_all` is a coroutine only because a store MAY be an HTTP
 ## one, and the file store is not, so it runs to completion without suspending.
+##
+## [b][param p_server] may be null[/b] — a game played offline, with the real chat router,
+## moderation manager and voice router and no [DotServer] (game-simple-lobby's
+## `--offline`). Until 2026-09-25 this refused a null server, and it was the only line in
+## the file that needed one: so the lobby carried a copy of this whole sequence minus that
+## guard, which is exactly the duplication this class exists to end. With no server, only
+## what is bound TO a server is skipped — the live tools' console commands, the relay's
+## "tell the clients", the admin and audit seams — and each of those already answers "no
+## server" on its own. A subclass that wants no live tools offline sets
+## [member mod_tools_enabled] false first.
 func setup(p_server: DotServer, p_game: Object, p_link: Object) -> DotResult:
 	if _started:
 		return DotResult.fail(DotError.CODE_STATE, "Already set up.")
 
 	if p_server == null:
-		return DotResult.fail(DotError.CODE_STATE, "Services need a server.")
+		DotLog.debug(CHANNEL, "services with no server: offline, and nothing is bound to a console")
 
 	server = p_server
 	game = p_game
@@ -245,6 +255,10 @@ func _build_mod_tools() -> DotResult:
 	for action: Variant in refusals:
 		reasons[StringName(action)] = str(refusals[action])
 
+	# The subclass's last word on the tools themselves, before they are in the tree and
+	# before any command can reach them. See [method _mod_configure_tools].
+	_mod_configure_tools(mod_tools)
+
 	add_child(mod_tools)
 
 	if server == null or server.console == null:
@@ -298,6 +312,9 @@ func _build_chat() -> DotResult:
 	chat.set("key_fn", Callable(self, "_key_of"))
 	chat.set("position_fn", Callable(self, "_position_of"))
 	chat.set("is_admin_fn", Callable(self, "_is_admin"))
+	# The same function as voice's, so nobody can read a line from somebody they could not
+	# hear. See [method _can_hear].
+	chat.set("can_hear_fn", Callable(self, "_can_hear"))
 
 	add_child(chat)
 
@@ -340,6 +357,7 @@ func _build_voice() -> DotResult:
 	voice.set("default_channel", _voice_default_channel())
 	voice.set("send_fn", Callable(self, "_send_voice"))
 	voice.set("position_fn", Callable(self, "_position_of"))
+	voice.set("can_hear_fn", Callable(self, "_can_hear"))
 
 	if "proximity_range" in config:
 		voice.set("proximity_range", config.get("proximity_range"))
@@ -518,6 +536,34 @@ func _position_of(_peer_id: int) -> Vector3:
 	return Vector3.ZERO
 
 
+## Whether [param listener] can hear [param speaker] through the world, once the distance
+## test has already said they are in range. Both routers ask this one function — chat for a
+## proximity line, voice for a proximity frame — so a player cannot read somebody they
+## could not hear. The positions are the ones [method _position_of] just produced.
+##
+## [b]The level's question, not the addons'.[/b] dot-chat and dot-voice know a radius and
+## nothing about walls, and must not learn: what blocks sound is where the walls are.
+## True, the default, is "the radius is the whole answer", which is what both routers did
+## before this was wired. It is only asked of listeners already in range on a proximity
+## channel, so the default costs one call per such listener and nothing anywhere else.
+func _can_hear(
+	_listener_peer: int, _speaker_peer: int, _listener_at: Vector3, _speaker_at: Vector3
+) -> bool:
+	return true
+
+
+## Whether a peer can receive a message yet, asked by [method add_peer] before it sends the
+## chat backlog.
+##
+## [b]True by default, and a game whose clients build their scene AFTER they are seated
+## answers false.[/b] dot-server's signon finishes and then the client builds the node the
+## chat RPC lands on, so a backlog sent at seating is one "Node not found" per line and a
+## newcomer who joins a silence. Answering false leaves the backlog unsent, and the game
+## calls [method send_backlog] when the peer says it is ready.
+func _peer_can_receive(_peer_id: int) -> bool:
+	return true
+
+
 ## What each live admin ability does in this game: `{DotModTools.ACTION_*: Callable}`.
 ##
 ## Each callable is `func(id: StringName, args: Dictionary) -> DotResult`, where `id` is
@@ -558,6 +604,17 @@ func _mod_teleport(_id: StringName, _to: Variant) -> void:
 ## A last chance to set the commands' `alive_fn`, `team_fn`, `items_fn`, `names` or
 ## `permissions` before they are bound. `commands` is a `DotModToolCommands`.
 func _mod_configure_commands(_commands: Object) -> void:
+	pass
+
+
+## A last chance to configure the tools themselves — `goto_standoff`,
+## `persist_on_respawn` and anything else on a `DotModTools` — after the handlers and the
+## refusals are in and before the tools enter the tree or any command is bound.
+##
+## [b]Named [Object] rather than `DotModTools`[/b], for the reason every layer here is
+## loaded by path: dot-moderation is not a dependency of this addon. A subclass that
+## configures the tools has dot-moderation and may cast.
+func _mod_configure_tools(_tools: Object) -> void:
 	pass
 
 
@@ -712,16 +769,27 @@ func say(peer_id: int, channel_id: StringName, text: String) -> DotResult:
 	return sent if sent is DotResult else DotResult.success(null)
 
 
-## A client is in the game: it may be heard, and it is handed the backlog.
+## A client is in the game: it may be heard, and — if it can receive yet — it is handed
+## the backlog. See [method _peer_can_receive].
 func add_peer(peer_id: int) -> void:
 	if voice != null:
 		voice.call("add_peer", peer_id)
 
+	if _peer_can_receive(peer_id):
+		send_backlog(peer_id)
+
+
+## The chat backlog, to one peer: the difference between joining a conversation and joining
+## a silence. dot-chat keeps it per channel and only for channels that asked for one, and
+## computes it per peer — a proximity channel's lines are not replayed to a stranger.
+##
+## What [method add_peer] calls when [method _peer_can_receive] says yes, and what a game
+## that answered no calls itself once the peer is ready. Once per seating: a second call
+## sends the backlog twice.
+func send_backlog(peer_id: int) -> void:
 	if chat == null:
 		return
 
-	# The backlog, which is the difference between joining a conversation and joining a
-	# silence. dot-chat keeps it per channel and only for channels that asked for one.
 	for row in chat.call("backlog_for", peer_id):
 		_send_chat(row, PackedInt32Array([peer_id]))
 

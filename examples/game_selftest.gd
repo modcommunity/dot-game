@@ -17,6 +17,7 @@ extends Node
 ##   4. The tick reaches the bridge before the game.
 ##   5. Unload tears down in the reverse order, and nothing is left ticking.
 ##   6. Every failure path unwinds what it had already built.
+##   7. The services layer's hooks: no server, the backlog held, the ear.
 ##
 ## [b]Errors this suite prints on purpose.[/b] Three "module refused to load" lines,
 ## which are sections 1 and 6 doing their job -- and, from section 3, an engine-level
@@ -33,6 +34,7 @@ extends Node
 
 const TestGame := preload("fixtures/test_game.gd")
 const TestModule := preload("fixtures/test_module.gd")
+const TestHookServices := preload("fixtures/test_hook_services.gd")
 const MODULE_PATH := "res://examples/fixtures/test_module.gd"
 
 const PORT := 27919
@@ -41,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 60
+const CHECKS := 68
 
 var _entered := 0
 var _completed := 0
@@ -80,6 +82,7 @@ func _run() -> void:
 		await _test_a_refused_game_load_unwinds()
 		await _test_a_refused_attach_unwinds()
 		await _test_services_without_the_addons()
+		await _test_services_hooks()
 
 	_teardown()
 
@@ -379,6 +382,19 @@ func _test_the_tick() -> void:
 		"on the same tick number, in that order"
 	)
 
+	# `_can_tick`: a module whose world went away underneath it says no, and a frame it
+	# refused is not a tick — neither the counter, the bridge nor the game moves.
+	var held_at: int = _module.tick
+	var held_bridge: int = _module.bridge.ticks.size()
+	TestModule.hold_ticks = true
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var held_ok: bool = _module.tick == held_at and _module.bridge.ticks.size() == held_bridge
+	TestModule.hold_ticks = false
+	_check(held_ok, "a module that answers _can_tick false is not ticked, and its counter does not move")
+	await get_tree().physics_frame
+	_check(_module.tick > held_at, "and ticks again once it says yes")
+
 	_done()
 
 
@@ -559,6 +575,66 @@ func _test_services_without_the_addons() -> void:
 
 	_check(mentions_relay, "describe_lines says whether the website relay is on")
 
+	services.queue_free()
+	_done()
+
+
+## The hooks game-simple-lobby needed, each of which it had worked round in a subclass.
+func _test_services_hooks() -> void:
+	_section("the services layer's hooks: no server, the backlog, the ear")
+
+	# No server: offline play. This was refused, and it was the only line that needed one.
+	var offline := TestHookServices.new()
+	offline.name = "OfflineServices"
+	add_child(offline)
+	var ready_offline: DotResult = await offline.setup(null, _game, null)
+	_check(
+		ready_offline.ok, "it sets up with no server, for a game played offline",
+		str(ready_offline.error) if not ready_offline.ok else ""
+	)
+	_check(
+		offline.check_admission(_fake_session(9, 9, "Ada")).ok and offline.say(9, &"all", "hi").error != null,
+		"and every seam past it answers \"no server\" rather than crashing"
+	)
+	offline.queue_free()
+
+	# The backlog: at seating by default, and held for a game whose clients cannot receive
+	# yet, which then sends it itself.
+	var services := TestHookServices.new()
+	services.name = "HookServices"
+	add_child(services)
+	var _r: DotResult = await services.setup(_server, _game, null)
+	var link := TestHookServices.FakeLink.new()
+	var chat := TestHookServices.FakeChat.new()
+	add_child(link)
+	add_child(chat)
+	services.link = link
+	services.chat = chat
+
+	services.add_peer(9)
+	_check(link.sent.size() == 2, "by default a seated peer is handed the backlog at once (%d lines)" % link.sent.size())
+
+	link.sent.clear()
+	services.receive = false
+	services.add_peer(10)
+	_check(link.sent.is_empty(), "a game whose peer cannot receive yet holds it (%d lines)" % link.sent.size())
+	if services.has_method("send_backlog"):
+		services.call("send_backlog", 10)
+	_check(
+		link.sent.size() == 2 and int(link.sent[0][0]) == 10,
+		"and sends it itself when the peer is ready, to that peer"
+	)
+
+	# The ear. Wired into both routers when they exist; here, the default's answer.
+	_check(
+		services.has_method("_can_hear") and bool(services.call("_can_hear", 1, 2, Vector3.ZERO, Vector3(999, 0, 0))),
+		"and _can_hear defaults to the radius being the whole answer"
+	)
+
+	services.chat = null
+	services.link = null
+	chat.queue_free()
+	link.queue_free()
 	services.queue_free()
 	_done()
 
