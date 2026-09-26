@@ -124,6 +124,8 @@ func _boot() -> bool:
 	config.autoexec_config = ""
 	# A thread blocked in a read the engine cannot cancel keeps the process alive after
 	# `quit()`, which turns a half-second suite into one that has to be killed.
+	# Kept after dot-server 5f46687, which no longer reads a pipe unless `stdin_console_pipes`
+	# is on: a terminal is still read, and a suite takes no commands from either.
 	config.stdin_console_enabled = false
 
 	_server = DotServer.new()
