@@ -54,6 +54,10 @@ Services hold a callable the bridge calls; the roster holds subsystems it notifi
 
 A game with its own session source — a lobby that seats people who never connected — gets the same hook for free.
 
+## A client whose message schema cannot play is disconnected here
+
+dot-net compares the two ends' message tables when the client's arrives and refuses a pair where either lacks a type the other REQUIRES (see dot-net's *Two builds on one wire*) — but it owns no socket, so all it can do is emit `peer_schema_refused`. `DotGameNetcode.build` connects that to `refuse_peer`, which kicks the session with dot-net's sentence as the reason and its `DotError` as the cause, so the client reads `CODE_VERSION` and a line that says who has to update. `refuse_peer` is public and static for a game on dot-game that builds its own manager; the four games that do not link dot-game (arena, g2gfast, hungario, playground) carry the same three lines as `_refuse_peer` in their modules. dot-server-deploy's `smash_client` drives it over a real socket in a delivered game.
+
 ## Two bugs in dot-server this addon's first suite found
 
 Neither is in this addon, and both had been there for as long as modules have.

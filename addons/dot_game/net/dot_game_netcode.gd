@@ -127,6 +127,16 @@ static func build(
 	if server != null and bridge.has_method("open_link"):
 		bridge.call("open_link", server)
 
+	# [b]A client whose message schema cannot work with this one is dropped, in words.[/b]
+	# dot-net compares the two tables when the client's arrives and refuses a pair where
+	# either lacks a type the other REQUIRES -- but it owns no socket, so it can only say
+	# so. Without this the client would sit in the game with nothing it sends decoded and
+	# nothing it is sent understood; with it, it is disconnected with the sentence dot-net
+	# chose, which says who has to update.
+	if server != null:
+		net.peer_schema_refused.connect(func(peer_id: int, error: DotError) -> void:
+			refuse_peer(server, peer_id, error))
+
 	# After the bridge, never before: see the class note.
 	net.messages.seal()
 
@@ -144,6 +154,22 @@ static func build(
 	})
 
 	return DotResult.success({"net": net, "bridge": bridge})
+
+
+## Disconnects a peer whose message schema this server cannot play with.
+##
+## Public for a game on dot-game that builds its own [DotNetManager]. The four games
+## that do not link dot-game carry the same three lines in their modules.
+static func refuse_peer(server: DotServer, peer_id: int, error: DotError) -> void:
+	if server == null:
+		return
+	var session := server.session_of(peer_id)
+	if session == null:
+		return
+	DotLog.info(CHANNEL, "client refused: its game messages cannot work with this server's", {
+		"user": session.label(), "why": error.message, "detail": error.detail,
+	})
+	server.kick(session, error.message, error)
 
 
 ## Removes and frees a node this builder put in the tree.
