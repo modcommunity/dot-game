@@ -56,7 +56,7 @@ A game with its own session source — a lobby that seats people who never conne
 
 ## A client whose message schema cannot play is disconnected here
 
-dot-net compares the two ends' message tables when the client's arrives and refuses a pair where either lacks a type the other REQUIRES (see dot-net's *Two builds on one wire*) — but it owns no socket, so all it can do is emit `peer_schema_refused`. `DotGameNetcode.build` connects that to `refuse_peer`, which kicks the session with dot-net's sentence as the reason and its `DotError` as the cause, so the client reads `CODE_VERSION` and a line that says who has to update. `refuse_peer` is public and static for a game on dot-game that builds its own manager; the four games that do not link dot-game (arena, g2gfast, hungario, playground) carry the same three lines as `_refuse_peer` in their modules. dot-server-deploy's `smash_client` drives it over a real socket in a delivered game.
+dot-net compares the two ends' message tables when the client's arrives and refuses a pair where either lacks a type the other REQUIRES (see dot-net's *Two builds on one wire*) — but it owns no socket, so all it can do is emit `peer_schema_refused`. `DotGameNetcode.build` connects that to `refuse_peer`, which kicks the session with dot-net's sentence as the reason and its `DotError` as the cause, so the client reads `CODE_VERSION` and a line that says who has to update. `refuse_peer` is public and static for a game on dot-game that builds its own manager; the four games whose modules are not on `DotGameModule` (arena, g2gfast, hungario, playground) carry the same three lines as `_refuse_peer` in their modules. dot-server-deploy's `smash_client` drives it over a real socket in a delivered game.
 
 ## Two bugs in dot-server this addon's first suite found
 
@@ -119,7 +119,7 @@ game-simple-lobby was the first of the five hand-written games moved onto both b
 
 ## Still to do
 
-- **Four of the five games have not been converted.** game-simple-lobby moved onto both bases on 2026-09-25 and found the five hooks above; arena, g2gfast, hungario and playground still carry their own copies. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
+- **Three of the five games have not been converted, and a fourth is half-way.** game-simple-lobby moved onto both bases on 2026-09-25 and found the five hooks above. game-playground's services subclass `DotGameServices` since 2026-09-27 (373adf9), with no change here: its chat recipients, punishment key, speaker stamp, voice path and welcome history are hook overrides, and it switches the base's mod tools off because its own need the arena. Its module is still its own; why `DotGameModule` is not cheap for it is in playground's CLAUDE.md. arena, g2gfast and hungario still carry their own copies of both. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
 - **The identity layer is the last extraction.** 215 and 262 lines in the two that have one, near-identical.
 
 ## What uses this
