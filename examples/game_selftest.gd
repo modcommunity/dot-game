@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 68
+const CHECKS := 70
 
 var _entered := 0
 var _completed := 0
@@ -250,6 +250,16 @@ func _test_the_sequence() -> bool:
 			and _server.console.find_command("testgame_status") != null,
 		"so a command the game registered is there"
 	)
+
+	# What a listing prints as the map is the game's to say, and a game on these bases
+	# says it in one call rather than reaching into the server's game manager.
+	_check(
+		_module.report_map("dm_selftest") and _server.games.current_map() == "dm_selftest",
+		"a map the game reports is the server's map",
+		_server.games.current_map()
+	)
+	_module.report_map("")
+	_check(_server.games.current_map() == "", "and \"\" clears it")
 
 	_done()
 	return true

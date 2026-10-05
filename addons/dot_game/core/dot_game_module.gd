@@ -81,6 +81,9 @@ var roster: DotGameRoster = null
 ## Authoritative ticks since load. The number the bridge is driven with.
 var tick: int = 0
 
+## [method report_map] said once that this server cannot take a map.
+var _warned_no_map_report := false
+
 
 # --- Subclass interface ----------------------------------------------------
 
@@ -404,6 +407,34 @@ func _physics_process(delta: float) -> void:
 ## freed Object is not null — answers false while there is nothing to tick, rather than
 ## overriding `_physics_process` and re-implementing the order above.
 func _can_tick() -> bool:
+	return true
+
+
+## Tells the server which map this game is on, so A2S and DQP print it in their map field
+## and the backbone report carries it. "" clears it.
+##
+## [b]Called by the game, because only the game knows what it calls a map[/b] — a course,
+## an arena from a rotation, a round's layout, a mode's preset. A game that never calls it
+## is listed under its own name, which is right for a game with one map. The server forgets
+## the map every time a game unloads, so a game that changes map calls this again rather
+## than once at load.
+##
+## [b]Duck-typed[/b], so a game built against this addon still loads on a server from before
+## `DotGameManager.set_current_map` existed; it reports nothing there and says so once.
+## Returns whether the server took it.
+func report_map(map_id: String) -> bool:
+	if server == null or server.games == null:
+		return false
+
+	if not server.games.has_method("set_current_map"):
+		if not _warned_no_map_report:
+			_warned_no_map_report = true
+			DotLog.info(CHANNEL, "this server cannot be told the map; listings show the game", {
+				"map": map_id,
+			})
+		return false
+
+	server.games.call("set_current_map", map_id)
 	return true
 
 

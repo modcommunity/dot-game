@@ -75,7 +75,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 68 checks, 10 sections
+timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 70 checks, 10 sections
 ```
 
 **Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
@@ -116,6 +116,10 @@ game-simple-lobby was the first of the five hand-written games moved onto both b
 | `DotGameModule._can_tick() -> bool` | `true` | a `_physics_process` override that skipped the tick while a game change had freed the world |
 
 `_can_hear` is asked only of listeners already inside a proximity channel's range, so the default costs one call per such listener and nothing elsewhere. Section 7 of the suite checks the null server, the held backlog and the default ear, and section 4 the refused tick; the wiring into the two routers can only run where dot-chat and dot-voice are installed, so it is checked by the lobby's `sandbox` (through the partition) and the tools hook by its `dedicated` (blind and beacon across a game change).
+
+## `report_map`, because the map is the game's to say
+
+`DotGameModule.report_map(map_id)` hands the game's own map to `DotGameManager.set_current_map`, which A2S, DQP and the backbone report print in their map field. Added 2026-10-05 after the four hand-written games each grew the same four-line `_report_map` that day; the games on this base get it as one call. It is duck-typed (`has_method`), so a game built against this addon still loads on a dot-server from before `set_current_map` and is listed under its own name there, with one INFO line. The server forgets the map whenever a game unloads, so a game that changes map calls it on every change, not once at load. Section 2 of the suite asserts a reported map reaching the server and `""` clearing it.
 
 ## Still to do
 

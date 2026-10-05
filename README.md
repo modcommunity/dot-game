@@ -46,7 +46,7 @@ func _game_load() -> DotResult:
 
 | | |
 | --- | --- |
-| `DotGameModule` | The sequence, the tick, the teardown. Subclass it. |
+| `DotGameModule` | The sequence, the tick, the teardown. Subclass it. `report_map(id)` tells the server which map the game is on, so server listings print it instead of the game's name. |
 | `DotGameNetcode` | Builds a `DotNetManager` and attaches a game's bridge. Usable on its own. |
 | `DotGameRoster` | Who is in the game as opposed to who is connected, and everything that has to be told when that changes. |
 
