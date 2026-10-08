@@ -135,9 +135,9 @@ var _started: bool = false
 ## one, and the file store is not, so it runs to completion without suspending.
 ##
 ## [b][param p_server] may be null[/b] — a game played offline, with the real chat router,
-## moderation manager and voice router and no [DotServer] (game-simple-lobby's
-## `--offline`). Until 2026-09-25 this refused a null server, and it was the only line in
-## the file that needed one: so the lobby carried a copy of this whole sequence minus that
+## moderation manager and voice router and no [DotServer] (a game's `--offline`). Until
+## 2026-09-25 this refused a null server, and it was the only line in the file that
+## needed one: so one game carried a copy of this whole sequence minus that
 ## guard, which is exactly the duplication this class exists to end. With no server, only
 ## what is bound TO a server is skipped — the live tools' console commands, the relay's
 ## "tell the clients", the admin and audit seams — and each of those already answers "no
@@ -663,8 +663,8 @@ func _subject_for_peer(peer_id: int) -> String:
 ## The key a chat line is attributed to. The session's userid, as a string.
 ##
 ## [b]Not the account uid.[/b] Two guests behind one device id share a uid, so keying by
-## that puts the second person's words under the first person's name — game-simple-lobby
-## found that with two clients in one process, and every count matched throughout.
+## that puts the second person's words under the first person's name — found with two
+## clients in one process, and every count matched throughout.
 func _key_of(peer_id: int) -> String:
 	var session := _session_for(peer_id)
 	return str(session.userid) if session != null else ""

@@ -625,7 +625,8 @@ func _test_services_without_the_addons() -> void:
 	_done()
 
 
-## The hooks game-simple-lobby needed, each of which it had worked round in a subclass.
+## The hooks the first hand-written game converted needed, each of which it had worked
+## round in a subclass.
 func _test_services_hooks() -> void:
 	_section("the services layer's hooks: no server, the backlog, the ear")
 

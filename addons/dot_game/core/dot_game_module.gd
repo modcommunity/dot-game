@@ -291,6 +291,8 @@ func _build_identity() -> DotResult:
 				PLATFORM_MODULE_PATH
 			)
 
+			_loaded_platform = loaded.ok
+
 			if not loaded.ok:
 				# Reported, not fatal. A server without the platform module is a
 				# server where everybody is a guest, which is a configuration rather
@@ -419,8 +421,8 @@ func _physics_process(delta: float) -> void:
 ## is not a tick anybody sees.
 ##
 ## [b]True by default.[/b] A game whose world can go away underneath a loaded module —
-## game-simple-lobby's game change frees the scene before the module hears about it, and a
-## freed Object is not null — answers false while there is nothing to tick, rather than
+## a game change frees the scene before the module hears about it, and a freed Object is
+## not null — answers false while there is nothing to tick, rather than
 ## overriding `_physics_process` and re-implementing the order above.
 func _can_tick() -> bool:
 	return true
@@ -515,6 +517,16 @@ func _teardown() -> void:
 	_drop(services)
 	services = null
 
+	# [b]The platform module goes with the identity layer that loaded it.[/b] It holds the
+	# hub `identity` built, and a game change frees that hub: left loaded, the module asked
+	# the freed hub to admit the next player who connected, which crashed the server
+	# (signal 11, on the first spawn after `changelevel` away from mg-buses-from-hell).
+	# Unloaded here, the next game that wants one loads its own over its own hub.
+	if _loaded_platform and server != null and server.modules != null \
+			and server.modules.has_module("platform"):
+		server.modules.unload_module("platform")
+	_loaded_platform = false
+
 	_drop(identity)
 	identity = null
 
@@ -529,6 +541,10 @@ func _teardown() -> void:
 
 	game = null
 	tick = 0
+
+
+## Whether this module loaded dot-platform's module, and so has to unload it.
+var _loaded_platform := false
 
 
 func _drop(child: Node) -> void:

@@ -48,6 +48,8 @@ Services hold a callable the bridge calls; the roster holds subsystems it notifi
 
 `DotGameRoster.clear()` is deliberately **not** "remove everybody". A module being torn down is not a room emptying: the subsystems that would be notified are going away in the same breath, and calling `remove_peer` on a freed one is the crash the ordering exists to avoid.
 
+**The platform module a game loaded goes with it** (2026-10-08). `_build_identity` loads dot-platform's module when none is loaded and remembers that it did (`_loaded_platform`); `_teardown` unloads it before freeing the identity layer whose hub it holds. Before, it outlived the game: after `changelevel` away from mg-buses-from-hell, the next player to connect was admitted through the freed hub and the server crashed with signal 11. Found when dot-server-deploy's live_switch and admin_live started booting buses instead of the scratched lobby; both crashed without the fix and pass with it.
+
 ## `session_fn` exists so the bug above can be asserted
 
 `DotGameRoster.session_fn` is injectable, and the reason is narrow: the bug this addon exists to prevent is reading the **wrong field** off the spawn event, and a test that cannot substitute the lookup cannot distinguish "read the right field" from "found nothing either way" — which is exactly what the two broken games looked like from outside. With it substituted, `examples/game_selftest.gd` can feed in an event carrying only `peer_id`, with a session that a `peer_id` read *would* find, and assert that nobody is seated.
@@ -105,7 +107,7 @@ What a respawn means is the game's, so a subclass calls `mod_player_respawned(id
 
 ## The hooks the first converted game needed
 
-game-simple-lobby was the first of the five hand-written games moved onto both bases (2026-09-25), and it found five places the base had no question to ask, each worked round in its subclass. They are hooks now, each with a default that is exactly the old behaviour:
+The first hand-written game moved onto both bases (2026-09-25, a 2D lobby since scratched) found five places the base had no question to ask, each worked round in its subclass. They are hooks now, each with a default that is exactly the old behaviour:
 
 | Hook | Default | What it replaced in the lobby |
 | --- | --- | --- |
@@ -125,9 +127,9 @@ game-simple-lobby was the first of the five hand-written games moved onto both b
 
 ## Still to do
 
-- **Three of the five games have not been converted, and a fourth is half-way.** game-simple-lobby moved onto both bases on 2026-09-25 and found the five hooks above. game-playground's services subclass `DotGameServices` since 2026-09-27 (373adf9), with no change here: its chat recipients, punishment key, speaker stamp, voice path and welcome history are hook overrides, and it switches the base's mod tools off because its own need the arena. Its module is still its own; why `DotGameModule` is not cheap for it is in playground's CLAUDE.md. arena, g2gfast and hungario still carry their own copies of both. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
+- **Three of the five games have not been converted, and a fourth is half-way.** game-playground's services subclass `DotGameServices` since 2026-09-27 (373adf9), with no change here: its chat recipients, punishment key, speaker stamp, voice path and welcome history are hook overrides, and it switches the base's mod tools off because its own need the arena. Its module is still its own; why `DotGameModule` is not cheap for it is in playground's CLAUDE.md. arena, g2gfast and hungario still carry their own copies of both. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
 - ~~**The identity layer is the last extraction.**~~ Done 2026-10-03, and not here: it is dot-platform's `DotPlatformIdentity`, because every type it builds is dot-platform's dependency and none is this addon's. A subclass returns one from `_make_identity()` with its avatar schema and stock function set; mg-smash-copter and mg-buses-from-hell do, and arena's and g2gfast's own copies are twenty-line subclasses of it. With the identity layer on, `_wants_platform_module()` stays true and this module loads dot-platform's module beside it, which is what the default was for.
 
 ## What uses this
 
-`mg-buses-from-hell`, since 2026-09-14, and it is the first; `mg-smash-copter`; and `game-simple-lobby` since 2026-09-25, the first of the five hand-written games converted (see its CLAUDE.md for the measurement). Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
+`mg-buses-from-hell`, since 2026-09-14, and it is the first; and `mg-smash-copter`. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
