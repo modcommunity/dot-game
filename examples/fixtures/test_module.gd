@@ -15,6 +15,7 @@ const TestGame := preload("test_game.gd")
 const TestBridge := preload("test_bridge.gd")
 const TestIdentity := preload("test_identity.gd")
 const TestServices := preload("test_services.gd")
+const TestClock := preload("test_clock.gd")
 
 ## Set by a suite before loading, to drive the paths that have to unwind.
 static var refuse_game_load := false
@@ -28,6 +29,12 @@ static var hold_ticks := false
 var game_loaded := 0
 var game_unloaded := 0
 var game_ticks: Array[int] = []
+
+## What [method _game_hibernation] heard, in order.
+var hibernation_heard: Array[bool] = []
+
+## A clock under the module, as a vote wrapper would hold one.
+var clock: Node = null
 
 
 func _module_name() -> String:
@@ -78,11 +85,23 @@ func _game_load() -> DotResult:
 		return DotResult.fail(DotError.CODE_STATE, "refusing on purpose")
 
 	add_command("testgame_status", _cmd_status, "Show the game's state")
+
+	# Two levels down, as every game's DotVoteDirector sits inside its vote wrapper.
+	var wrapper := Node.new()
+	wrapper.name = "Vote"
+	add_child(wrapper)
+	clock = TestClock.new()
+	clock.name = "Clock"
+	wrapper.add_child(clock)
 	return DotResult.success(null)
 
 
 func _game_unload() -> void:
 	game_unloaded += 1
+
+
+func _game_hibernation(hibernating: bool) -> void:
+	hibernation_heard.append(hibernating)
 
 
 func _game_tick(t: int, _delta: float) -> void:

@@ -75,7 +75,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 70 checks, 10 sections
+timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 74 checks, 11 sections
 ```
 
 **Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
@@ -114,6 +114,8 @@ game-simple-lobby was the first of the five hand-written games moved onto both b
 | `_mod_configure_tools(tools)` | nothing; called after the handlers and refusals, before the tools enter the tree or a command is bound | a `_build_mod_tools` override calling `super` and then setting `goto_standoff` and `persist_on_respawn` |
 | `_peer_can_receive(peer_id) -> bool`, and `send_backlog(peer_id)` | `true`: `add_peer` sends the backlog at seating | an `add_peer` override that dropped the backlog, because a lobby's client builds its scene after it is seated and a line sent then is a "Node not found" |
 | `DotGameModule._can_tick() -> bool` | `true` | a `_physics_process` override that skipped the tick while a game change had freed the world |
+
+**Hibernation (2026-10-07).** After `_game_load`, `_follow_hibernation()` searches the module's subtree for anything answering `follow_hibernation(server)` — dot-vote's `DotVoteDirector`, dot-map's `DotMapSession`, found by the method and named nowhere — and hands it the server, then calls `_game_hibernation(hibernating)` on every `hibernation_changed`. Every game here builds its vote under its module, so a game on this base gets "the map clock waits while the server is empty and starts again from the top when somebody joins" without a line; a clock that is the game's own rule (a ballot timer, a round) is reset in `_game_hibernation(false)`. The suite's section 4b checks a clock two levels down and the hook, and the teardown that it is disconnected; armed by removing the call.
 
 `_can_hear` is asked only of listeners already inside a proximity channel's range, so the default costs one call per such listener and nothing elsewhere. Section 7 of the suite checks the null server, the held backlog and the default ear, and section 4 the refused tick; the wiring into the two routers can only run where dot-chat and dot-voice are installed, so it is checked by the lobby's `sandbox` (through the partition) and the tools hook by its `dedicated` (blind and beacon across a game change).
 

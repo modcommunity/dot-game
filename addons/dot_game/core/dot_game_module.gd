@@ -164,6 +164,20 @@ func _game_unload() -> void:
 	pass
 
 
+## The server went to sleep ([param hibernating] true) or woke up, after every clock this
+## module found has heard it. Optional.
+##
+## [b]For what only the game knows is a clock.[/b] A vote's [code]DotVoteDirector[/code] and
+## a [code]DotMapSession[/code] anywhere under this module are followed for you (see
+## [method _follow_hibernation]); a round timer, a warmup or a course clock in the game's
+## own objects is not, because what "starting again" means for those is a rule, and rules
+## are not this addon's. Reset them here on [code]false[/code]. Something that lives outside
+## this module and has [code]follow_hibernation(server)[/code] can be handed the server here
+## too, though [method _game_load] is the better place for that.
+func _game_hibernation(_hibernating: bool) -> void:
+	pass
+
+
 ## One authoritative tick, after the bridge has been driven.
 ##
 ## [b]The bridge ticks first and this cannot be the other way round.[/b] The game's own
@@ -231,6 +245,8 @@ func _module_load() -> DotResult:
 		# link behind, under a node the host is about to free.
 		_teardown()
 		return loaded
+
+	_follow_hibernation()
 
 	log_info("%s loaded" % _module_name(), describe())
 	return DotResult.success(null)
@@ -410,6 +426,41 @@ func _can_tick() -> bool:
 	return true
 
 
+## Hands the server's hibernation to every clock under this module, and to
+## [method _game_hibernation].
+##
+## [b]Found, not registered.[/b] Every game here builds its vote as a child of its module —
+## a wrapper holding a [code]DotVoteDirector[/code] — and each would otherwise write the same
+## line to follow the server, and the one that forgot it would run its map clock out over an
+## empty room and hand the first player a map with a minute left. So after
+## [method _game_load] the subtree is searched for anything answering
+## [code]follow_hibernation(server)[/code] (dot-vote's director, dot-map's session) and each
+## is handed the server, which is duck-typed on both ends. Calling it twice is harmless.
+##
+## A server from before [signal DotServer.hibernation_changed] has no such signal and nothing
+## is followed; the game runs as it always did.
+func _follow_hibernation() -> void:
+	if server == null or not server.has_signal("hibernation_changed"):
+		return
+
+	var followed := 0
+
+	for node in find_children("*", "", true, false):
+		if node.has_method("follow_hibernation") and bool(node.call("follow_hibernation", server)):
+			followed += 1
+
+	if not server.hibernation_changed.is_connected(_on_hibernation_changed):
+		server.hibernation_changed.connect(_on_hibernation_changed)
+
+	DotLog.debug(CHANNEL, "following the server's hibernation", {
+		"clocks": followed, "hibernating": server.is_hibernating(),
+	})
+
+
+func _on_hibernation_changed(hibernating: bool) -> void:
+	_game_hibernation(hibernating)
+
+
 ## Tells the server which map this game is on, so A2S and DQP print it in their map field
 ## and the backbone report carries it. "" clears it.
 ##
@@ -450,6 +501,9 @@ func _module_unload() -> void:
 ## else was attached to -- so tearing the netcode down first leaves each of the others
 ## calling into a freed object for as long as it takes them to notice, which is never.
 func _teardown() -> void:
+	if server != null and server.hibernation_changed.is_connected(_on_hibernation_changed):
+		server.hibernation_changed.disconnect(_on_hibernation_changed)
+
 	if server != null and roster != null:
 		if server.client_disconnected.is_connected(roster.on_client_disconnected):
 			server.client_disconnected.disconnect(roster.on_client_disconnected)

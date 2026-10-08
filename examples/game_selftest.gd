@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 70
+const CHECKS := 74
 
 var _entered := 0
 var _completed := 0
@@ -77,6 +77,7 @@ func _run() -> void:
 		if await _test_the_sequence():
 			await _test_the_roster()
 			await _test_the_tick()
+			_test_hibernation()
 			await _test_the_teardown()
 
 		await _test_a_refused_game_load_unwinds()
@@ -410,6 +411,33 @@ func _test_the_tick() -> void:
 	_done()
 
 
+# --- 4b. Hibernation -------------------------------------------------------
+
+func _test_hibernation() -> void:
+	_section("the server's hibernation reaches every clock under the module, and the game")
+
+	var clock: Node = _module.clock
+	_check(
+		clock != null and clock.followed == 1,
+		"a clock two levels down was handed the server once, after the game's load"
+	)
+
+	# The signal itself, rather than the cvar: what is under test is the module's wiring,
+	# and dot-server's own suite owns when the server decides to sleep.
+	_server.hibernation_changed.emit(true)
+	_server.hibernation_changed.emit(false)
+
+	_check(
+		clock != null and str(clock.heard) == str([true, false]),
+		"the clock heard the server sleep and wake (%s)" % (str(clock.heard) if clock != null else "-")
+	)
+	_check(
+		str(_module.hibernation_heard) == str([true, false]),
+		"and so did the game's own _game_hibernation (%s)" % str(_module.hibernation_heard)
+	)
+	_done()
+
+
 # --- 5. Teardown -----------------------------------------------------------
 
 func _test_the_teardown() -> void:
@@ -420,6 +448,8 @@ func _test_the_teardown() -> void:
 	var services := _module.services
 	var module := _module
 	var roster := _module.roster
+	var on_hibernation := Callable(_module, "_on_hibernation_changed")
+	var was_following := _server.hibernation_changed.is_connected(on_hibernation)
 
 	var unloaded := _server.modules.unload_module("testgame")
 
@@ -451,6 +481,10 @@ func _test_the_teardown() -> void:
 			Callable(roster, "on_client_disconnected")
 		),
 		"and nothing is still connected to the server's signals"
+	)
+	_check(
+		was_following and not _server.hibernation_changed.is_connected(on_hibernation),
+		"including its hibernation"
 	)
 
 	_module = null
