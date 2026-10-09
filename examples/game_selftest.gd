@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 84
+const CHECKS := 90
 
 var _entered := 0
 var _completed := 0
@@ -85,6 +85,7 @@ func _run() -> void:
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()
+		await _test_map_content()
 
 	_teardown()
 
@@ -746,6 +747,51 @@ func _fake_session(peer_id: int, userid: int, who: String) -> DotClientSession:
 	session.userid = userid
 	session.display_name = who
 	return session
+
+
+class _FakeGames extends RefCounted:
+	var maps := PackedStringArray()
+	var server_deps := PackedStringArray()
+	func current_maps() -> PackedStringArray: return maps
+	func current_server_dependencies() -> PackedStringArray: return server_deps
+
+
+class _FakeServer extends RefCounted:
+	var games: Object = null
+
+
+## DotGameContent, against a stand-in manager: the keys a server names, where each mounts,
+## and the directories a game is handed. No content client here, so a pack that is not on
+## the disk is a warning and is left out, which is the path a build without dot-cloud takes.
+func _test_map_content() -> void:
+	_section("the map packs a server names (DotGameContent)")
+
+	var games := _FakeGames.new()
+	games.maps = PackedStringArray(["me/course_a@1.0.0", "me/shared@2"])
+	games.server_deps = PackedStringArray(["me/shared@2", "me/old_maps@0.1.0"])
+	var fake := _FakeServer.new()
+	fake.games = games
+
+	_check(DotGameContent.map_keys(fake) == PackedStringArray(["me/course_a@1.0.0", "me/shared@2", "me/old_maps@0.1.0"]),
+		"the maps first, then the server-only packs, each once", str(DotGameContent.map_keys(fake)))
+	_check(DotGameContent.map_keys(fake, false) == games.maps, "and without the server-only packs when asked")
+	_check(DotGameContent.map_keys(null).is_empty() and DotGameContent.map_keys(_FakeServer.new()).is_empty(),
+		"no server, or one without a manager, names nothing")
+	_check(DotGameContent.mount_of("me/course_a@1.0.0") == "res://dot_cloud/me/course_a/1.0.0",
+		"a key mounts where dot-cloud mounts it")
+
+	# One pack "already mounted" on the disk; the others are not and there is no client.
+	var root := "res://dot_cloud/me/course_a/1.0.0/courses"
+	DirAccess.make_dir_recursive_absolute(root)
+	var dirs: PackedStringArray = await DotGameContent.map_dirs(fake, "courses")
+	_check(dirs == PackedStringArray([root]), "a mounted pack's subdirectory is handed over, the rest left out", str(dirs))
+	var missing: DotResult = await DotGameContent.ensure_one("me/shared@2")
+	_check(not missing.ok and missing.error.code == DotError.CODE_STATE,
+		"and with no content client a fetch fails with the reason, not a crash")
+	for d in ["res://dot_cloud/me/course_a/1.0.0/courses", "res://dot_cloud/me/course_a/1.0.0",
+			"res://dot_cloud/me/course_a", "res://dot_cloud/me", "res://dot_cloud"]:
+		DirAccess.remove_absolute(d)
+	_done()
 
 
 func _section(title: String) -> void:
