@@ -178,6 +178,24 @@ func _game_hibernation(_hibernating: bool) -> void:
 	pass
 
 
+## This game's own columns on the Tab board for one player: kills, points, a side, a
+## status. Merged into that player's row of dot-server's roster, which already carries the
+## name, score, ping and time connected. Optional; nothing added by default.
+##
+## [b]The server's half of every game's scoreboard[/b], and the only half that has to be
+## here: a number only the server knows (money in a bank, a best time in a store) cannot
+## be drawn by a client any other way. Keyed by the session; [member roster] is how a game
+## finds its own player for one. dot-menu's `DotMenuScoreboard` draws the result.
+func _game_board_fields(_session: Object) -> Dictionary:
+	return {}
+
+
+## Everything else on the board: `"teams"` (`[{id, name, color, score}]`), a `"header"`
+## of the round's facts, `"rows"` for players who are not sessions. Optional.
+func _game_board_extra() -> Dictionary:
+	return {}
+
+
 ## One authoritative tick, after the bridge has been driven.
 ##
 ## [b]The bridge ticks first and this cannot be the other way round.[/b] The game's own
@@ -247,9 +265,30 @@ func _module_load() -> DotResult:
 		return loaded
 
 	_follow_hibernation()
+	_attach_board()
 
 	log_info("%s loaded" % _module_name(), describe())
 	return DotResult.success(null)
+
+
+## Hands dot-server's Tab board this game's columns. Asked rather than assumed: a game pack
+## runs on whatever dot-server the host has, and one from before the roster has neither
+## property, which a plain assignment would turn into a script error at load.
+func _attach_board() -> void:
+	if server == null or not ("scoreboard_fields" in server):
+		return
+	server.set(&"scoreboard_fields", func(session: Object) -> Dictionary: return _game_board_fields(session))
+	server.set(&"scoreboard_extra", func() -> Dictionary: return _game_board_extra())
+
+
+## Takes them back. The server outlives this game, and the next one is not asked about it.
+func _detach_board() -> void:
+	if server == null or not ("scoreboard_fields" in server):
+		return
+	var fields: Callable = server.get(&"scoreboard_fields")
+	if fields.is_valid() and fields.get_object() == self:
+		server.set(&"scoreboard_fields", Callable())
+		server.set(&"scoreboard_extra", Callable())
 
 
 ## Builds the identity layer and loads dot-platform beside it.
@@ -503,6 +542,8 @@ func _module_unload() -> void:
 ## else was attached to -- so tearing the netcode down first leaves each of the others
 ## calling into a freed object for as long as it takes them to notice, which is never.
 func _teardown() -> void:
+	_detach_board()
+
 	if server != null and server.hibernation_changed.is_connected(_on_hibernation_changed):
 		server.hibernation_changed.disconnect(_on_hibernation_changed)
 

@@ -96,6 +96,15 @@ func _game_load() -> DotResult:
 	return DotResult.success(null)
 
 
+## A column for the Tab board, so the suite can see the hook reach the server.
+func _game_board_fields(session: Object) -> Dictionary:
+	return {"kills": 3, "who": int(session.get("userid"))}
+
+
+func _game_board_extra() -> Dictionary:
+	return {"teams": [{"id": 1, "name": "Testers"}]}
+
+
 func _game_unload() -> void:
 	game_unloaded += 1
 

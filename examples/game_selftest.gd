@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 74
+const CHECKS := 77
 
 var _entered := 0
 var _completed := 0
@@ -451,6 +451,14 @@ func _test_the_teardown() -> void:
 	var on_hibernation := Callable(_module, "_on_hibernation_changed")
 	var was_following := _server.hibernation_changed.is_connected(on_hibernation)
 
+	# The Tab board: the game's columns reach dot-server's roster through the module.
+	var fields: Callable = _server.scoreboard_fields
+	var row: Dictionary = fields.call(DotClientSession.new(42)) if fields.is_valid() else {}
+	_check(int(row.get("kills", 0)) == 3 and int(row.get("who", 0)) == 42,
+		"the game's own board columns are the server's, per session", str(row))
+	var snap := _server.scoreboard_snapshot()
+	_check((snap.get("teams", []) as Array).size() == 1, "and its teams ride on the roster")
+
 	var unloaded := _server.modules.unload_module("testgame")
 
 	if not _check(unloaded.ok, "the module unloads", str(unloaded.error)):
@@ -486,6 +494,8 @@ func _test_the_teardown() -> void:
 		was_following and not _server.hibernation_changed.is_connected(on_hibernation),
 		"including its hibernation"
 	)
+	_check(not _server.scoreboard_fields.is_valid() and not _server.scoreboard_extra.is_valid(),
+		"and the board's columns: the server outlives the game, and the next is not asked about it")
 
 	_module = null
 	_done()
