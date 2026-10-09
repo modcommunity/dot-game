@@ -8,5 +8,6 @@ extends RefCounted
 
 # 1: everything before this file existed (an absent file reads as 1).
 # 2: DotGameModule _game_board_fields() and _game_board_extra(), the Tab board's columns.
-const LEVEL := 2
+# 3: DotGameChatClient, the client's chat box and microphone.
+const LEVEL := 3
 const OLDEST := 1

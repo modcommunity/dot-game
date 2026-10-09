@@ -77,7 +77,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 74 checks, 11 sections
+timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 84 checks, 12 sections
 ```
 
 **Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
@@ -128,6 +128,10 @@ The first hand-written game moved onto both bases (2026-09-25, a 2D lobby since 
 ## The Tab board's server half (2026-10-09)
 
 dot-server sends a client holding its scoreboard the roster (name, score, ping, time connected) and asks `scoreboard_fields(session)` and `scoreboard_extra()` for the game's own columns and teams. `_game_board_fields` and `_game_board_extra` are those two, overridable, attached after `_game_load` succeeds and detached first thing in `_teardown`, so a game module overrides a method and never touches the server. Both are set with `server.set` behind an `in` check, because a game pack runs on whatever dot-server the host has and one from before the roster has neither property. Detach only clears a hook this module set (`get_object() == self`). dot-menu's `DotMenuScoreboard` draws the result. `game_selftest`'s teardown section asserts the columns reach the server per session, the teams ride the roster, and both go with the module.
+
+## `DotGameChatClient`, the client's half (2026-10-09)
+
+Five games had a client chat file each (`*_client_chat.gd`, 204 to 257 lines) that differed in nothing but their own class names: a `DotChatWindow` on its own canvas layer above the HUD, a `DotVoiceManager` with push-to-talk on V, an offline echo, and a bridge's `chat_received` / `voice_arrived` / `hello_received` drawn and played. It is one node here. A game sets `channels` (what Y and U open), `line_colours` (every channel a line can arrive on, admin and whisper included), `max_length` from its own chat rules and `voice_config` from its own voice format, and calls `attach(bridge)` or `attach(null)` offline. dot-ui and dot-voice are loaded by path like everything `DotGameServices` drives, so a build without one gets the other half and parses. The bridge is duck-typed: `ask_say(channel, text)`, `send_voice(bytes)` and the three signals. `game_selftest`'s last section checks the build with neither addon; the line crossing a wire is mg-prop-hunt's `headless_net`. API level 3.
 
 ## Still to do
 

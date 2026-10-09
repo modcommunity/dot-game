@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 77
+const CHECKS := 84
 
 var _entered := 0
 var _completed := 0
@@ -84,6 +84,7 @@ func _run() -> void:
 		await _test_a_refused_attach_unwinds()
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
+		await _test_chat_client_without_the_addons()
 
 	_teardown()
 
@@ -633,6 +634,49 @@ func _test_services_without_the_addons() -> void:
 
 	services.queue_free()
 	_done()
+
+
+## The client's chat box with neither dot-ui nor dot-voice installed: built, quiet, and a
+## bridge it is attached to is listened to rather than crashed on. The line crossing a wire is
+## mg-prop-hunt's `headless_net`, which has both.
+func _test_chat_client_without_the_addons() -> void:
+	_section("the client's chat box, in a build with neither of its addons")
+
+	var box := DotGameChatClient.new()
+	box.name = "ChatClient"
+	add_child(box)
+	await get_tree().process_frame
+
+	_check(box.window == null, "it builds no box, because there is no dot-ui")
+	_check(box.voice == null, "and no microphone, because there is no dot-voice")
+	_check(box.attach(null).ok, "offline is not an error")
+
+	var bridge := FakeChatBridge.new()
+	bridge.local_player_id = 7
+	_check(box.attach(bridge).ok, "a bridge attaches")
+	_check(box.local_player_id == 7, "and the box takes this client's id from it")
+
+	bridge.chat_received.emit({"d": "Ada", "m": "hello", "c": "all"})
+	bridge.hello_received.emit(9)
+	_check(box.local_player_id == 9, "a later hello moves the id")
+	_check(not box.is_typing() and not bool(box.describe().get("box", true)),
+		"a line with no box to draw it in is dropped, not a crash")
+
+	box.queue_free()
+	_done()
+
+
+class FakeChatBridge:
+	extends RefCounted
+	signal chat_received(wire: Dictionary)
+	signal voice_arrived(payload: PackedByteArray)
+	signal hello_received(id: int)
+	var local_player_id: int = 0
+	var said: Array = []
+	func ask_say(channel: StringName, text: String) -> void:
+		said.append([channel, text])
+	func send_voice(_bytes: PackedByteArray) -> void:
+		pass
 
 
 ## The hooks the first hand-written game converted needed, each of which it had worked
