@@ -1,143 +1,66 @@
 # dot-game
 
-The wiring every server game repeats.
+The wiring every server game repeats, once: resolve the game, build the netcode and its bridge, identity then services, a roster, one authoritative tick, and a teardown in reverse. It holds no rules; those are dot-match's and dot-objective's.
 
-Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first. This file is only what is specific to this addon.
+Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to this addon.
 
-**dot-core, dot-server and dot-net are required.** Everything else a game touches — a map director, a vote, a services layer, dot-platform — is duck-typed or loaded by path and named nowhere.
+**dot-core, dot-server and dot-net are required.** Everything else a game touches (a map director, a vote, dot-chat, dot-voice, dot-moderation, dot-ui, dot-platform) is duck-typed or loaded by path and named nowhere.
 
-## Why this exists, measured rather than asserted
+## Read before
 
-Five games were written before it. Their modules are 1,046, 1,154, 1,816, 1,642 and 837 lines, and a diff of any two of them is almost entirely renamed types: `_build_netcode`, `_build_identity`, `_build_services`, `_build_vote`, a net bridge, `_joined`, `_tick`, `_on_client_spawn`, `_on_client_disconnected`, `_build_query_provider`, `_register_game`. `arena_module._build_identity` and `g2g_module._build_identity` differ by one assigned property and a variable name, comments included.
-
-That much duplication is a nuisance. What makes it a *bug* is the other measurement: **two of the five got the same line wrong.**
-
-```gdscript
-var session := server.session_by_userid(event.get_int("peer_id"))
-```
-
-`client_spawn` carries `userid` and `name`. It does not carry `peer_id`. So that lookup asked for session 0, found null, and returned — and **nobody ever joined those dedicated servers**, silently, for as long as those modules existed. A null session is a legitimate thing to find, so nothing errored; a dedicated-server suite passes without noticing, because it never connects a client.
-
-Five copies of a thing is five chances to write it wrong and five places to fix it. The argument for a base class here is not tidiness, it is that there is one line to be right.
-
-## The split, and where the line is
-
-**This holds no rules.** Whether a round has ended, what a team is, what the objective is and who won are dot-match's and dot-objective's. A game may use neither and still use this.
-
-The test for whether something belongs here: **would every game write it the same way with only the class names changed?**
-
-- The netcode's four non-obvious settings — yes. Every game got them identically right because each copied the last.
-- The order identity comes up in relative to services — yes, and the reason is a real bug (a backbone assigned after `setup` is one the relay has already decided it does not have).
-- A map rotation — **no.** Some games have one, some do not, and the ones that do wire it differently. So `DotGameRoster.follow()` will tell a rotation when somebody leaves, through duck-typing, and this addon does not know what a rotation is.
-
-## What is fatal and what is not
-
-`_module_load` refuses on two things and shrugs at everything else:
-
-| | |
+| Read | Before |
 | --- | --- |
-| No game object under `_game_service()` | **Fatal.** A module that loads and does nothing leaves a server admitting players into a match that does not exist, and the symptom is players who connect and never spawn. |
-| The netcode would not start | **Fatal**, for the same reason. |
-| The identity layer failed | Logged. A server where everybody is a guest is a configuration. |
-| The services layer failed | Logged. A server with no chat is a server nobody stays on — but it *is* a server, and taking the game down because a punishment file was unreadable makes a permissions mistake cost the players what they came for. |
-| `_game_load()` refused | Fatal, **and it unwinds** — otherwise a module that reported it could not load leaves a ticking netcode and an open link under a node the host is about to free. |
+| [docs/design.md](docs/design.md) | `DotGameModule`, `DotGameNetcode`, `DotGameRoster`, `DotGameChatClient`: why it exists, what belongs here, what is fatal, teardown order, `session_fn`, schema refusal, `report_map`, the Tab board, the suite |
+| [docs/services.md](docs/services.md) | `DotGameServices`: build order, loading by path, the live tools, the hooks, hibernation |
+| [docs/history.md](docs/history.md) | the bugs, and how each looked |
 
-## Teardown is in reverse, and the order is not cosmetic
+## Layout
 
-Services hold a callable the bridge calls; the roster holds subsystems it notifies; the netcode is what everything else attached to. Tearing the netcode down first leaves each of the others calling into a freed object for as long as it takes them to notice, which is never. `_teardown` goes: signals, roster, services, identity, bridge, manager.
+| Path | What |
+| --- | --- |
+| `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses), `DotGameContent` |
+| `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer` |
+| `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient` |
+| `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
+| `examples/game_selftest.tscn` | the suite; `examples/fixtures/` the module, bridge, identity and services it loads |
 
-`DotGameRoster.clear()` is deliberately **not** "remove everybody". A module being torn down is not a room emptying: the subsystems that would be notified are going away in the same breath, and calling `remove_peer` on a freed one is the crash the ordering exists to avoid.
+## Running and testing
 
-**The platform module a game loaded goes with it** (2026-10-08). `_build_identity` loads dot-platform's module when none is loaded and remembers that it did (`_loaded_platform`); `_teardown` unloads it before freeing the identity layer whose hub it holds. Before, it outlived the game: after `changelevel` away from mg-buses-from-hell, the next player to connect was admitted through the freed hub and the server crashed with signal 11. Found when dot-server-deploy's live_switch and admin_live started booting buses instead of the scratched lobby; both crashed without the fix and pass with it.
+- The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)), then `timeout 200 godot --headless --path . res://examples/game_selftest.tscn`.
+- **A new `class_name` here breaks every consumer until each is re-imported.** Every converted game links this addon. [history](docs/history.md#a-new-class_name-broke-a-game-three-repositories-away)
+- The suite runs with none of the addons the base loads by path; the wire half is in the games' suites. [design](docs/design.md#the-suite)
+- Fixtures await a frame in `setup()` on purpose; keep them suspending. [design](docs/design.md#the-suite)
 
-## `session_fn` exists so the bug above can be asserted
+## Rules that bite
 
-`DotGameRoster.session_fn` is injectable, and the reason is narrow: the bug this addon exists to prevent is reading the **wrong field** off the spawn event, and a test that cannot substitute the lookup cannot distinguish "read the right field" from "found nothing either way" — which is exactly what the two broken games looked like from outside. With it substituted, `examples/game_selftest.gd` can feed in an event carrying only `peer_id`, with a session that a `peer_id` read *would* find, and assert that nobody is seated.
+- Something belongs here only if every game would write it the same way with only class names changed; rules, rotations and objectives do not. [design](docs/design.md#the-split-and-where-the-line-is)
+- Seat from `client_spawn`'s `userid`, never `peer_id`; `DotGameRoster.session_fn` lets the suite prove it. [history](docs/history.md#the-line-two-games-got-wrong)
+- Only a missing game object, a netcode that will not start, or a refused `_game_load` (which unwinds) is fatal; identity and services failures are logged. [design](docs/design.md#what-is-fatal-and-what-is-not)
+- Teardown runs signals, roster, services, identity, bridge, manager; `DotGameRoster.clear()` notifies nobody. [design](docs/design.md#teardown-is-in-reverse-and-the-order-is-not-cosmetic)
+- A dot-platform module this module loaded (`_loaded_platform`) is unloaded in `_teardown`, before the identity layer. [design](docs/design.md#teardown-is-in-reverse-and-the-order-is-not-cosmetic)
+- Moderation is built before chat and voice, because they look up `dot_mute_source` when they start. [services](docs/services.md#moderation-first)
+- dot-chat, dot-voice, dot-moderation, dot-ui and dot-platform are never dependencies: load by path, drive by `set`/`call`, skip a missing one with a line. [services](docs/services.md#why-it-names-none-of-the-three-addons-it-drives)
+- Mod-tool commands are unbound in `_exit_tree`; the roster calls `forget_player` and `forget_voter` as somebody leaves. [services](docs/services.md#the-live-tools-are-a-fourth-layer-and-the-verbs-are-the-subclasss)
+- A new hook defaults to exactly the old behaviour. [services](docs/services.md#the-hooks-the-first-converted-game-needed)
+- Anything set on the server that an older dot-server may lack (`set_current_map`, the board properties) is duck-typed behind `has_method` / `in`; detach only a hook this module set. [design](docs/design.md#the-tab-boards-server-half)
+- `describe()` overrides merge `super.describe()`. [history](docs/history.md#two-bugs-in-dot-server-the-first-suite-found)
+- A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`. [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
 
-A game with its own session source — a lobby that seats people who never connected — gets the same hook for free.
+## Where a game plugs in
 
-## A client whose message schema cannot play is disconnected here
+| To change | Where |
+| --- | --- |
+| The game itself | `DotGameModule._game_service()`, `_game_load()`, `_game_hibernation()`, `_can_tick()` |
+| Identity | `_make_identity()` returning dot-platform's `DotPlatformIdentity`; `_wants_platform_module()` |
+| Chat, voice, moderation | a `DotGameServices` subclass: channels, rules, voice config, `_can_hear`, `_peer_can_receive` |
+| The live admin tools | `_mod_abilities()`, `_mod_unsupported()`, `_mod_can_teleport()` / `_mod_position()` / `_mod_teleport()`, `_mod_configure_commands()`, `_mod_configure_tools()`; call `mod_player_respawned(id)` from the spawn path |
+| The map the server lists | `report_map(map_id)`, on every change |
+| Tab board columns and teams | `_game_board_fields`, `_game_board_extra` |
+| The client's chat and voice | `DotGameChatClient`: `channels`, `line_colours`, `max_length`, `voice_config`, `attach(bridge)` |
+| Who a peer is, for a lobby | `DotGameRoster.session_fn` |
 
-dot-net compares the two ends' message tables when the client's arrives and refuses a pair where either lacks a type the other REQUIRES (see dot-net's *Two builds on one wire*) — but it owns no socket, so all it can do is emit `peer_schema_refused`. `DotGameNetcode.build` connects that to `refuse_peer`, which kicks the session with dot-net's sentence as the reason and its `DotError` as the cause, so the client reads `CODE_VERSION` and a line that says who has to update. `refuse_peer` is public and static for a game on dot-game that builds its own manager; the four games whose modules are not on `DotGameModule` (arena, g2gfast, hungario, playground) carry the same three lines as `_refuse_peer` in their modules. dot-server-deploy's `smash_client` drives it over a real socket in a delivered game.
+## Open
 
-## Two bugs in dot-server this addon's first suite found
-
-Neither is in this addon, and both had been there for as long as modules have.
-
-**`DotModuleHost.load_module` did not await `_module_load`.** A module's load is allowed to be a coroutine and every non-trivial one is: an identity layer reaches a content host, a profile store, an avatar store. An un-awaited GDScript coroutine returns at its first suspension, which Godot 4.7 reports as *"Trying to call an async function without 'await'"* — and then `result` is null and the next line reads `.ok` off it. It hid because it only fires when a load **actually** suspends: every module in the tree awaited things that happened to finish inside one call — a cloud client with nothing to fetch, a backbone that is not configured — so the coroutine ran to completion and returned like an ordinary function. The first module whose setup really waited was a fixture written to wait on purpose. The consequence in production would have been a server failing to load its game because something it talks to was *slow*.
-
-`_module_unload` is the other half and is deliberately **not** awaited: `unload_all` runs from `_exit_tree`, where there is no frame left to resume a coroutine in. It is enforced instead — the host calls it through `Object.call` (GDScript refuses to take the return value of a `-> void` function) and reports by name any module whose teardown suspended.
-
-**A log line could fail the load it was describing.** `load_module` read `module.describe()["commands"]`, and `describe()` is a method the family expects every stateful object to override. An override that did not happen to keep that key threw *inside the logging call*, after the module was already in `_modules` — so the load returned null and the next attempt said the module was already loaded. It is `.get("commands", 0)` now, and `DotGameModule.describe()` merges `super.describe()` rather than replacing it, which is the rule a subclass should follow anyway.
-
-## Validating
-
-```bash
-godot --headless --path . --import
-find . -name '*.gd' -not -path './.godot/*' | while read f; do
-    godot --headless --path . --check-only --script "res://${f#./}"
-done
-timeout 200 godot --headless --path . res://examples/game_selftest.tscn   # 84 checks, 12 sections
-```
-
-**Adding a `class_name` here breaks every consumer until each is re-imported**, and that is not theoretical: `DotGameServices` was added to this addon and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"* — its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. Re-import every project that links this one.
-
-The suite boots a real `DotServer` with a real `DotModuleHost` and loads the fixture module by path, because that is how a game is loaded in production — `load_module` takes a path so an operator can name one in a config file, which means a pre-built instance with its fields already assigned is thrown away and a fresh one made with them null.
-
-**The fixtures suspend on purpose.** `test_identity.setup()` and `test_services.setup()` both await a frame, because every real one reaches a network and a skeleton that only worked with collaborators which happen to finish synchronously would pass a suite and fail on the first deployment. That is precisely what found the `load_module` bug above.
-
-## `DotGameServices`, and why it names none of the three addons it drives
-
-The second extraction, done on 2026-09-14 and measured the same way: five services layers of 557, 559, 635, 716 and 718 lines, differing in their channels, their rules and a voice range. The relay is identical in all five, comments included; so are the admission check, the peer fan-out, the punishment subject, and the ORDER — which is the part with a bug behind it. **Moderation is built first because it publishes `dot_mute_source`, and both routers look that name up when they START.** A chat router built first finds nothing, warns once, and then enforces no gag for the life of the server.
-
-**dot-chat, dot-voice and dot-moderation are NOT dependencies of this addon and must not become them.** A game with no chat is a legitimate game; a game with no voice is most of them. So each layer is loaded BY PATH and driven through `set()` and `call()`, exactly as this module loads dot-platform's — and a missing addon is a layer skipped with a line, not a server that will not boot. What a subclass hands back — channels, rules, a voice config — it may name freely, because a game that configures chat is a game that has dot-chat.
-
-The cost of that is real and worth stating: the base cannot type-check anything it builds. What protects it is that every property it sets is set in one place, and `game_selftest` runs the whole sequence in a project that has **none** of the three — which is the only path this addon can test and the one that has to be quiet and complete. The other half, a line actually crossing a wire and a gag actually silencing somebody, is asserted in `mg-buses-from-hell/examples/headless_net.tscn`.
-
-## The live tools are a fourth layer, and the verbs are the subclass's
-
-`DotGameServices` builds dot-moderation's `DotModTools` straight after the manager — by path, like every layer here — and binds `DotModToolCommands` onto the server's console, so a subclass gets noclip, god, slay, bring and the rest by answering `_mod_abilities()` with a table of callables keyed by plain strings (`"noclip"`), which needs no dot-moderation name either. `_mod_unsupported()` is the reasons for what it refuses, `_mod_can_teleport()` / `_mod_position()` / `_mod_teleport()` the teleport verbs, `_mod_configure_commands()` the last word on `alive_fn` and `team_fn`. The ids are the session userid as a string, and `_mod_session` resolves one.
-
-Two things are the base's rather than the game's, and both have a bug behind them in the obvious alternative:
-
-- **The commands are unbound in `_exit_tree`.** They are registered on the server's console, which outlives this layer; a module unload that left them there hands the next `noclip` to a freed object. mg-buses-from-hell's `dedicated` unloads and reloads the module and asserts the commands leave and come back.
-- **`DotGameRoster` calls `forget_player(userid)` on every follower as somebody leaves**, beside `forget_voter`. Who a player was frozen or noclipped by is keyed on a userid, and the next person given that userid must not inherit it.
-
-What a respawn means is the game's, so a subclass calls `mod_player_respawned(id)` from its own spawn path — buses from the start of every round.
-
-## The hooks the first converted game needed
-
-The first hand-written game moved onto both bases (2026-09-25, a 2D lobby since scratched) found five places the base had no question to ask, each worked round in its subclass. They are hooks now, each with a default that is exactly the old behaviour:
-
-| Hook | Default | What it replaced in the lobby |
-| --- | --- | --- |
-| `DotGameServices.setup(null, …)` | allowed; only what is bound to a server is skipped (the tool commands, the relay's "tell the clients", the admin and audit seams — each already answered "no server") | `_setup_offline`, a copy of the whole sequence minus the one guard that refused a null server — the duplication this addon exists to end |
-| `_can_hear(listener, speaker, listener_at, speaker_at) -> bool` | `true`, wired into both routers' `can_hear_fn` | `chat.set("can_hear_fn", …)` and the same on voice, after `super.setup` |
-| `_mod_configure_tools(tools)` | nothing; called after the handlers and refusals, before the tools enter the tree or a command is bound | a `_build_mod_tools` override calling `super` and then setting `goto_standoff` and `persist_on_respawn` |
-| `_peer_can_receive(peer_id) -> bool`, and `send_backlog(peer_id)` | `true`: `add_peer` sends the backlog at seating | an `add_peer` override that dropped the backlog, because a lobby's client builds its scene after it is seated and a line sent then is a "Node not found" |
-| `DotGameModule._can_tick() -> bool` | `true` | a `_physics_process` override that skipped the tick while a game change had freed the world |
-
-**Hibernation (2026-10-07).** After `_game_load`, `_follow_hibernation()` searches the module's subtree for anything answering `follow_hibernation(server)` — dot-vote's `DotVoteDirector`, dot-map's `DotMapSession`, found by the method and named nowhere — and hands it the server, then calls `_game_hibernation(hibernating)` on every `hibernation_changed`. Every game here builds its vote under its module, so a game on this base gets "the map clock waits while the server is empty and starts again from the top when somebody joins" without a line; a clock that is the game's own rule (a ballot timer, a round) is reset in `_game_hibernation(false)`. The suite's section 4b checks a clock two levels down and the hook, and the teardown that it is disconnected; armed by removing the call.
-
-`_can_hear` is asked only of listeners already inside a proximity channel's range, so the default costs one call per such listener and nothing elsewhere. Section 7 of the suite checks the null server, the held backlog and the default ear, and section 4 the refused tick; the wiring into the two routers can only run where dot-chat and dot-voice are installed, so it is checked by the lobby's `sandbox` (through the partition) and the tools hook by its `dedicated` (blind and beacon across a game change).
-
-## `report_map`, because the map is the game's to say
-
-`DotGameModule.report_map(map_id)` hands the game's own map to `DotGameManager.set_current_map`, which A2S, DQP and the backbone report print in their map field. Added 2026-10-05 after the four hand-written games each grew the same four-line `_report_map` that day; the games on this base get it as one call. It is duck-typed (`has_method`), so a game built against this addon still loads on a dot-server from before `set_current_map` and is listed under its own name there, with one INFO line. The server forgets the map whenever a game unloads, so a game that changes map calls it on every change, not once at load. Section 2 of the suite asserts a reported map reaching the server and `""` clearing it.
-
-## The Tab board's server half (2026-10-09)
-
-dot-server sends a client holding its scoreboard the roster (name, score, ping, time connected) and asks `scoreboard_fields(session)` and `scoreboard_extra()` for the game's own columns and teams. `_game_board_fields` and `_game_board_extra` are those two, overridable, attached after `_game_load` succeeds and detached first thing in `_teardown`, so a game module overrides a method and never touches the server. Both are set with `server.set` behind an `in` check, because a game pack runs on whatever dot-server the host has and one from before the roster has neither property. Detach only clears a hook this module set (`get_object() == self`). dot-menu's `DotMenuScoreboard` draws the result. `game_selftest`'s teardown section asserts the columns reach the server per session, the teams ride the roster, and both go with the module.
-
-## `DotGameChatClient`, the client's half (2026-10-09)
-
-Five games had a client chat file each (`*_client_chat.gd`, 204 to 257 lines) that differed in nothing but their own class names: a `DotChatWindow` on its own canvas layer above the HUD, a `DotVoiceManager` with push-to-talk on V, an offline echo, and a bridge's `chat_received` / `voice_arrived` / `hello_received` drawn and played. It is one node here. A game sets `channels` (what Y and U open), `line_colours` (every channel a line can arrive on, admin and whisper included), `max_length` from its own chat rules and `voice_config` from its own voice format, and calls `attach(bridge)` or `attach(null)` offline. dot-ui and dot-voice are loaded by path like everything `DotGameServices` drives, so a build without one gets the other half and parses. The bridge is duck-typed: `ask_say(channel, text)`, `send_voice(bytes)` and the three signals. `game_selftest`'s last section checks the build with neither addon; the line crossing a wire is mg-prop-hunt's `headless_net`. API level 3.
-
-## Still to do
-
-- **Three of the five games have not been converted, and a fourth is half-way.** game-playground's services subclass `DotGameServices` since 2026-09-27 (373adf9), with no change here: its chat recipients, punishment key, speaker stamp, voice path and welcome history are hook overrides, and it switches the base's mod tools off because its own need the arena. Its module is still its own; why `DotGameModule` is not cheap for it is in playground's CLAUDE.md. arena, g2gfast and hungario still carry their own copies of both. Convert one first — arena is the reference game and the smallest of the five modules — and check `headless_match` still plays a whole deathmatch before touching the others.
-- ~~**The identity layer is the last extraction.**~~ Done 2026-10-03, and not here: it is dot-platform's `DotPlatformIdentity`, because every type it builds is dot-platform's dependency and none is this addon's. A subclass returns one from `_make_identity()` with its avatar schema and stock function set; mg-smash-copter and mg-buses-from-hell do, and arena's and g2gfast's own copies are twenty-line subclasses of it. With the identity layer on, `_wants_platform_module()` stays true and this module loads dot-platform's module beside it, which is what the default was for.
-
-## What uses this
-
-`mg-buses-from-hell`, since 2026-09-14, and it is the first; and `mg-smash-copter`. Its module is **ninety lines** against the five hand-written ones' 837 to 1,816, and its services layer is **sixty** against 557 to 718 — which is the number this addon was extracted to produce, on the one game that never had a copy to migrate. Both were exercised against a real dedicated server, a published pack and a client in a second process before this paragraph was written.
+- **arena, g2gfast and hungario are not converted** to `DotGameModule` or `DotGameServices`, and still carry their own copies of both (including `_refuse_peer`). **Convert arena first**: it is the reference game and the smallest of the hand-written modules, and its `headless_match` must still play a whole deathmatch before touching the others. Not started.
+- **game-playground is half-way**: its services subclass `DotGameServices` (hook overrides only, base mod tools switched off), but its module is still a `DotModule`, deliberately for now; why is in [game-playground/docs/simulation.md](../game-playground/docs/simulation.md#the-server-module).
+- Every game written since (the `mg-*` games, game-hide-n-seek, game-zombie-zone) is on both bases.
