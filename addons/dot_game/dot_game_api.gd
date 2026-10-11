@@ -10,5 +10,7 @@ extends RefCounted
 # 2: DotGameModule _game_board_fields() and _game_board_extra(), the Tab board's columns.
 # 3: DotGameChatClient, the client's chat box and microphone.
 # 4: DotGameContent, the map packs a server names for the running game.
-const LEVEL := 4
+# 5: DotGameChatClient draws dot-server's own lines (server_lines, server_colour, link),
+#    window_settings, voice_method.
+const LEVEL := 5
 const OLDEST := 1

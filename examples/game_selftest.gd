@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 90
+const CHECKS := 101
 
 var _entered := 0
 var _completed := 0
@@ -85,6 +85,7 @@ func _run() -> void:
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()
+		await _test_chat_client_server_lines()
 		await _test_map_content()
 
 	_teardown()
@@ -665,6 +666,90 @@ func _test_chat_client_without_the_addons() -> void:
 
 	box.queue_free()
 	_done()
+
+
+## dot-server's own lines (a vote between games, a join, an admin's `say`) arrive on the shell's
+## client link, not on the game's bridge. Eight games drew only the bridge and never showed one.
+## The box finds the link in the registry itself; a stub window counts what is drawn.
+func _test_chat_client_server_lines() -> void:
+	_section("the client's chat box draws the server's own lines, once")
+
+	var link := FakeClientLink.new()
+	DotRegistry.register(&"dot_client_link", link)
+
+	var box := DotGameChatClient.new()
+	box.name = "ServerLinesClient"
+	add_child(box)
+	await get_tree().process_frame
+
+	var window := StubChatWindow.new()
+	box.window = window
+
+	var bridge := FakeChatBridge.new()
+	_check(box.attach(bridge).ok, "a bridge attaches")
+	_check(box.link == link, "and the box found the client link in the registry by itself")
+
+	link.chat_received.emit({"kind": "system", "name": "[Server]", "text": "Rocked. 1 of 1."})
+	_check(
+		window.lines == ["[Server] Rocked. 1 of 1."],
+		"a system line on the link is drawn, prefix and all", str(window.lines)
+	)
+
+	link.chat_received.emit({"kind": "admin", "name": "[ADMIN] Ada", "text": "hi"})
+	_check(window.lines.size() == 2 and window.lines[1] == "[ADMIN] Ada: hi", "an admin line is drawn with its speaker", str(window.lines))
+
+	window.lines.clear()
+	link.chat_received.emit({"kind": "state", "relay": true})
+	link.chat_received.emit({"d": "Ada", "m": "hello", "c": "all"})
+	link.chat_received.emit({"kind": "system", "name": "[Server]", "text": "  "})
+	_check(window.lines.is_empty(), "chat's state, dot-chat's shape and an empty line are not drawn", str(window.lines))
+
+	bridge.chat_received.emit({"d": "Ada", "m": "hello", "c": "all"})
+	_check(window.lines == ["Ada: hello"], "a routed line still comes from the bridge, once", str(window.lines))
+
+	_check(box.attach(bridge).ok and link.get_signal_connection_list(&"chat_received").size() == 1,
+		"attaching again does not connect the link twice")
+	_check(bool(box.describe().get("server_lines", false)), "describe says the server's lines are read")
+
+	box.queue_free()
+	await get_tree().process_frame
+	_check(link.get_signal_connection_list(&"chat_received").is_empty(),
+		"a freed box leaves nothing connected to the link, which outlives every game")
+
+	var quiet := DotGameChatClient.new()
+	quiet.server_lines = false
+	add_child(quiet)
+	await get_tree().process_frame
+	_check(quiet.attach(bridge).ok and link.get_signal_connection_list(&"chat_received").is_empty(),
+		"server_lines false, for a game that reads the link itself, connects nothing")
+	quiet.queue_free()
+
+	var offline := DotGameChatClient.new()
+	add_child(offline)
+	await get_tree().process_frame
+	_check(offline.attach(null).ok and link.get_signal_connection_list(&"chat_received").is_empty(),
+		"offline, with no bridge, the link is not read")
+	offline.queue_free()
+
+	DotRegistry.unregister(&"dot_client_link")
+	link.free()
+	_done()
+
+
+class FakeClientLink:
+	extends Object
+	signal chat_received(payload: Dictionary)
+
+
+class StubChatWindow:
+	extends Control
+	var lines: Array = []
+	func add_text(text: String, _colour: Color = Color.WHITE) -> void:
+		lines.append(text)
+	func add_said(speaker: String, text: String, _a: Color = Color.WHITE, _b: Color = Color.WHITE) -> void:
+		lines.append("%s: %s" % [speaker, text])
+	func is_open() -> bool:
+		return false
 
 
 class FakeChatBridge:
