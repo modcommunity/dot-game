@@ -29,9 +29,9 @@ extends Node
 ## owns, and lands on `DotClientLink.chat_received`. Eight games read only the bridge, so a
 ## player in any of them never saw the server's vote announce itself or an admin speak. The
 ## link is found in the registry by itself (`dot_client_link`), so a game passes nothing and
-## the next one gets it too. Only dot-server's own shape (`text`, `name`, `kind`) is drawn
-## from it: a line in dot-chat's shape (`m`) is the bridge's to deliver, and drawing it from
-## both is how a line would show twice.
+## the next one gets it too. Only the server's own kinds (`system`, `admin`) are drawn from
+## it: what players say is the bridge's to deliver, and drawing it from both is how a line
+## would show twice ([method draw_server_line]).
 ##
 ## [b]dot-ui and dot-voice are found by path[/b], as [DotGameServices] finds dot-chat. A game
 ## without dot-voice has a chat box and no microphone, and one without dot-ui has a
@@ -244,29 +244,44 @@ func _watch_link() -> void:
 		var _c := link.connect(&"chat_received", _on_server_line)
 
 
-## One line from dot-server's chat manager: `{kind, name, text}`. `state` is not a line (it
-## says what is carrying chat), and a payload with no `text` is dot-chat's, which the bridge
-## delivers.
+## One line from dot-server's chat manager: `{kind, name, text}`.
 func _on_server_line(payload: Dictionary) -> void:
+	var _drawn := draw_server_line(window, payload, server_colour, line_colours.get(&"admin", server_colour))
+
+
+## Draws one of dot-server's own chat payloads in [param box] (a `DotChatWindow`, or anything
+## with `add_text` and `add_said`), and says whether it was a line at all.
+##
+## Static, so a game with its own chat box draws them the same way: buses, playground and
+## any client that reads `DotClientLink.chat_received` itself. Only `system` and `admin` are
+## drawn: what PLAYERS say (`all`, `team`) a game routing its chat delivers over its own wire,
+## and on a server whose module also lets dot-server's own player chat through, drawing it
+## here too would be every line twice. `state` is not a line (it says what is carrying chat),
+## and a payload with no `text` is dot-chat's. All of those come back false.
+static func draw_server_line(
+	box: Object,
+	payload: Dictionary,
+	system_colour: Color = Color(0.98, 0.84, 0.40),
+	admin_colour: Color = Color(0.98, 0.72, 0.35)
+) -> bool:
 	var kind := str(payload.get("kind", ""))
 
-	if kind == "state" or window == null or not payload.has("text"):
-		return
+	if box == null or not (kind == "system" or kind == "admin") or not payload.has("text"):
+		return false
 
 	var text := str(payload.get("text", "")).strip_edges()
 
 	if text == "":
-		return
+		return false
 
 	var speaker := str(payload.get("name", ""))
 
-	match kind:
-		"system":
-			window.call(&"add_text", text if speaker == "" else "%s %s" % [speaker, text], server_colour)
-		"admin":
-			window.call(&"add_said", speaker, text, line_colours.get(&"admin", server_colour))
-		_:
-			window.call(&"add_said", speaker, text, line_colours.get(StringName(kind), default_colour))
+	if kind == "system":
+		box.call(&"add_text", text if speaker == "" else "%s %s" % [speaker, text], system_colour)
+		return true
+
+	box.call(&"add_said", speaker, text, admin_colour)
+	return true
 
 
 func _exit_tree() -> void:

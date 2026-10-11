@@ -702,7 +702,10 @@ func _test_chat_client_server_lines() -> void:
 	link.chat_received.emit({"kind": "state", "relay": true})
 	link.chat_received.emit({"d": "Ada", "m": "hello", "c": "all"})
 	link.chat_received.emit({"kind": "system", "name": "[Server]", "text": "  "})
-	_check(window.lines.is_empty(), "chat's state, dot-chat's shape and an empty line are not drawn", str(window.lines))
+	link.chat_received.emit({"kind": "all", "name": "Ada", "text": "hello", "userid": 3})
+	_check(window.lines.is_empty(),
+		"chat's state, dot-chat's shape, an empty line and a player's line on the link are not drawn",
+		str(window.lines))
 
 	bridge.chat_received.emit({"d": "Ada", "m": "hello", "c": "all"})
 	_check(window.lines == ["Ada: hello"], "a routed line still comes from the bridge, once", str(window.lines))
