@@ -44,6 +44,11 @@ const LINK_SERVICE := &"dot_client_link"
 const WINDOW_SCRIPT := "res://addons/dot_ui/hud/dot_chat_window.gd"
 const VOICE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_manager.gd"
 
+## The player's own block list (`sm`), dot-chat's `DotChatSelfMute`: its registry name and
+## its script, for a build that has not made it yet.
+const SELF_MUTE_SERVICE := &"dot_self_mute"
+const SELF_MUTE_SCRIPT := "res://addons/dot_chat/runtime/dot_chat_self_mute.gd"
+
 ## Typing started or stopped. A client suspends its movement sampler on it: movement is
 ## polled, so without that, typing "sw" walks the player backwards.
 signal typing_changed(typing: bool)
@@ -125,12 +130,37 @@ var bridge: Object = null
 ## Which session this client is.
 var local_player_id: int = 0
 
+## Whether the player's own block list (`sm`) is honoured: a muted player's line is not
+## drawn and their voice is not played. `!sm` / `/sm` typed in the box never reach the
+## bridge; the box (dot-ui's `DotChatWindow`) runs them before it emits anything.
+var self_mute_enabled: bool = true
+
+## The block list, or null: anything with `is_muted_line(wire)` and `attach_voice(manager)`.
+## Found as the registry's `dot_self_mute`, else made by dot-chat's script, as the box is
+## built. Null without dot-chat, and then nothing is muted.
+var self_mute: Object = null
+
 var _talking: bool = false
 
 
 func _ready() -> void:
+	_find_self_mute()
 	_build_window()
 	_build_voice()
+
+
+## The shared list, made now if nothing has made it: it is what asks the server who is here,
+## so a client that waited for the first line would not know whose voice to drop until then.
+func _find_self_mute() -> void:
+	if not self_mute_enabled or self_mute != null:
+		return
+	self_mute = DotRegistry.get_service(SELF_MUTE_SERVICE)
+	if self_mute != null or not ResourceLoader.exists(SELF_MUTE_SCRIPT):
+		return
+	var script: Variant = load(SELF_MUTE_SCRIPT)
+	if script is Script:
+		var shared: Variant = (script as Script).call(&"shared")
+		self_mute = shared if shared is Object else null
 
 
 func _build_window() -> void:
@@ -183,6 +213,11 @@ func _build_voice() -> void:
 
 	voice.set(&"positional_playback", positional_voice)
 	add_child(voice)
+
+	# The block list mutes a player's peer on this manager whenever the list or the roster
+	# changes. dot-voice's manager also asks for it itself; attaching twice is one attachment.
+	if self_mute != null and self_mute.has_method(&"attach_voice"):
+		self_mute.call(&"attach_voice", voice)
 
 
 ## Joins this box to a bridge, or to nothing at all.
@@ -321,6 +356,12 @@ func _on_line(wire: Dictionary) -> void:
 	if text == "" or window == null:
 		return
 
+	# A player this reader muted (`sm`): matched by the line's sender key against the
+	# roster, then by name. The box's own `add_said` check is by name only.
+	if speaker != "" and self_mute != null and self_mute.has_method(&"is_muted_line") \
+			and bool(self_mute.call(&"is_muted_line", wire)):
+		return
+
 	var colour: Color = line_colours.get(channel_id, default_colour)
 
 	if speaker == "":
@@ -395,6 +436,7 @@ func describe() -> Dictionary:
 		"lines": int(window.call(&"line_count")) if window != null and window.has_method(&"line_count") else 0,
 		"voice": voice.call(&"describe") if voice != null else {},
 		"online": bridge != null,
+		"self_mute": self_mute.call(&"describe") if self_mute != null and self_mute.has_method(&"describe") else {},
 		"server_lines": server_lines and link != null and is_instance_valid(link)
 			and link.is_connected(&"chat_received", _on_server_line),
 	}

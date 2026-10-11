@@ -12,5 +12,6 @@ extends RefCounted
 # 4: DotGameContent, the map packs a server names for the running game.
 # 5: DotGameChatClient draws dot-server's own lines (server_lines, server_colour, link),
 #    window_settings, voice_method.
-const LEVEL := 5
+# 6: DotGameChatClient honours the player's block list (self_mute, self_mute_enabled).
+const LEVEL := 6
 const OLDEST := 1

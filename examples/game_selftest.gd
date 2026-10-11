@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 101
+const CHECKS := 103
 
 var _entered := 0
 var _completed := 0
@@ -714,6 +714,20 @@ func _test_chat_client_server_lines() -> void:
 		"attaching again does not connect the link twice")
 	_check(bool(box.describe().get("server_lines", false)), "describe says the server's lines are read")
 
+	# The player's own block list (`sm`): a muted speaker's routed line is not drawn. A
+	# stand-in list, because this suite links no dot-chat; dot-chat's suite proves the list.
+	var mutes := StubSelfMute.new()
+	box.self_mute = mutes
+	window.lines.clear()
+	mutes.muted["Ada"] = true
+	bridge.chat_received.emit({"d": "Ada", "m": "muted", "c": "all", "s": "3"})
+	bridge.chat_received.emit({"d": "Bob", "m": "heard", "c": "all", "s": "4"})
+	_check(window.lines == ["Bob: heard"], "a line from a player this reader muted is not drawn", str(window.lines))
+	mutes.muted.clear()
+	bridge.chat_received.emit({"d": "Ada", "m": "back", "c": "all", "s": "3"})
+	_check(window.lines == ["Bob: heard", "Ada: back"], "and is drawn again once unmuted", str(window.lines))
+	box.self_mute = null
+
 	box.queue_free()
 	await get_tree().process_frame
 	_check(link.get_signal_connection_list(&"chat_received").is_empty(),
@@ -742,6 +756,13 @@ func _test_chat_client_server_lines() -> void:
 class FakeClientLink:
 	extends Object
 	signal chat_received(payload: Dictionary)
+
+
+class StubSelfMute:
+	extends RefCounted
+	var muted: Dictionary = {}
+	func is_muted_line(wire: Dictionary) -> bool:
+		return muted.has(str(wire.get("d", "")))
 
 
 class StubChatWindow:

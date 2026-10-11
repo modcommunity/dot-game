@@ -44,6 +44,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - A new hook defaults to exactly the old behaviour. [services](docs/services.md#the-hooks-the-first-converted-game-needed)
 - Anything set on the server that an older dot-server may lack (`set_current_map`, the board properties) is duck-typed behind `has_method` / `in`; detach only a hook this module set. [design](docs/design.md#the-tab-boards-server-half)
 - `DotGameChatClient` also draws dot-server's own `system` and `admin` lines from the client link (never a player's line: that is the bridge's); a game that reads the link itself sets `server_lines = false`, and a game with its own box calls `draw_server_line`. [design](docs/design.md#dotgamechatclient-the-clients-half)
+- `DotGameChatClient` drops a self-muted player's line and hands its voice manager to the block list (dot-chat's `DotChatSelfMute`, by path); `!sm` is stopped by the box, before the bridge. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - `describe()` overrides merge `super.describe()`. [history](docs/history.md#two-bugs-in-dot-server-the-first-suite-found)
 - A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`. [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
 
@@ -57,7 +58,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | The live admin tools | `_mod_abilities()`, `_mod_unsupported()`, `_mod_can_teleport()` / `_mod_position()` / `_mod_teleport()`, `_mod_configure_commands()`, `_mod_configure_tools()`; call `mod_player_respawned(id)` from the spawn path |
 | The map the server lists | `report_map(map_id)`, on every change |
 | Tab board columns and teams | `_game_board_fields`, `_game_board_extra` |
-| The client's chat and voice | `DotGameChatClient`: `channels`, `line_colours`, `max_length`, `voice_config`, `window_settings`, `voice_method`, `server_lines`, `attach(bridge)` |
+| The client's chat and voice | `DotGameChatClient`: `channels`, `line_colours`, `max_length`, `voice_config`, `window_settings`, `voice_method`, `server_lines`, `self_mute_enabled`, `attach(bridge)` |
 | Who a peer is, for a lobby | `DotGameRoster.session_fn` |
 
 ## Open
