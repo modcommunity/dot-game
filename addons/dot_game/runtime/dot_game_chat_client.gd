@@ -44,10 +44,17 @@ const LINK_SERVICE := &"dot_client_link"
 const WINDOW_SCRIPT := "res://addons/dot_ui/hud/dot_chat_window.gd"
 const VOICE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_manager.gd"
 
+## dot-voice's talk action (`DotVoiceManager.TALK_ACTION`), as text: dot-voice is loaded by path.
+const TALK_ACTION := &"dot_voice_talk"
+
 ## The player's own block list (`sm`), dot-chat's `DotChatSelfMute`: its registry name and
 ## its script, for a build that has not made it yet.
 const SELF_MUTE_SERVICE := &"dot_self_mute"
 const SELF_MUTE_SCRIPT := "res://addons/dot_chat/runtime/dot_chat_self_mute.gd"
+
+## The server turned voice on or off (`sv_voice_enable`, replicated). A HUD hides its
+## microphone on false; the talk key does nothing until it is true again.
+signal voice_available_changed(available: bool)
 
 ## Typing started or stopped. A client suspends its movement sampler on it: movement is
 ## polled, so without that, typing "sw" walks the player backwards.
@@ -90,9 +97,14 @@ var voice_method: StringName = &"send_voice"
 ## right if the server's router uses the same default.
 var voice_config: Resource = null
 
-## The key held to talk. Physical, because the letter on it differs across layouts. KEY_NONE
-## for no push-to-talk.
+## The key the talk action (dot-voice's `dot_voice_talk`) is created on when nothing has bound
+## it; dot-menu's key table binds it first in every game that has the menu. Physical, because
+## the letter on it differs across layouts. KEY_NONE for no push-to-talk.
 var talk_key: Key = KEY_V
+
+## Where a speaker is, `func(peer: int) -> Variant` (a Vector3, or null), for positional voice.
+## Unset, voices are flat: positional with no position put every voice at the world's origin.
+var voice_position_fn: Callable = Callable()
 
 ## Whether remote voices are placed where their speaker is.
 var positional_voice: bool = true
@@ -212,7 +224,18 @@ func _build_voice() -> void:
 		voice.set(&"config", voice_config)
 
 	voice.set(&"positional_playback", positional_voice)
+	if voice_position_fn.is_valid():
+		voice.set(&"speaker_position_fn", voice_position_fn)
 	add_child(voice)
+
+	# This player's own voice: what the menu's voice rows bind to (dot-menu finds it by this
+	# name). Only the client's, never a server's router, so one per player at the keyboard.
+	if voice.has_method(&"publish_as_client"):
+		voice.call(&"publish_as_client")
+	if voice.has_signal(&"server_enabled_changed"):
+		voice.connect(&"server_enabled_changed", func(on: bool) -> void: voice_available_changed.emit(on))
+
+	_ensure_talk_action()
 
 	# The block list mutes a player's peer on this manager whenever the list or the roster
 	# changes. dot-voice's manager also asks for it itself; attaching twice is one attachment.
@@ -253,12 +276,16 @@ func attach(p_bridge: Object) -> DotResult:
 		if bridge != null and bridge.has_method(voice_method):
 			bridge.call(voice_method, bytes))
 
-	var capturing: DotResult = voice.call(&"start_capture")
+	# [b]No microphone yet.[/b] It opens on the first press of the talk key ([method
+	# _process], dot-voice's update_talk): that press is the player agreeing, and in a
+	# browser it is the moment the permission prompt appears, attached to the key they just
+	# pressed. This used to call start_capture here, which in a browser would have asked for
+	# the microphone the moment a game loaded.
 
-	if not capturing.ok:
-		# Not fatal, and said once. A machine with no microphone is a legitimate client and
-		# the player can still read everything anybody says.
-		DotLog.info(CHANNEL, "no microphone on this machine", {"why": capturing.error.message})
+	# The server's sv_voice_enable, replicated on the shell's link.
+	var cvar_source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
+	if cvar_source != null and cvar_source != bridge and voice.has_method(&"follow_cvars"):
+		var _following: Variant = voice.call(&"follow_cvars", cvar_source)
 
 	return DotResult.success(null)
 
@@ -392,9 +419,9 @@ func is_typing() -> bool:
 	return window != null and bool(window.call(&"is_open"))
 
 
-## Whether the microphone is open right now.
+## Whether this player is talking right now: the key held, and the server allowing voice.
 func is_talking() -> bool:
-	return _talking
+	return _talking and voice != null and bool(voice.get(&"server_enabled") if &"server_enabled" in voice else true)
 
 
 ## Push to talk. Held, never toggled.
@@ -405,13 +432,41 @@ func _process(_delta: float) -> void:
 	if voice == null or talk_key == KEY_NONE:
 		return
 
-	var wanted := Input.is_physical_key_pressed(talk_key) and not is_typing()
+	var wanted := _talk_held() and not is_typing()
 
 	if wanted == _talking:
 		return
 
 	_talking = wanted
-	voice.call(&"set_talking", wanted)
+
+	if not voice.has_method(&"update_talk"):
+		voice.call(&"set_talking", wanted)
+		return
+
+	# The first press opens the microphone; a refusal comes back once a press.
+	var started: DotResult = voice.call(&"update_talk", wanted)
+
+	if wanted and not started.ok:
+		# Not fatal, and said once a press. A machine with no microphone is a legitimate
+		# client and the player can still hear and read everything.
+		DotLog.info(CHANNEL, "no microphone on this machine", {"why": started.error.message})
+
+
+func _talk_held() -> bool:
+	if InputMap.has_action(TALK_ACTION):
+		return Input.is_action_pressed(TALK_ACTION)
+	return Input.is_physical_key_pressed(talk_key)
+
+
+## Creates the talk action on [member talk_key] if nothing has: a key table that binds it
+## (dot-menu's) wins, because this only fills a gap.
+func _ensure_talk_action() -> void:
+	if talk_key == KEY_NONE or InputMap.has_action(TALK_ACTION):
+		return
+	InputMap.add_action(TALK_ACTION)
+	var key := InputEventKey.new()
+	key.physical_keycode = talk_key
+	InputMap.action_add_event(TALK_ACTION, key)
 
 
 func _script(path: String, what: String) -> GDScript:

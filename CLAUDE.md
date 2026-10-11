@@ -46,6 +46,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - `DotGameChatClient` also draws dot-server's own `system` and `admin` lines from the client link (never a player's line: that is the bridge's); a game that reads the link itself sets `server_lines = false`, and a game with its own box calls `draw_server_line`. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - `DotGameChatClient` drops a self-muted player's line and hands its voice manager to the block list (dot-chat's `DotChatSelfMute`, by path); `!sm` is stopped by the box, before the bridge. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - `describe()` overrides merge `super.describe()`. [history](docs/history.md#two-bugs-in-dot-server-the-first-suite-found)
+- `DotGameChatClient` never opens the microphone on attach: the first press of dot-voice's `dot_voice_talk` action does (`update_talk`), so a browser asks then. It follows the replicated `sv_voice_enable` and publishes its manager as `dot_voice_client`; `DotGameModule` binds `sv_voice_enable`/`sv_voice_mode` on the services' router. [design](docs/design.md#dotgamechatclient-the-clients-half)
+- Positional voice needs `voice_position_fn`; without it voices are flat. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`. [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
 
 ## Where a game plugs in

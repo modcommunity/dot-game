@@ -382,6 +382,16 @@ func _build_services() -> DotResult:
 	if bridge != null and "voice_relay_fn" in bridge and services.has_method("relay_voice"):
 		bridge.set("voice_relay_fn", Callable(services, "relay_voice"))
 
+	# sv_voice_enable and sv_voice_mode, on the router: enforced there, replicated so every
+	# client hides its talk key while voice is off. Registered through this module so they go
+	# when it unloads, and read back so a value content.yml set before the game loaded wins.
+	# Duck-typed: dot-voice is loaded by path, and an older one has no bind_cvars.
+	var router: Variant = services.get("voice") if "voice" in services else null
+	if router is Object and (router as Object).has_method("bind_cvars"):
+		var _voice_cvars: Variant = (router as Object).call(
+			"bind_cvars", Callable(self, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+		)
+
 	return DotResult.success(services)
 
 

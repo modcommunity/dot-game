@@ -13,5 +13,9 @@ extends RefCounted
 # 5: DotGameChatClient draws dot-server's own lines (server_lines, server_colour, link),
 #    window_settings, voice_method.
 # 6: DotGameChatClient honours the player's block list (self_mute, self_mute_enabled).
-const LEVEL := 6
+# 7: voice: DotGameChatClient opens the microphone on the first press of dot-voice's
+#    dot_voice_talk action (not on attach), follows the replicated sv_voice_enable, publishes
+#    its manager as dot_voice_client, voice_available_changed, voice_position_fn; DotGameModule
+#    binds sv_voice_enable and sv_voice_mode on the services' router.
+const LEVEL := 7
 const OLDEST := 1
