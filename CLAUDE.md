@@ -47,7 +47,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - `DotGameChatClient` drops a self-muted player's line and hands its voice manager to the block list (dot-chat's `DotChatSelfMute`, by path); `!sm` is stopped by the box, before the bridge. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - `describe()` overrides merge `super.describe()`. [history](docs/history.md#two-bugs-in-dot-server-the-first-suite-found)
 - `DotGameChatClient` never opens the microphone on attach: the first press of dot-voice's `dot_voice_talk` action does (`update_talk`), so a browser asks then. It follows the replicated `sv_voice_enable` and publishes its manager as `dot_voice_client`; `DotGameModule` binds `sv_voice_enable`/`sv_voice_mode` on the services' router. [design](docs/design.md#dotgamechatclient-the-clients-half)
-- Positional voice needs `voice_position_fn`; without it voices are flat. [design](docs/design.md#dotgamechatclient-the-clients-half)
+- Positional voice needs `voice_position_fn`; without it voices are flat.
+- Only the server starts a loading state (a spawn, `report_map` with a new map, `mark_reloading`); a client's `game.cover` report can confirm or end one, never start one, and `load_timeout_sec` bounds it. [design](docs/design.md#still-loading-the-server-knows-who-is-behind-a-cover) [design](docs/design.md#dotgamechatclient-the-clients-half)
 - A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`.
 - `DotGameClient` is a child the client root adds first in `_ready`, never a base class (roots are Node, Node2D and Node3D); `setup()` comes after the HUD, the chat and what the settings bind to. dot-menu and dot-console are loaded by path, never named. [design](docs/design.md#dotgameclient-the-platform-layer-every-client-wires) [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
 
@@ -64,6 +65,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Tab board columns and teams | `_game_board_fields`, `_game_board_extra` |
 | The client's chat and voice | `DotGameChatClient`: `channels`, `line_colours`, `max_length`, `voice_config`, `window_settings`, `voice_method`, `server_lines`, `self_mute_enabled`, `attach(bridge)` |
 | Who a peer is, for a lobby | `DotGameRoster.session_fn` |
+| Who is still loading (not to be hurt, eliminated or counted) | server: `DotGameModule.is_loading(seat)` / `is_peer_loading(peer_id)`, `can_be_harmed` / `can_peer_be_harmed` (override for a spawn shield), `loading_changed`, `load_timeout_sec`, `reload_grace_sec`, `mark_reloading()`, or `var peer_loading_fn: Callable` on the game object; the client side is automatic on `DotGameClient` (`report_loading`), else `DotGameClient.report_cover(link, covered)` ([design](docs/design.md#still-loading-the-server-knows-who-is-behind-a-cover)) |
 | The client's cover, settings, menu, console, Tab, M, pointer | `DotGameClient`: `spawned_fn`, `require_camera`, `use_gate` / `use_settings` / `use_console` / `capture_pointer` / `sync_on_exit`, `settings`, `hud` + `hud_accent`, `chat`, `busy_fn`, `board_snapshot_fn`, `maps_*`, `scoreboard_action`; `_make_gate()`, `_make_settings()`; holds on `gate` ([migration](docs/client-migration.md)) |
 
 ## Open

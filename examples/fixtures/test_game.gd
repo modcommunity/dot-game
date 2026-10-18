@@ -12,6 +12,9 @@ var tick_rate: int = 60
 var ticks: int = 0
 var players: Dictionary = {}
 
+## Handed [method DotGameModule.is_peer_loading] by the module, because it is declared.
+var peer_loading_fn: Callable = Callable()
+
 
 func _ready() -> void:
 	DotRegistry.register(SERVICE, self)

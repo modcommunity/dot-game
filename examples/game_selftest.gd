@@ -18,6 +18,8 @@ extends Node
 ##   5. Unload tears down in the reverse order, and nothing is left ticking.
 ##   6. Every failure path unwinds what it had already built.
 ##   7. The services layer's hooks: no server, the backlog held, the ear.
+##   3b. Still loading: a joined seat is loading until its client reports, the timeout
+##      releases one that never does (with a warning), a map change re-marks, bots never are.
 ##   8. DotGameClient: the cover first, then the settings, menu, console, Tab, M, the chat's
 ##      keyboard and the input block, driven through stand-ins; and the same client in a build
 ##      with neither dot-menu nor dot-console.
@@ -46,7 +48,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 141
+const CHECKS := 164
 
 var _entered := 0
 var _completed := 0
@@ -79,6 +81,7 @@ func _run() -> void:
 
 		if await _test_the_sequence():
 			await _test_the_roster()
+			_test_still_loading()
 			await _test_the_tick()
 			_test_hibernation()
 			await _test_the_teardown()
@@ -93,6 +96,7 @@ func _run() -> void:
 		await _test_chat_client_server_lines()
 		await _test_map_content()
 		await _test_client_platform()
+		await _test_client_reports_cover()
 		await _test_client_without_the_addons()
 
 	_teardown()
@@ -372,6 +376,110 @@ func _test_the_roster() -> void:
 		"and describe() can be dumped into a bug report (%s)" % counts
 	)
 
+	_done()
+
+
+# --- 3b. Still loading ------------------------------------------------------
+
+var _warnings: Array[Dictionary] = []
+
+
+func _capture_warning(record: Dictionary) -> void:
+	if int(record.get("level", 0)) >= DotLog.Level.WARN:
+		_warnings.append(record)
+
+
+## A seat is loading from the spawn until its client says its cover lifted; nothing a client
+## sends makes a loaded seat loading again; a map change does, briefly for a client that does
+## not re-cover; the timeout releases a silent one and says so; a bot never is.
+func _test_still_loading() -> void:
+	_section("still loading: from the join until the client's cover lifts, bounded")
+
+	var roster := _module.roster
+	var clock := [100000]
+	roster.now_fn = func() -> int: return clock[0]
+	var heard: Array = []
+	var on_changed := func(seat: int, loading: bool) -> void: heard.append([seat, loading])
+	_module.loading_changed.connect(on_changed)
+	var env := _server.envelope
+
+	var ada := _fake_session(5, 51, "Ada")
+	var bea := _fake_session(6, 52, "Bea")
+	var bot := _fake_session(0, 53, "Bot")
+	bot.local = true
+	for one: DotClientSession in [ada, bea, bot]:
+		_sessions[one.userid] = one
+		_module._on_client_spawn(DotEvent.new("client_spawn", {"userid": one.userid, "name": one.display_name}))
+
+	_check(_module.is_loading(51) and _module.is_peer_loading(5) and not _module.can_be_harmed(51)
+			and not _module.can_peer_be_harmed(5),
+		"a seat that just joined is loading, and cannot be harmed")
+	_check(heard.has([51, true]) and heard.has([52, true]), "loading_changed says so", str(heard))
+	_check(not _module.is_loading(53) and _module.can_be_harmed(53) and not heard.has([53, true]),
+		"a bot is never loading")
+	_check(not _module.is_peer_loading(99) and _module.can_peer_be_harmed(99),
+		"and nobody the game does not know is")
+	_check(_game.peer_loading_fn.is_valid() and bool(_game.peer_loading_fn.call(5)),
+		"a game that declares peer_loading_fn is handed the question")
+	var described: Dictionary = _module.describe()
+	_check(described.get("loading", []) == [51, 52], "describe() names the loading seats", str(described.get("loading")))
+
+	_check(env.knows(DotGameRoster.COVER_KIND), "the server advertises the cover kind")
+	_check(env.dispatch(5, DotGameRoster.COVER_KIND, {"covered": "no"}) and _module.is_loading(51),
+		"a malformed report changes nothing")
+	_check(env.dispatch(5, DotGameRoster.COVER_KIND, {"covered": false})
+			and not _module.is_loading(51) and _module.can_be_harmed(51) and heard.has([51, false]),
+		"the client saying its cover lifted ends it, through the envelope")
+	env.dispatch(5, DotGameRoster.COVER_KIND, {"covered": true})
+	_check(not _module.is_loading(51),
+		"a cover going up never makes a loaded seat loading: only the server starts one")
+
+	# A map change: everybody loading again. Ada re-covers (her report came just before the
+	# server's change, which is allowed), Bea's client never says anything.
+	_module.report_map("first")
+	_check(not _module.is_loading(51), "the first map reported is not a map change")
+	_module.report_map("second")
+	_check(_module.is_loading(51) and _module.is_loading(52) and not _module.is_loading(53),
+		"a new map re-marks every client's seat, not the bot's")
+	_module.report_map("second")
+	clock[0] += int(_module.reload_grace_sec * 1000.0) + 10
+	_module.roster.poll_loading()
+	_check(_module.is_loading(51), "a client that covered for the change waits out the grace")
+
+	clock[0] += int(_module.load_timeout_sec * 1000.0)
+	_warnings.clear()
+	DotLog.set_channel_level(DotGameRoster.CHANNEL, DotLog.Level.WARN)
+	DotLog.add_sink(_capture_warning)
+	var before := roster.load_timeouts
+	_module._physics_process(1.0 / 60.0)
+	DotLog.remove_sink(_capture_warning)
+	DotLog.clear_channel_level(DotGameRoster.CHANNEL)
+	_check(not _module.is_loading(51) and not _module.is_loading(52) and roster.load_timeouts > before,
+		"the timeout releases a client that never says, from the module's own tick")
+	_check(_warnings.size() >= 1 and str(_warnings[0].get("message", "")).contains("never said"),
+		"with a warning", str(_warnings))
+
+	# Bea's client did not re-cover for a map change: the grace releases her, not the timeout.
+	_module.report_map("third")
+	_module.roster.report_cover(5, true)
+	clock[0] += int(_module.reload_grace_sec * 1000.0) + 10
+	_module.roster.poll_loading()
+	_check(not _module.is_loading(52) and _module.is_loading(51),
+		"a client that does not re-cover is released by the grace; one that did is not")
+	_module.mark_reloading()
+	_check(_module.is_loading(52), "mark_reloading is the same for a change report_map does not see")
+
+	heard.clear()
+	_module.roster.on_client_disconnected(ada, "quit")
+	_check(not _module.is_loading(51) and heard.has([51, false]), "leaving while loading ends it")
+	for one: DotClientSession in [bea, bot]:
+		_module.roster.on_client_disconnected(one, "quit")
+		_sessions.erase(one.userid)
+	_sessions.erase(ada.userid)
+	_check(_module.loading_seats().is_empty(), "and nobody is left loading")
+
+	_module.loading_changed.disconnect(on_changed)
+	roster.now_fn = Callable()
 	_done()
 
 
@@ -1103,6 +1211,42 @@ func _test_client_platform() -> void:
 	host.queue_free()
 	refused_host.queue_free()
 	scene.queue_free()
+	await get_tree().process_frame
+	_done()
+
+
+class _CoverLink extends RefCounted:
+	var sent: Array = []
+	func send_kind(kind: StringName, payload: Dictionary = {}, _lane: int = 0) -> bool:
+		sent.append([kind, payload])
+		return true
+
+
+## The client's half: the gate opening and closing again is told to the server, with no line
+## of the game's.
+func _test_client_reports_cover() -> void:
+	_section("the client tells the server when its cover lifts and comes back")
+	var host := Node.new()
+	add_child(host)
+	var link := _CoverLink.new()
+	var client := DotGameClient.new()
+	client.require_camera = false
+	client.capture_pointer = false
+	client.link = link
+	host.add_child(client)
+	_check(not client.offline and link.sent.is_empty(), "connected, and nothing is said while covered")
+	for i in range(240):
+		if client.is_shown():
+			break
+		await get_tree().process_frame
+	_check(link.sent == [[DotGameRoster.COVER_KIND, {"covered": false}]],
+		"the cover lifting is sent once", str(link.sent))
+	client.gate.hold(&"map", "Loading the map")
+	_check(link.sent.size() == 2 and link.sent[1] == [DotGameRoster.COVER_KIND, {"covered": true}],
+		"a map change's cover going up is sent too", str(link.sent))
+	_check(DotGameClient.report_cover(link, false) and not DotGameClient.report_cover(null, false),
+		"report_cover is the same send for a client not on DotGameClient")
+	host.queue_free()
 	await get_tree().process_frame
 	_done()
 

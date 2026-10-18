@@ -19,5 +19,10 @@ extends RefCounted
 #    binds sv_voice_enable and sv_voice_mode on the services' router.
 # 8: DotGameClient, the platform layer a game client adds: load gate and cover, settings and
 #    the Escape menu, console, HUD theme, Tab, M, the chat's keyboard, the pointer, web sync.
-const LEVEL := 8
+# 9: still loading. DotGameModule is_loading / is_peer_loading / can_be_harmed /
+#    can_peer_be_harmed / loading_seats / mark_reloading, loading_changed, load_timeout_sec,
+#    reload_grace_sec, report_map re-marks on a new map, the game's peer_loading_fn;
+#    DotGameRoster's loading state and COVER_KIND; DotGameClient report_loading and the
+#    static report_cover.
+const LEVEL := 9
 const OLDEST := 1

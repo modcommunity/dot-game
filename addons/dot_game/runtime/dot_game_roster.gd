@@ -30,6 +30,16 @@ extends RefCounted
 
 const CHANNEL := "game.roster"
 
+## The envelope kind a client sends when its loading cover goes up or comes down:
+## [code]{"covered": bool}[/code], client to server, reliable. [DotGameClient] sends it on its
+## gate's [code]opened[/code] and [code]closed[/code]; [method DotGameClient.report_cover] is
+## the same send for a client that is not on it. [DotGameModule] handles it.
+const COVER_KIND := &"game.cover"
+
+## A seat became loading (joined, or a map change began) or stopped being (its cover lifted,
+## it timed out, it left).
+signal loading_changed(userid: int, loading: bool)
+
 ## The server this roster reads sessions out of.
 var server: DotServer = null
 
@@ -68,6 +78,43 @@ var leaves: int = 0
 ## services layer are all optional, and a script that so much as mentions an absent
 ## [code]class_name[/code] fails to parse and takes everything referencing it down.
 var followers: Array[Object] = []
+
+# --- Still loading -------------------------------------------------------------------
+
+## Seconds a seat may stay loading before it counts as loaded anyway, with a warning. What
+## releases a client that never says (one built before [constant COVER_KIND]), and the bound
+## on how long anybody is unharmable: a client cannot extend it.
+var load_timeout_sec: float = 30.0
+
+## After a server-driven map change ([method mark_reloading]), seconds to wait for the
+## client to say its cover went up again. A client that does not re-cover for this change
+## (or predates the kind) counts as loaded once it passes, rather than sitting out the whole
+## timeout in plain view.
+var reload_grace_sec: float = 5.0
+
+## [code]func() -> int[/code], milliseconds. [method Time.get_ticks_msec] when unset; the
+## suite substitutes it so a timeout is checked without waiting thirty seconds.
+var now_fn: Callable = Callable()
+
+## Seats released by the timeout, for [method describe].
+var load_timeouts: int = 0
+
+## userid -> {"until": ms, "covered": bool, "grace_until": ms}, for every seat still loading.
+var _loading: Dictionary = {}
+
+## peer id -> userid, for everybody in [member joined]: the cover report arrives by peer.
+var _peer_seat: Dictionary = {}
+
+## userid -> ms of a cover report that came while the seat was loaded. A client that heard
+## about a map change and covered before the server called [method mark_reloading] is not
+## then released by the grace while it is still covered.
+var _covered_at: Dictionary = {}
+
+## userids with no client behind them (bots, a listen server's own player): never loading.
+var _local: Dictionary = {}
+
+## userids whose client said its cover lifted before the roster seated them.
+var _shown_early: Dictionary = {}
 
 
 ## Adds a subsystem to be told about arrivals and departures.
@@ -138,7 +185,16 @@ func add(session: DotClientSession) -> DotResult:
 			return added
 
 	joined[session.userid] = true
+	_peer_seat[session.peer_id] = session.userid
 	joins += 1
+
+	# A bot, a listen server's own player or a test has no client to cover, so it is never
+	# loading. A client that already said it was shown is not either.
+	if session.local:
+		_local[session.userid] = true
+	elif not _shown_early.has(session.userid):
+		_start_loading(session.userid, true)
+	_shown_early.erase(session.userid)
 
 	for follower in followers:
 		if is_instance_valid(follower) and follower.has_method("add_peer"):
@@ -153,6 +209,9 @@ func add(session: DotClientSession) -> DotResult:
 
 ## The handler for [signal DotServer.client_disconnected].
 func on_client_disconnected(session: DotClientSession, _reason: String = "") -> void:
+	# Somebody who left before they were seated said nothing that should outlive them.
+	if session != null:
+		_shown_early.erase(session.userid)
 	remove(session)
 
 
@@ -165,7 +224,13 @@ func remove(session: DotClientSession) -> void:
 		remove_fn.call(session)
 
 	joined.erase(session.userid)
+	_peer_seat.erase(session.peer_id)
+	_covered_at.erase(session.userid)
+	_shown_early.erase(session.userid)
+	_local.erase(session.userid)
 	leaves += 1
+	if _loading.erase(session.userid):
+		loading_changed.emit(session.userid, false)
 
 	for follower in followers:
 		if not is_instance_valid(follower):
@@ -205,6 +270,123 @@ func count() -> int:
 func clear() -> void:
 	joined.clear()
 	followers.clear()
+	_loading.clear()
+	_peer_seat.clear()
+	_covered_at.clear()
+	_shown_early.clear()
+	_local.clear()
+
+
+# --- Still loading -------------------------------------------------------------------
+
+## Whether this seat's client is still behind its loading cover. False for anybody not in
+## the game, a bot, and a seat whose timeout has passed.
+func is_loading(userid: int) -> bool:
+	return _loading.has(userid)
+
+
+## [method is_loading], by peer id, which is what most server game code holds.
+func is_peer_loading(peer_id: int) -> bool:
+	return _loading.has(int(_peer_seat.get(peer_id, -1)))
+
+
+## The seat a peer is in, or -1.
+func seat_of_peer(peer_id: int) -> int:
+	return int(_peer_seat.get(peer_id, -1))
+
+
+## Every seat still loading, sorted.
+func loading_seats() -> PackedInt32Array:
+	var out := PackedInt32Array(_loading.keys())
+	out.sort()
+	return out
+
+
+## A map change the server drives: every seat in the game is loading again until its client
+## says its cover lifted, it does not re-cover within [member reload_grace_sec], or
+## [member load_timeout_sec] passes. A seat already loading keeps its state.
+func mark_reloading() -> void:
+	var now := _now()
+	for userid: int in joined.keys():
+		if _loading.has(userid) or _local.has(userid):
+			continue
+		var covered_recently := _covered_at.has(userid) \
+				and now - int(_covered_at[userid]) <= int(reload_grace_sec * 1000.0)
+		_start_loading(userid, covered_recently)
+	_covered_at.clear()
+
+
+## A client's report, by peer: [param covered] true when its cover went up, false when it
+## lifted.
+##
+## [b]A cover going up never makes a loaded seat loading.[/b] Only the server starts a
+## loading state (a join, [method mark_reloading]); the client can confirm one or end it. A
+## client allowed to start one could make itself unharmable whenever it liked.
+func report_cover(peer_id: int, covered: bool) -> void:
+	if not _peer_seat.has(peer_id):
+		if not covered:
+			# Seated later from the spawn event; remember it said shown.
+			var session := _session_by_peer(peer_id)
+			if session != null:
+				_shown_early[session.userid] = true
+		return
+	var userid := int(_peer_seat[peer_id])
+	if not covered:
+		_finish_loading(userid, "shown")
+		return
+	if _loading.has(userid):
+		_loading[userid]["covered"] = true
+	else:
+		_covered_at[userid] = _now()
+		DotLog.debug(CHANNEL, "a cover report while loaded starts nothing", {"userid": userid})
+
+
+## Releases seats whose grace or timeout has passed. [DotGameModule] calls it every frame.
+func poll_loading() -> void:
+	if _loading.is_empty():
+		return
+	var now := _now()
+	for userid: int in _loading.keys():
+		var entry: Dictionary = _loading[userid]
+		if now >= int(entry["until"]):
+			load_timeouts += 1
+			DotLog.warn(CHANNEL, "a client never said its loading cover lifted; counting it as loaded", {
+				"userid": userid, "after_sec": load_timeout_sec,
+				"hint": "a client built before dot-game API 9, or one whose gate never opened",
+			})
+			_finish_loading(userid, "timeout")
+		elif not bool(entry["covered"]) and now >= int(entry["grace_until"]):
+			_finish_loading(userid, "did not re-cover")
+
+
+func _start_loading(userid: int, covered: bool) -> void:
+	var now := _now()
+	_loading[userid] = {
+		"until": now + int(load_timeout_sec * 1000.0),
+		"covered": covered,
+		"grace_until": now + int(reload_grace_sec * 1000.0),
+	}
+	DotLog.debug(CHANNEL, "seat loading", {"userid": userid, "covered": covered})
+	loading_changed.emit(userid, true)
+
+
+func _finish_loading(userid: int, why: String) -> void:
+	if not _loading.erase(userid):
+		return
+	DotLog.debug(CHANNEL, "seat loaded", {"userid": userid, "why": why})
+	loading_changed.emit(userid, false)
+
+
+func _session_by_peer(peer_id: int) -> DotClientSession:
+	if server == null:
+		return null
+	return server.session_of(peer_id)
+
+
+func _now() -> int:
+	if now_fn.is_valid():
+		return int(now_fn.call())
+	return Time.get_ticks_msec()
 
 
 func describe() -> Dictionary:
@@ -213,6 +395,8 @@ func describe() -> Dictionary:
 		"joins": joins,
 		"leaves": leaves,
 		"followers": followers.size(),
+		"loading": Array(loading_seats()),
+		"load_timeouts": load_timeouts,
 	}
 
 
@@ -222,4 +406,5 @@ func describe_lines() -> PackedStringArray:
 		"joins      %d" % joins,
 		"leaves     %d" % leaves,
 		"followers  %d" % followers.size(),
+		"loading    %s" % (", ".join(Array(loading_seats()).map(func(u: int) -> String: return str(u))) if not _loading.is_empty() else "nobody"),
 	])

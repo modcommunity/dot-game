@@ -58,6 +58,24 @@ const CHANNEL := "game.module"
 ## register it.
 const PLATFORM_MODULE_PATH := "res://addons/dot_platform/dot_platform_module.gd"
 
+## A seat's client went behind its loading cover ([param loading] true: it joined, or a map
+## change began) or came out of it (its cover lifted, it timed out, it left). [param seat] is
+## the userid, as everywhere in [DotGameRoster].
+signal loading_changed(seat: int, loading: bool)
+
+## The property a game object may declare to be handed [method is_peer_loading]:
+## [code]var peer_loading_fn: Callable[/code]. Assigned before [method _game_load], cleared
+## at unload. How a hazard inside the game asks without holding the module.
+const PEER_LOADING_PROPERTY := &"peer_loading_fn"
+
+## Seconds a seat may stay loading before it counts as loaded anyway, with a warning: the
+## bound on how long anybody is unharmable, and what releases a client too old to say.
+@export var load_timeout_sec: float = 30.0
+
+## After a map change ([method report_map] with a new map, or [method mark_reloading]),
+## seconds to wait for a client to say its cover went up again before counting it loaded.
+@export var reload_grace_sec: float = 5.0
+
 # --- What the skeleton holds ----------------------------------------------
 
 ## The game object, resolved from [DotRegistry] under [method _game_service].
@@ -83,6 +101,13 @@ var tick: int = 0
 
 ## [method report_map] said once that this server cannot take a map.
 var _warned_no_map_report := false
+
+## The map [method report_map] last reported; a different one re-marks every seat loading.
+var _reported_map := ""
+
+## Whether this module put its handler on the server's envelope, and the game's property.
+var _handles_cover := false
+var _set_peer_loading := false
 
 
 # --- Subclass interface ----------------------------------------------------
@@ -420,6 +445,14 @@ func _build_services() -> DotResult:
 func _build_roster() -> void:
 	roster = DotGameRoster.new()
 	roster.server = server
+	roster.load_timeout_sec = load_timeout_sec
+	roster.reload_grace_sec = reload_grace_sec
+	roster.loading_changed.connect(_on_loading_changed)
+	_handle_cover_reports()
+
+	if game != null and PEER_LOADING_PROPERTY in game:
+		game.set(PEER_LOADING_PROPERTY, Callable(self, "is_peer_loading"))
+		_set_peer_loading = true
 
 	if bridge != null:
 		roster.add_fn = func(session: DotClientSession) -> Variant:
@@ -444,6 +477,92 @@ func _build_roster() -> void:
 
 	if server != null:
 		server.client_disconnected.connect(roster.on_client_disconnected)
+
+
+## Puts this module's handler for [constant DotGameRoster.COVER_KIND] on the server's envelope.
+##
+## [b]A kind on the existing envelope, not a new RPC or a dot-net message.[/b] The RPC set is
+## frozen (a new one is a protocol break for every shipped client), and the game's bridge is
+## each game's own, so a kind here is the one channel every client already has. Optional, so
+## a client that predates it joins and is released by the timeout. Duck-typed, so a game
+## still loads on a dot-server from before the envelope. A client only sends a kind the
+## server advertised at its challenge, so a client that joined before any game on this base
+## loaded is not heard from either: the timeout covers it the same way.
+func _handle_cover_reports() -> void:
+	if server == null or not ("envelope" in server):
+		return
+	var env: Object = server.get(&"envelope")
+	if env == null or not env.has_method("register"):
+		return
+	env.call("register", DotGameRoster.COVER_KIND, Callable(self, "_on_cover_report"), false)
+	_handles_cover = true
+
+
+func _release_cover_reports() -> void:
+	if not _handles_cover:
+		return
+	_handles_cover = false
+	var env: Object = server.get(&"envelope") if server != null else null
+	if env != null and env.has_method("handle"):
+		# The kind stays known (an advert already sent cannot be taken back); with no
+		# handler the envelope drops an arrival with a DEBUG line.
+		env.call("handle", DotGameRoster.COVER_KIND, Callable())
+
+
+func _on_cover_report(peer_id: int, payload: Dictionary) -> void:
+	var covered: Variant = payload.get("covered")
+	if roster == null or not (covered is bool):
+		return
+	roster.report_cover(peer_id, covered)
+
+
+func _on_loading_changed(seat: int, loading: bool) -> void:
+	loading_changed.emit(seat, loading)
+
+
+# --- Still loading -------------------------------------------------------------------
+
+## Whether [param seat]'s client is still behind its loading cover: from joining until the
+## client says its cover lifted, and again from a map change until it says so again, at most
+## [member load_timeout_sec]. False for bots, anybody not in the game, and offline.
+##
+## [b]What a hazard asks before it hurts somebody[/b], and what round counting asks before
+## it counts somebody out: a player still loading cannot see, and has been frozen by their
+## own client.
+func is_loading(seat: int) -> bool:
+	return roster != null and roster.is_loading(seat)
+
+
+## [method is_loading] by peer id, which is what most server game code holds.
+func is_peer_loading(peer_id: int) -> bool:
+	return roster != null and roster.is_peer_loading(peer_id)
+
+
+## Whether [param seat] may be damaged, eliminated or counted out now. Not while loading, by
+## default; override to add the game's own reasons (a spawn shield).
+func can_be_harmed(seat: int) -> bool:
+	return not is_loading(seat)
+
+
+## [method can_be_harmed] by peer id.
+func can_peer_be_harmed(peer_id: int) -> bool:
+	if roster == null:
+		return true
+	var seat := roster.seat_of_peer(peer_id)
+	return seat < 0 or can_be_harmed(seat)
+
+
+## Every seat still loading, sorted.
+func loading_seats() -> PackedInt32Array:
+	return roster.loading_seats() if roster != null else PackedInt32Array()
+
+
+## A map change this game drives without [method report_map] (a new round's layout, a
+## rebuilt level): every seat is loading again until its client reports. [method report_map]
+## with a different map calls this for you.
+func mark_reloading() -> void:
+	if roster != null:
+		roster.mark_reloading()
 
 
 ## The spawn hook, kept here rather than handed to the roster directly.
@@ -476,7 +595,15 @@ func _on_client_spawn(event: DotEvent) -> void:
 
 ## One authoritative tick.
 func _physics_process(delta: float) -> void:
-	if not loaded or Engine.is_editor_hint() or not _can_tick():
+	if not loaded or Engine.is_editor_hint():
+		return
+
+	# Before the tick gate: a timeout is wall-clock, and a world that cannot tick is no
+	# reason to keep somebody marked loading past it.
+	if roster != null:
+		roster.poll_loading()
+
+	if not _can_tick():
 		return
 
 	tick += 1
@@ -546,6 +673,13 @@ func _on_hibernation_changed(hibernating: bool) -> void:
 ## `DotGameManager.set_current_map` existed; it reports nothing there and says so once.
 ## Returns whether the server took it.
 func report_map(map_id: String) -> bool:
+	# A different map is a map change: every client covers for it, so every seat is loading
+	# again. The first report is not one (nobody has seen a map yet), and the same map again
+	# changes nothing.
+	if map_id != _reported_map and _reported_map != "":
+		mark_reloading()
+	_reported_map = map_id
+
 	if server == null or server.games == null:
 		return false
 
@@ -574,6 +708,12 @@ func _module_unload() -> void:
 ## calling into a freed object for as long as it takes them to notice, which is never.
 func _teardown() -> void:
 	_detach_board()
+	_release_cover_reports()
+
+	if _set_peer_loading and game != null and is_instance_valid(game):
+		game.set(PEER_LOADING_PROPERTY, Callable())
+	_set_peer_loading = false
+	_reported_map = ""
 
 	if server != null and server.hibernation_changed.is_connected(_on_hibernation_changed):
 		server.hibernation_changed.disconnect(_on_hibernation_changed)
@@ -583,6 +723,8 @@ func _teardown() -> void:
 			server.client_disconnected.disconnect(roster.on_client_disconnected)
 
 	if roster != null:
+		if roster.loading_changed.is_connected(_on_loading_changed):
+			roster.loading_changed.disconnect(_on_loading_changed)
 		roster.clear()
 		roster = null
 
@@ -642,6 +784,7 @@ func describe() -> Dictionary:
 		"identity": identity != null,
 		"services": services != null,
 		"tick": tick,
+		"loading": Array(loading_seats()),
 	}, true)
 
 	if roster != null:

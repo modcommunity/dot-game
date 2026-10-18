@@ -81,6 +81,10 @@ signal menu_state_changed(any_open: bool)
 @export var warm_up: bool = true
 ## The status line while [member spawned_fn] is false.
 @export var spawned_text: String = "Joining"
+## Tell the server when the cover lifts and when it comes back, so a server on
+## [DotGameModule] does not hurt or count out a player who cannot see yet
+## ([method DotGameModule.is_loading]). Connected only; offline there is nobody to tell.
+@export var report_loading: bool = true
 
 ## [code]func() -> bool[/code]: true once the local player exists and can be shown. Held
 ## under [constant REASON_SPAWNED] until then. Unset holds nothing for it.
@@ -167,7 +171,26 @@ func _ready() -> void:
 		if gate != null:
 			gate.opened.connect(_refresh_blocked)
 			gate.closed.connect(_refresh_blocked)
+			if report_loading:
+				gate.opened.connect(_on_gate_cover.bind(false))
+				gate.closed.connect(_on_gate_cover.bind(true))
 	_blocked = is_input_blocked()
+
+
+func _on_gate_cover(covered: bool) -> void:
+	if not offline:
+		report_cover(link, covered)
+
+
+## Tells the server this client's loading cover went up ([param covered] true) or lifted.
+## [DotGameClient] calls it from its gate; a client that is not on it calls this from its own
+## cover's equivalents, with the shell's link ([code]DotRegistry.get_service(&"dot_client_link")
+## [/code]). False when nothing was sent: no link, not connected, or a server that does not
+## know the kind (an older one), which then releases the seat by its timeout.
+static func report_cover(to_link: Object, covered: bool) -> bool:
+	if to_link == null or not is_instance_valid(to_link) or not to_link.has_method(&"send_kind"):
+		return false
+	return bool(to_link.call(&"send_kind", DotGameRoster.COVER_KIND, {"covered": covered}))
 
 
 func _resolve_host() -> Node:
