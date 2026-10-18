@@ -42,6 +42,25 @@ extends Object
 
 const CHANNEL := "game.netcode"
 
+## The [DotServer] meta an operator tool sets to a [Dictionary] of [DotNetConfig] property
+## -> number, read by [method DotGameModule._net_ceiling]. Meta on the server, not a
+## registry entry or a static: a process may hold a server and a client (or two servers),
+## and the ceiling belongs to the one whose operator wrote it.
+const CEILING_META := &"dot_net_ceiling"
+
+## Properties where the operator's number is a ceiling (0 on either side = no limit from
+## that side). Resource limits: an operator protecting a link or a box wants "no more
+## than", and a game that asks for less is already inside it.
+const CEILING_KEYS: PackedStringArray = [
+	"per_client_budget", "per_client_packet_rate", "mtu", "max_entities_per_snapshot",
+	"snapshot_rate",
+]
+
+## Properties where a number the operator wrote REPLACES the game's. The interpolation
+## buffer is a smoothness-versus-latency trade, not a resource limit: a ceiling could only
+## shorten it, but the operator who sets it is on a jittery network and wants it longer.
+const OVERRIDE_KEYS: PackedStringArray = ["interpolation_buffer"]
+
 
 ## Builds the manager, attaches the bridge, seals the schema and starts.
 ##
@@ -154,6 +173,56 @@ static func build(
 	})
 
 	return DotResult.success({"net": net, "bridge": bridge})
+
+
+## Applies an operator's [param ceiling] to the game's [param config], in place.
+##
+## [b]Effective value = min(game, operator), and 0 on either side means no limit from that
+## side[/b] (dot-net reads [code]<= 0[/code] as unlimited for the budget, the packet rate
+## and the entity cap), so a game that is unlimited takes the operator's number and an
+## operator who wrote 0 leaves the game's. Keys absent from the ceiling are untouched.
+## The snapshot rate is further forced to a divisor of the tick rate, because
+## [method DotNetConfig.validate] refuses a rate above the tick and warns on an uneven one.
+##
+## Returns one line per thing changed, for the caller to log.
+static func cap(config: DotNetConfig, ceiling: Dictionary) -> PackedStringArray:
+	var changes := PackedStringArray()
+
+	if config == null:
+		return changes
+
+	for key in OVERRIDE_KEYS:
+		if not ceiling.has(key):
+			continue
+		var wanted: Variant = ceiling[key]
+		if not is_equal_approx(float(config.get(key)), float(wanted)):
+			changes.append("%s %s -> %s (operator)" % [key, config.get(key), wanted])
+			config.set(key, wanted)
+
+	for key in CEILING_KEYS:
+		if not ceiling.has(key) or key == "snapshot_rate":
+			continue
+		var limit := int(ceiling[key])
+		var have := int(config.get(key))
+		if limit <= 0:
+			continue
+		if have <= 0 or have > limit:
+			changes.append("%s %d -> %d" % [key, have, limit])
+			config.set(key, limit)
+
+	var rate := config.snapshot_rate
+	if ceiling.has("snapshot_rate") and int(ceiling["snapshot_rate"]) > 0:
+		rate = mini(rate, int(ceiling["snapshot_rate"]))
+	rate = mini(rate, config.tick_rate)
+	while rate > 1 and config.tick_rate % rate != 0:
+		rate -= 1
+	rate = maxi(rate, 1)
+	# Only when the operator asked: a game's own uneven rate is its business (validate warns).
+	if rate != config.snapshot_rate and ceiling.has("snapshot_rate"):
+		changes.append("snapshot_rate %d -> %d (tick %d)" % [config.snapshot_rate, rate, config.tick_rate])
+		config.snapshot_rate = rate
+
+	return changes
 
 
 ## Disconnects a peer whose message schema this server cannot play with.

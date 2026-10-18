@@ -43,7 +43,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 103
+const CHECKS := 120
 
 var _entered := 0
 var _completed := 0
@@ -82,6 +82,8 @@ func _run() -> void:
 
 		await _test_a_refused_game_load_unwinds()
 		await _test_a_refused_attach_unwinds()
+		_test_operator_net_ceiling()
+		await _test_operator_ceiling_reaches_the_netcode()
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()
@@ -563,6 +565,68 @@ func _make_game() -> void:
 	_game = TestGame.new()
 	_game.name = "TestGame"
 	add_child(_game)
+
+
+func _caps(game_values: Dictionary, ceiling: Dictionary, tick := 64) -> DotNetConfig:
+	var c := DotNetConfig.new()
+	c.tick_rate = tick
+	for key in game_values:
+		c.set(key, game_values[key])
+	DotGameNetcode.cap(c, ceiling)
+	return c
+
+
+func _test_operator_net_ceiling() -> void:
+	_section("an operator's net limits are a ceiling on the game's own")
+
+	var c := _caps({"per_client_budget": 500000}, {"per_client_budget": 1000000})
+	_check(c.per_client_budget == 500000, "a game value under the cap is kept")
+	c = _caps({"per_client_budget": 2000000}, {"per_client_budget": 1000000})
+	_check(c.per_client_budget == 1000000, "a game value over the cap is clamped")
+	c = _caps({"per_client_budget": 0}, {"per_client_budget": 1000000})
+	_check(c.per_client_budget == 1000000, "a game that is unlimited takes the operator's cap")
+	c = _caps({"per_client_budget": 2000000}, {"per_client_budget": 0})
+	_check(c.per_client_budget == 2000000, "an operator 0 leaves the game's value alone")
+	c = _caps({"per_client_budget": 0}, {"per_client_budget": 0})
+	_check(c.per_client_budget == 0, "0 on both sides stays unlimited")
+	c = _caps({"per_client_packet_rate": 60}, {"per_client_packet_rate": 30})
+	_check(c.per_client_packet_rate == 30, "the packet rate is clamped the same way")
+	c = _caps({"max_entities_per_snapshot": 256}, {"max_entities_per_snapshot": 64})
+	_check(c.max_entities_per_snapshot == 64, "so is the entity cap")
+	c = _caps({"mtu": 1200}, {"mtu": 1000})
+	_check(c.mtu == 1000, "and the mtu")
+	c = _caps({"interpolation_buffer": 2.0}, {"interpolation_buffer": 3.0})
+	_check(is_equal_approx(c.interpolation_buffer, 3.0), "the interpolation buffer is overridden, not capped")
+
+	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 66})
+	_check(c.snapshot_rate == 32, "a snapshot cap above the game's rate changes nothing")
+	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 20})
+	_check(c.snapshot_rate == 16, "a snapshot cap of 20 on tick 64 lands on the divisor 16")
+	c = _caps({"snapshot_rate": 30}, {"snapshot_rate": 66}, 30)
+	_check(c.snapshot_rate == 30, "and never above the tick rate")
+	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 0})
+	_check(c.snapshot_rate == 32, "a snapshot cap of 0 uses the game's rate")
+	c = _caps({"snapshot_rate": 32}, {})
+	_check(c.snapshot_rate == 32 and DotGameNetcode.cap(c, {}).is_empty(), "no ceiling changes nothing, and logs nothing")
+	_done()
+
+
+func _test_operator_ceiling_reaches_the_netcode() -> void:
+	_section("the module applies the server's ceiling before the netcode starts")
+
+	_server.set_meta(DotGameNetcode.CEILING_META, {"snapshot_rate": 12, "max_entities_per_snapshot": 8})
+	var loaded: DotResult = await _load_module()
+	_server.remove_meta(DotGameNetcode.CEILING_META)
+
+	if not _check(loaded.ok, "the module loads", str(loaded.error)):
+		_done()
+		return
+
+	var module := loaded.value as DotGameModule
+	_check(module.net != null and module.net.config.snapshot_rate == 12, "the snapshot rate is the operator's (12 divides tick 60)")
+	_check(module.net != null and module.net.config.max_entities_per_snapshot == 8, "and the entity cap")
+	_unload_module()
+	_done()
 
 
 func _load_module() -> DotResult:

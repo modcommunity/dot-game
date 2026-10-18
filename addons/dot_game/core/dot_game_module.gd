@@ -116,6 +116,20 @@ func _net_config() -> DotNetConfig:
 	return null
 
 
+## The operator's limits on [method _net_config], as a [DotNetConfig] property -> number
+## [Dictionary]; see [method DotGameNetcode.cap] for the rule.
+##
+## The default reads [constant DotGameNetcode.CEILING_META] off the server, which is how a
+## host (dot-server-deploy) hands its cfg over without the game knowing it exists. Override
+## to source it elsewhere; an empty dictionary changes nothing.
+func _net_ceiling() -> Dictionary:
+	if server != null and server.has_meta(DotGameNetcode.CEILING_META):
+		var v: Variant = server.get_meta(DotGameNetcode.CEILING_META)
+		if v is Dictionary:
+			return v
+	return {}
+
+
 ## The game's bridge to the netcode. Required when [method _net_config] returns one.
 ##
 ## Duck-typed: it needs [code]attach(game, net) -> DotResult[/code] and
@@ -237,6 +251,13 @@ func _module_load() -> DotResult:
 	var config := _net_config()
 
 	if config != null:
+		var capped := DotGameNetcode.cap(config, _net_ceiling())
+
+		if not capped.is_empty():
+			DotLog.info(CHANNEL, "operator net limits applied", {
+				"module": String(_module_name()), "changes": "; ".join(capped),
+			})
+
 		var built := DotGameNetcode.build(
 			self, server, game, config, _make_bridge()
 		)
