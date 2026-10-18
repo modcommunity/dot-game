@@ -55,6 +55,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | To change | Where |
 | --- | --- |
 | The game itself | `DotGameModule._game_service()`, `_game_load()`, `_game_hibernation()`, `_can_tick()` |
+| The operator's net limits (rate, budget, mtu) on the game's own | the host sets the `dot_net_ceiling` meta on the `DotServer` (`DotGameNetcode.CEILING_META`); `DotGameModule._net_ceiling()` reads it and `DotGameNetcode.cap` applies min(game, operator), 0 = no limit |
 | Identity | `_make_identity()` returning dot-platform's `DotPlatformIdentity`; `_wants_platform_module()` |
 | Chat, voice, moderation | a `DotGameServices` subclass: channels, rules, voice config, `_can_hear`, `_peer_can_receive` |
 | The live admin tools | `_mod_abilities()`, `_mod_unsupported()`, `_mod_can_teleport()` / `_mod_position()` / `_mod_teleport()`, `_mod_configure_commands()`, `_mod_configure_tools()`; call `mod_player_respawned(id)` from the spawn path |
