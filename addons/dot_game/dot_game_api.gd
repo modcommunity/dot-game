@@ -17,5 +17,7 @@ extends RefCounted
 #    dot_voice_talk action (not on attach), follows the replicated sv_voice_enable, publishes
 #    its manager as dot_voice_client, voice_available_changed, voice_position_fn; DotGameModule
 #    binds sv_voice_enable and sv_voice_mode on the services' router.
-const LEVEL := 7
+# 8: DotGameClient, the platform layer a game client adds: load gate and cover, settings and
+#    the Escape menu, console, HUD theme, Tab, M, the chat's keyboard, the pointer, web sync.
+const LEVEL := 8
 const OLDEST := 1

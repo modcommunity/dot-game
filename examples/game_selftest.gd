@@ -18,6 +18,9 @@ extends Node
 ##   5. Unload tears down in the reverse order, and nothing is left ticking.
 ##   6. Every failure path unwinds what it had already built.
 ##   7. The services layer's hooks: no server, the backlog held, the ear.
+##   8. DotGameClient: the cover first, then the settings, menu, console, Tab, M, the chat's
+##      keyboard and the input block, driven through stand-ins; and the same client in a build
+##      with neither dot-menu nor dot-console.
 ##
 ## [b]Errors this suite prints on purpose.[/b] Three "module refused to load" lines,
 ## which are sections 1 and 6 doing their job -- and, from section 3, an engine-level
@@ -43,7 +46,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 120
+const CHECKS := 141
 
 var _entered := 0
 var _completed := 0
@@ -89,6 +92,8 @@ func _run() -> void:
 		await _test_chat_client_without_the_addons()
 		await _test_chat_client_server_lines()
 		await _test_map_content()
+		await _test_client_platform()
+		await _test_client_without_the_addons()
 
 	_teardown()
 
@@ -964,6 +969,160 @@ func _test_map_content() -> void:
 	for d in ["res://dot_cloud/me/course_a/1.0.0/courses", "res://dot_cloud/me/course_a/1.0.0",
 			"res://dot_cloud/me/course_a", "res://dot_cloud/me", "res://dot_cloud"]:
 		DirAccess.remove_absolute(d)
+	_done()
+
+
+const ClientSettings := preload("fixtures/test_client_settings.gd")
+const ClientChat := preload("fixtures/test_chat_box.gd")
+const CONSOLE_KIT_FIXTURE := "res://examples/fixtures/test_console_kit.gd"
+
+
+func _frames(n: int) -> void:
+	for i in range(n):
+		await get_tree().process_frame
+
+
+## The client's platform, with dot-menu and dot-console stood in by fixtures in their shape.
+func _test_client_platform() -> void:
+	_section("the client's platform: the cover first, then the menu, the console and the keys")
+
+	var host := Node.new()
+	host.name = "ClientRoot"
+	add_child(host)
+	var spawned := [false]
+	var blocked_seen: Array = []
+	var client := DotGameClient.new()
+	client.require_camera = false
+	client.spawned_fn = func() -> bool: return spawned[0]
+	client.input_blocked_changed.connect(func(on: bool) -> void: blocked_seen.append(on))
+	host.add_child(client)
+
+	_check(client.gate != null and client.gate.get_parent() == host,
+		"the load gate is up the moment the client is added, under the client root")
+	_check(DotLoadGate.of(host) == client.gate, "and DotLoadGate.of finds it from the root")
+	_check(client.offline and client.link == null, "no link in the registry is offline")
+	_check(client.is_input_blocked() and not client.is_shown(), "covered is input off")
+
+	var settings := ClientSettings.new()
+	var chat := ClientChat.new()
+	var hud := Control.new()
+	host.add_child(hud)
+	var snapshot := func() -> Dictionary: return {"players": []}
+	client.settings = settings
+	client.chat = chat
+	client.hud = hud
+	client.board_snapshot_fn = snapshot
+	client.maps_rows_fn = func() -> Array: return []
+	client.maps_change_fn = func(_id: StringName) -> DotResult: return DotResult.success(null)
+	client.maps_title = "Change arena"
+	client.maps_noun = "arenas"
+	client.console_kit_path = CONSOLE_KIT_FIXTURE
+	client.capture_pointer = false
+	var set_up := client.setup()
+	_check(set_up.ok and settings.setups == 1 and settings.is_inside_tree() and chat.is_inside_tree(),
+		"setup builds the game's settings once, and takes the chat box in")
+
+	var menu: Object = client.menu
+	_check(menu != null and (menu.get(&"followed") as Array).size() == 1 \
+			and (menu.get(&"followed") as Array)[0][0] == hud,
+		"the HUD follows the menu's theme")
+	_check(menu != null and menu.get(&"scoreboard_action") == DotGameClient.SCOREBOARD_ACTION \
+			and InputMap.has_action(DotGameClient.SCOREBOARD_ACTION)
+			and InputMap.action_get_events(DotGameClient.SCOREBOARD_ACTION).any(func(e: InputEvent) -> bool:
+				return e is InputEventKey and (e as InputEventKey).physical_keycode == KEY_TAB),
+		"Tab is the board's key, made when the game's table has none")
+	_check(client.board != null and client.board.get(&"source") == snapshot,
+		"offline the board is drawn from the game's own snapshot")
+	_check(client.maps != null and client.maps.get(&"title") == "Change arena" \
+			and client.maps.get(&"link_service") == &"",
+		"M is the game's map list, and offline asks no server")
+	_check(client.console != null and client.console.get_parent() == client \
+			and client.console.get_meta(&"menu") == menu,
+		"the console is built by the kit, over the settings and the menu")
+
+	spawned[0] = true
+	var opened := [false]
+	client.gate.opened.connect(func() -> void: opened[0] = true)
+	for i in range(240):
+		if opened[0]:
+			break
+		await get_tree().process_frame
+	await _frames(2)
+	_check(opened[0] and client.is_shown() and not client.is_input_blocked(),
+		"the cover lifts once the player exists, and input comes on")
+
+	chat.set_typing(true)
+	_check(client.is_input_blocked() and bool((menu.get(&"busy") as Callable).call()),
+		"typing is input off, and keeps Escape off the menu")
+	chat.set_typing(false)
+	var relayed: Array = []
+	client.menu_state_changed.connect(func(on: bool) -> void: relayed.append(on))
+	settings.set_open(true)
+	_check(client.is_input_blocked() and relayed == [true], "an open menu is input off, and is relayed")
+	settings.set_open(false)
+	var busy := [true]
+	client.busy_fn = func() -> bool: return busy[0]
+	await _frames(2)
+	_check(client.is_input_blocked() and bool((menu.get(&"busy") as Callable).call()),
+		"the game's own busy_fn (a command line) counts too")
+	busy[0] = false
+	await _frames(2)
+	_check(not client.is_input_blocked() and blocked_seen.size() >= 3 and blocked_seen.back() == false,
+		"and every change was signalled, ending live", str(blocked_seen))
+
+	var again := client.setup()
+	_check(not again.ok and again.error.code == DotError.CODE_STATE, "a second setup is refused")
+	_check(client.describe().get("console", false) == true and client.describe_lines().size() >= 4,
+		"describe says what was built")
+
+	# A settings file that will not load costs the menu, not the game.
+	var refused_host := Node.new()
+	add_child(refused_host)
+	var refused := DotGameClient.new()
+	refused.use_gate = false
+	refused.use_console = false
+	refused.capture_pointer = false
+	refused_host.add_child(refused)
+	var bad := ClientSettings.new()
+	bad.refuse = true
+	refused.settings = bad
+	var refused_set_up := refused.setup()
+	_check(refused_set_up.ok and refused.settings == null and refused.menu == null and refused.gate == null,
+		"refused settings are dropped with a line, and the rest still sets up")
+
+	# A client inside a scene readying its children: the gate waits a frame for the root.
+	var scene := Node.new()
+	var nested := DotGameClient.new()
+	nested.require_camera = false
+	scene.add_child(nested)
+	add_child(scene)
+	await get_tree().process_frame
+	_check(nested.gate != null and nested.gate.get_parent() == scene,
+		"a client that is part of a scene still puts the gate under its root")
+
+	host.queue_free()
+	refused_host.queue_free()
+	scene.queue_free()
+	await get_tree().process_frame
+	_done()
+
+
+## This suite's project has neither dot-menu nor dot-console, which is a real build.
+func _test_client_without_the_addons() -> void:
+	_section("the client's platform, in a build with neither dot-menu nor dot-console")
+	var host := Node.new()
+	add_child(host)
+	var client := DotGameClient.new()
+	client.require_camera = false
+	client.capture_pointer = false
+	host.add_child(client)
+	var set_up := client.setup()
+	_check(set_up.ok and client.settings == null and client.menu == null and client.console == null,
+		"it sets up with no settings, menu or console, and says so instead of failing")
+	_check(client.gate != null and client.chat == null and client.board == null,
+		"the cover is still there; nothing else was invented")
+	host.queue_free()
+	await get_tree().process_frame
 	_done()
 
 

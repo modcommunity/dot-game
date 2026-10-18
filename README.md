@@ -49,6 +49,8 @@ func _game_load() -> DotResult:
 | `DotGameModule` | The sequence, the tick, the teardown. Subclass it. `report_map(id)` tells the server which map the game is on, so server listings print it instead of the game's name. |
 | `DotGameNetcode` | Builds a `DotNetManager` and attaches a game's bridge. Usable on its own. |
 | `DotGameRoster` | Who is in the game as opposed to who is connected, and everything that has to be told when that changes. |
+| `DotGameChatClient` | The client's chat box and push-to-talk microphone, with the server's own lines drawn and the player's block list honoured. |
+| `DotGameClient` | The client's platform layer, a node the client root adds first: the loading cover (held until the player exists and a camera is current, with the render warm-up), then from `setup()` the settings and Escape menu, the console, the HUD in the player's theme, Tab for the board, M for the map menu, the pointer, the chat's keyboard, one `input_blocked_changed` signal to suspend input on, and `user://` flushed on exit in a browser. Every piece switches off or is replaced. [docs/client-migration.md](docs/client-migration.md) moves a game onto it. |
 
 ## What is deliberately not in it
 
@@ -83,7 +85,7 @@ done
 timeout 200 godot --headless --path . res://examples/game_selftest.tscn
 ```
 
-60 checks across nine sections, and a total that fails the run if any never ran: the sequence in order, the roster driven by the events a real server fires, the tick reaching the bridge before the game, an unload that leaves nothing running, and every path that has to unwind what it had already built.
+141 checks across 18 sections, and a total that fails the run if any never ran: the sequence in order, the roster driven by the events a real server fires, the tick reaching the bridge before the game, an unload that leaves nothing running, every path that has to unwind what it had already built, and `DotGameClient` through stand-ins and in a build with neither dot-menu nor dot-console.
 
 ## Licence
 

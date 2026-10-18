@@ -20,7 +20,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | --- | --- |
 | `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses), `DotGameContent` |
 | `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer` |
-| `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient` |
+| `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
 | `examples/game_selftest.tscn` | the suite; `examples/fixtures/` the module, bridge, identity and services it loads |
 
@@ -48,7 +48,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - `describe()` overrides merge `super.describe()`. [history](docs/history.md#two-bugs-in-dot-server-the-first-suite-found)
 - `DotGameChatClient` never opens the microphone on attach: the first press of dot-voice's `dot_voice_talk` action does (`update_talk`), so a browser asks then. It follows the replicated `sv_voice_enable` and publishes its manager as `dot_voice_client`; `DotGameModule` binds `sv_voice_enable`/`sv_voice_mode` on the services' router. [design](docs/design.md#dotgamechatclient-the-clients-half)
 - Positional voice needs `voice_position_fn`; without it voices are flat. [design](docs/design.md#dotgamechatclient-the-clients-half)
-- A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`. [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
+- A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`.
+- `DotGameClient` is a child the client root adds first in `_ready`, never a base class (roots are Node, Node2D and Node3D); `setup()` comes after the HUD, the chat and what the settings bind to. dot-menu and dot-console are loaded by path, never named. [design](docs/design.md#dotgameclient-the-platform-layer-every-client-wires) [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
 
 ## Where a game plugs in
 
@@ -63,6 +64,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Tab board columns and teams | `_game_board_fields`, `_game_board_extra` |
 | The client's chat and voice | `DotGameChatClient`: `channels`, `line_colours`, `max_length`, `voice_config`, `window_settings`, `voice_method`, `server_lines`, `self_mute_enabled`, `attach(bridge)` |
 | Who a peer is, for a lobby | `DotGameRoster.session_fn` |
+| The client's cover, settings, menu, console, Tab, M, pointer | `DotGameClient`: `spawned_fn`, `require_camera`, `use_gate` / `use_settings` / `use_console` / `capture_pointer` / `sync_on_exit`, `settings`, `hud` + `hud_accent`, `chat`, `busy_fn`, `board_snapshot_fn`, `maps_*`, `scoreboard_action`; `_make_gate()`, `_make_settings()`; holds on `gate` ([migration](docs/client-migration.md)) |
 
 ## Open
 
