@@ -36,7 +36,13 @@ static func attach(link: Node, parent: Node, owner: Node, link_name: StringName)
 	if owner == null:
 		push_error("DotGameLink.attach needs the bridge that owns the link")
 		return
-	owner.tree_exiting.connect(retire.bind(link), CONNECT_ONE_SHOT)
+	# By id: a bound Object that is freed before the signal fires cannot be converted to the
+	# argument, and the engine logs an error instead of calling.
+	owner.tree_exiting.connect(_retire_id.bind(link.get_instance_id()), CONNECT_ONE_SHOT)
+
+
+static func _retire_id(id: int) -> void:
+	retire(instance_from_id(id) as Node)
 
 
 ## Frees [param link] without touching its parent's child list. Safe while the parent is
