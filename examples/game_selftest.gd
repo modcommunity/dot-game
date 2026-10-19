@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 173
+const CHECKS := 174
 
 var _entered := 0
 var _completed := 0
@@ -1353,6 +1353,21 @@ func _test_link_survives_reload() -> void:
 	links = _links_named(server, TestLink.NODE_NAME)
 	_check(links.size() == 1 and links[0] != orphan and links[0].name == TestLink.NODE_NAME,
 		"a same-named link already there is retired, and the new one gets the name")
+
+	# A stale link something else already queue_freed still holds its name this frame; the
+	# next attach must take the name anyway, not be renamed by add_child.
+	var freed := TestLink.new()
+	freed.name = TestLink.NODE_NAME
+	_drop_bridge(module, bridge)
+	await get_tree().process_frame
+	server.add_child(freed)
+	freed.queue_free()
+	bridge = _open_bridge(module, server)
+	var live: Node = server.get_node_or_null(NodePath(String(TestLink.NODE_NAME)))
+	_check(live != null and live != freed,
+		"a same-named link already queued for deletion still gives up the name at once",
+		str(live.name) if live != null else "none")
+	await get_tree().process_frame
 
 	# The whole server tree goes at once, as it does when the process stops.
 	var errors_before := catcher.errors.size()

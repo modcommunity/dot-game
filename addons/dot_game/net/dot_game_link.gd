@@ -32,6 +32,10 @@ static func attach(link: Node, parent: Node, owner: Node, link_name: StringName)
 		retire(stale)
 	link.name = link_name
 	parent.add_child(link)
+	# add_child renames on a clash without a word, and a renamed link is the bug this class
+	# exists to stop: every RPC to it is lost. Say so where it happened.
+	if link.name != link_name:
+		push_error("DotGameLink: %s was renamed %s; RPCs to it will be lost" % [link_name, link.name])
 	# A link that was never given a bridge would never be freed: say so where it is made.
 	if owner == null:
 		push_error("DotGameLink.attach needs the bridge that owns the link")
@@ -47,9 +51,20 @@ static func _retire_id(id: int) -> void:
 
 ## Frees [param link] without touching its parent's child list. Safe while the parent is
 ## busy, and safe to call twice.
+##
+## For the rest of the frame the retired node is still in the tree, and the engine's RPC
+## cache routes by instance id before path, so an RPC that arrives in the same poll as a
+## reload reaches the retired link, whose bridge is gone, and is dropped. From the next
+## frame the path finds the new link. Only a reload issued from inside the poll (an RPC
+## command) can lose the rest of that batch.
 static func retire(link: Node) -> void:
-	if link == null or not is_instance_valid(link) or link.is_queued_for_deletion():
+	if link == null or not is_instance_valid(link):
 		return
-	# Unique, so the name is free this instant. Not a counter: two retirements in a frame.
-	link.name = "%s%s_%d" % [RETIRED, link.name, link.get_instance_id()]
-	link.queue_free()
+	# Renamed even when something else already queue_freed it: a queued node still holds its
+	# name until the end of the frame, so skipping the rename would let add_child rename the
+	# new link instead. Unique, so the name is free this instant; not a counter, because two
+	# retirements can land in one frame.
+	if not String(link.name).begins_with(RETIRED):
+		link.name = "%s%s_%d" % [RETIRED, link.name, link.get_instance_id()]
+	if not link.is_queued_for_deletion():
+		link.queue_free()
