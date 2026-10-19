@@ -24,5 +24,6 @@ extends RefCounted
 #    reload_grace_sec, report_map re-marks on a new map, the game's peer_loading_fn;
 #    DotGameRoster's loading state and COVER_KIND; DotGameClient report_loading and the
 #    static report_cover.
-const LEVEL := 9
+# 10: DotGameLink.attach / retire, a game's RPC link under the server node, freed with its bridge.
+const LEVEL := 10
 const OLDEST := 1

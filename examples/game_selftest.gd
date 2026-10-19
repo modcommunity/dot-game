@@ -20,6 +20,8 @@ extends Node
 ##   7. The services layer's hooks: no server, the backlog held, the ear.
 ##   3b. Still loading: a joined seat is loading until its client reports, the timeout
 ##      releases one that never does (with a warning), a map change re-marks, bots never are.
+##   9. DotGameLink: a link under the server node survives two reloads as exactly one, and a
+##      whole server tree torn down logs no engine ERROR.
 ##   8. DotGameClient: the cover first, then the settings, menu, console, Tab, M, the chat's
 ##      keyboard and the input block, driven through stand-ins; and the same client in a build
 ##      with neither dot-menu nor dot-console.
@@ -40,6 +42,7 @@ extends Node
 const TestGame := preload("fixtures/test_game.gd")
 const TestModule := preload("fixtures/test_module.gd")
 const TestHookServices := preload("fixtures/test_hook_services.gd")
+const TestLink := preload("fixtures/test_link.gd")
 const MODULE_PATH := "res://examples/fixtures/test_module.gd"
 
 const PORT := 27919
@@ -48,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 164
+const CHECKS := 173
 
 var _entered := 0
 var _completed := 0
@@ -98,6 +101,7 @@ func _run() -> void:
 		await _test_client_platform()
 		await _test_client_reports_cover()
 		await _test_client_without_the_addons()
+		await _test_link_survives_reload()
 
 	_teardown()
 
@@ -1267,6 +1271,113 @@ func _test_client_without_the_addons() -> void:
 		"the cover is still there; nothing else was invented")
 	host.queue_free()
 	await get_tree().process_frame
+	_done()
+
+# --- 9. DotGameLink --------------------------------------------------------
+
+## Catches every engine-level error while attached. A deliberate error elsewhere in this suite
+## cannot reach it: it is attached only for this section.
+class ErrorCatcher extends Logger:
+	var errors: Array[String] = []
+
+	func _log_error(function: String, file: String, line: int, code: String,
+			rationale: String, _editor_notify: bool, error_type: int,
+			_script_backtraces: Array) -> void:
+		errors.append("%s %s %s" % [code, rationale, function])
+
+
+func _links_named(parent: Node, wanted: StringName) -> Array[Node]:
+	var found: Array[Node] = []
+	for child in parent.get_children():
+		if child.get_script() == TestLink:
+			found.append(child)
+	return found
+
+
+## What a game's bridge does in open_link, and what the module does to it on unload.
+func _open_bridge(host: Node, parent: Node) -> Node:
+	var bridge := Node.new()
+	host.add_child(bridge)
+	DotGameLink.attach(TestLink.new(), parent, bridge, TestLink.NODE_NAME)
+	return bridge
+
+
+func _drop_bridge(host: Node, bridge: Node) -> void:
+	# Exactly DotGameModule._drop.
+	host.remove_child(bridge)
+	bridge.queue_free()
+
+
+func _test_link_survives_reload() -> void:
+	_section("DotGameLink: one live link after a reload, and a clean teardown")
+	var catcher := ErrorCatcher.new()
+	OS.add_logger(catcher)
+
+	var server := Node.new()
+	server.name = "Server"
+	add_child(server)
+	var module := Node.new()
+	server.add_child(module)
+
+	var bridge := _open_bridge(module, server)
+	_check(_links_named(server, TestLink.NODE_NAME).size() == 1, "a link is under the server node")
+
+	# Reload twice. The second reload comes before the frame that would free the first: the
+	# name has to be free that instant, not a frame later.
+	_drop_bridge(module, bridge)
+	bridge = _open_bridge(module, server)
+	_drop_bridge(module, bridge)
+	await get_tree().process_frame
+	bridge = _open_bridge(module, server)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var links := _links_named(server, TestLink.NODE_NAME)
+	_check(links.size() == 1, "after two reloads exactly one link remains", str(links.size()))
+	_check(links.size() == 1 and links[0].name == TestLink.NODE_NAME,
+		"and it has the name the clients route to",
+		str(links[0].name) if links.size() == 1 else "")
+	_check(server.get_child_count() == 2, "and nothing else was left under the server",
+		str(server.get_children()))
+
+	# A link left by an unclean unload is retired by the next attach.
+	var orphan := TestLink.new()
+	orphan.name = TestLink.NODE_NAME
+	var other := Node.new()
+	other.name = "Other"
+	server.add_child(other)
+	_drop_bridge(module, bridge)
+	await get_tree().process_frame
+	server.add_child(orphan)
+	bridge = _open_bridge(module, server)
+	await get_tree().process_frame
+	links = _links_named(server, TestLink.NODE_NAME)
+	_check(links.size() == 1 and links[0] != orphan and links[0].name == TestLink.NODE_NAME,
+		"a same-named link already there is retired, and the new one gets the name")
+
+	# The whole server tree goes at once, as it does when the process stops.
+	var errors_before := catcher.errors.size()
+	server.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(not is_instance_valid(server), "the whole server tree frees")
+	_check(catcher.errors.size() == errors_before,
+		"and tearing it down logs no engine ERROR", str(catcher.errors))
+
+	# The same teardown with the module unloading first, then the tree: the order of a stop.
+	var server2 := Node.new()
+	server2.name = "Server"
+	add_child(server2)
+	var module2 := Node.new()
+	server2.add_child(module2)
+	_open_bridge(module2, server2)
+	server2.remove_child(module2)
+	module2.free()
+	await get_tree().process_frame
+	server2.free()
+	_check(catcher.errors.size() == errors_before, "and freeing the module before the tree logs none")
+	_check(catcher.errors.is_empty(), "no engine ERROR in the whole section", str(catcher.errors))
+
+	OS.remove_logger(catcher)
 	_done()
 
 

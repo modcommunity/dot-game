@@ -19,7 +19,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Path | What |
 | --- | --- |
 | `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses), `DotGameContent` |
-| `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer` |
+| `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer`; `DotGameLink`, a game's RPC link attached under the server node and freed with its bridge |
 | `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
 | `examples/game_selftest.tscn` | the suite; `examples/fixtures/` the module, bridge, identity and services it loads |
@@ -51,6 +51,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - Only the server starts a loading state (a spawn, `report_map` with a new map, `mark_reloading`); a client's `game.cover` report can confirm or end one, never start one, and `load_timeout_sec` bounds it. [design](docs/design.md#still-loading-the-server-knows-who-is-behind-a-cover) [design](docs/design.md#dotgamechatclient-the-clients-half)
 - A peer whose dot-net schema is refused is kicked through `DotGameNetcode.refuse_peer`.
 - `DotGameClient` is a child the client root adds first in `_ready`, never a base class (roots are Node, Node2D and Node3D); `setup()` comes after the HUD, the chat and what the settings bind to. dot-menu and dot-console are loaded by path, never named. [design](docs/design.md#dotgameclient-the-platform-layer-every-client-wires) [design](docs/design.md#a-client-whose-message-schema-cannot-play-is-disconnected-here)
+
+- A game's RPC link node is attached with `DotGameLink.attach(link, parent, bridge, NODE_NAME)`, never a bare `parent.add_child` and never `remove_child` in an `_exit_tree`: the first leaves a second link after a reload (RPCs silently lost), the second errors when the server tree is torn down. [design](docs/design.md#dotgamelink-the-rpc-link-outlives-nothing)
 
 ## Where a game plugs in
 
