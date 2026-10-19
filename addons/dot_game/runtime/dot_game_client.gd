@@ -40,7 +40,12 @@ extends Node
 ## [b]Each piece switches off:[/b] [member use_gate], [member use_settings],
 ## [member use_console], [member capture_pointer], [member sync_on_exit], and an empty
 ## [member scoreboard_action]. Subclass and override [method _make_settings] or
-## [method _make_gate] to build a piece differently.
+## [method _make_gate] to build a piece differently, or assign [member cover_scene] /
+## [member cover] to change only the gate's cover.
+##
+## [b]A HUD or chat built after [method setup][/b] goes through [method set_hud] and
+## [method set_chat]; [member pointer_fn] decides when the pointer may be taken back; and
+## [method refresh_blocked] updates the input block in the frame something opens.
 
 const CHANNEL := "game.client"
 
@@ -79,6 +84,12 @@ signal menu_state_changed(any_open: bool)
 ## headless run draws nothing, so the warm-up would only wait out its timeout and every
 ## suite that boots a client would wait with it.
 @export var warm_up: bool = true
+## A scene instanced as the gate's cover instead of [DotLoadingCover] (see
+## [member DotLoadGate.cover_scene]). Null keeps the stock cover.
+@export var cover_scene: PackedScene = null
+## A cover node of your own, assigned before add_child (see [member DotLoadGate.cover]); wins
+## over [member cover_scene]. Null keeps the stock cover.
+var cover: Node = null
 ## The status line while [member spawned_fn] is false.
 @export var spawned_text: String = "Joining"
 ## Tell the server when the cover lifts and when it comes back, so a server on
@@ -111,6 +122,11 @@ var console_kit_path: String = CONSOLE_KIT_SCRIPT
 ## on close (on a desktop) or on a click (in a browser, which refuses a capture without one).
 ## Off for a game that keeps its pointer.
 @export var capture_pointer: bool = true
+## [code]func() -> bool[/code]: whether the pointer should be captured now. The rule for the
+## places this node would take the pointer back (a click, a menu closing); false leaves it
+## free. Unset keeps the default (capture whenever nothing blocks input). For a game whose
+## own screens or modes free the pointer. Needs [member capture_pointer].
+var pointer_fn: Callable = Callable()
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
 
@@ -206,6 +222,10 @@ func _make_gate() -> DotLoadGate:
 	var made := DotLoadGate.new()
 	made.require_camera = require_camera
 	made.warm_up_on_open = warm_up and DisplayServer.get_name() != "headless"
+	if cover != null:
+		made.cover = cover
+	elif cover_scene != null:
+		made.cover_scene = cover_scene
 	if spawned_fn.is_valid():
 		made.require(REASON_SPAWNED, spawned_fn, spawned_text)
 	# Under the host, not under this node: the gate marks its parent for DotLoadGate.of, looks
@@ -238,6 +258,40 @@ func setup() -> DotResult:
 
 	_refresh_blocked()
 	return DotResult.success(self)
+
+
+## Hands over a HUD built after [method setup]: it follows the menu's theme and HUD size from
+## now on. [param root] is its root Control; a CanvasLayer HUD passes the Control it holds.
+## Safe before setup() too (it is then wired by setup()). Replaces a HUD given earlier.
+func set_hud(root: Control, accent: Theme = null) -> void:
+	if _set_up and hud != null and hud != root and is_instance_valid(hud) \
+			and menu != null and menu.has_method(&"unfollow_hud"):
+		menu.call(&"unfollow_hud", hud)
+	hud = root
+	hud_accent = accent
+	if _set_up:
+		_follow_hud()
+
+
+func _follow_hud() -> void:
+	# By name: a game delivered to an older client shell finds a dot-menu without it.
+	if hud != null and menu != null and menu.has_method(&"follow_hud"):
+		menu.call(&"follow_hud", hud, hud_accent)
+
+
+## Hands over a chat box built after [method setup] (or before it: then setup() wires it).
+## Typing in it blocks input from now on; the previous chat is let go.
+func set_chat(box: Node) -> void:
+	if chat == box:
+		return
+	if chat != null and is_instance_valid(chat):
+		for signal_name: StringName in [&"typing_changed", &"opened", &"closed"]:
+			if chat.has_signal(signal_name) and chat.is_connected(signal_name, _refresh_blocked):
+				chat.disconnect(signal_name, _refresh_blocked)
+	chat = box
+	if _set_up:
+		_wire_chat()
+		_refresh_blocked()
 
 
 func _wire_chat() -> void:
@@ -311,8 +365,7 @@ func _wire_menu() -> void:
 	# The chat line and the game's own keyboard owners keep Escape and the menu's keys.
 	menu.set(&"busy", func() -> bool: return _chat_typing() or _busy())
 	# By name: a game delivered to an older client shell finds a dot-menu without it.
-	if hud != null and menu.has_method(&"follow_hud"):
-		menu.call(&"follow_hud", hud, hud_accent)
+	_follow_hud()
 
 	if scoreboard_action != &"" and &"scoreboard_action" in menu:
 		_ensure_scoreboard_action()
@@ -352,7 +405,7 @@ func _on_menu_state(any_open: bool) -> void:
 	if capture_pointer:
 		if any_open:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif not DotPlatform.is_web() and not _busy():
+		elif not DotPlatform.is_web() and not _busy() and _pointer_wanted():
 			# A browser refuses a capture that is not a click; the click that follows is
 			# taken in _unhandled_input.
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -366,13 +419,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click == null or not click.pressed or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		return
-	if is_menu_open() or _chat_typing() or _busy() or not is_shown():
+	if is_menu_open() or _chat_typing() or _busy() or not is_shown() or not _pointer_wanted():
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+func _pointer_wanted() -> bool:
+	return not pointer_fn.is_valid() or bool(pointer_fn.call())
+
+
 func _process(_delta: float) -> void:
 	# Polled as well as signalled: busy_fn is the game's and says nothing when it changes.
+	_refresh_blocked()
+
+
+## Re-reads whether input is blocked now and emits [signal input_blocked_changed] if it
+## changed. Polled once a frame anyway; call it the same frame a chat or an overlay opens.
+func refresh_blocked() -> void:
 	_refresh_blocked()
 
 

@@ -17,8 +17,11 @@ class FakeMenu extends RefCounted:
 	var scoreboard_action: StringName = &""
 	var scoreboard: FakeBoard = FakeBoard.new()
 	var followed: Array = []
+	var unfollowed: Array = []
 	func follow_hud(root: Control, accent: Theme = null) -> void:
 		followed.append([root, accent])
+	func unfollow_hud(root: Control) -> void:
+		unfollowed.append(root)
 
 class FakeMaps extends RefCounted:
 	var title: String = ""

@@ -58,6 +58,15 @@
 
 What stays: the HUD, the game's keys (except Tab and M), an Escape fallback that opens the settings when the menu left an Escape alone, the board's columns, `board_snapshot`, the samplers, the camera, `new_chat()` and its channels.
 
+## Hooks for what a game builds later or wants its own way (API level 11)
+
+Each is additive; leaving it alone keeps the old behaviour.
+
+- **`platform.set_hud(root, accent)` and `platform.set_chat(box)` after `setup()`.** A game that builds its HUD or chat after the platform (its HUD needs the world, or the settings' menu) hands it over when it exists instead of calling dot-menu's `follow_hud` itself. A HUD in a `CanvasLayer` passes the Control it holds. `set_hud` lets the previous HUD go (`unfollow_hud`); `set_chat` disconnects the previous box and wires the new one into the input block. Both are also fine before `setup()`.
+- **A cover of your own: `platform.cover_scene` (a `PackedScene`, an export) or `platform.cover` (a node with `show_cover`, `hide_cover`, `set_status`, `set_progress`), set before `add_child`.** They are handed to the gate's own `cover_scene` / `cover`; unset keeps `DotLoadingCover`. A subclass can still override `_make_gate`.
+- **`platform.pointer_fn`, a `func() -> bool`.** Asked wherever the platform would take the pointer back (a click, the menu closing); false leaves it free. For a game whose own screens or modes free the pointer, instead of a private rule reading `Input.mouse_mode`. Unset captures whenever nothing blocks input.
+- **`platform.refresh_blocked()`.** Re-reads the input block and emits `input_blocked_changed` in the same frame, for an overlay or chat that opens mid-frame. It is otherwise polled once a frame.
+
 ## Gotchas
 
 - **The cover blocks input until it lifts.** A suite that boots a client and steers or moves the mouse after a fixed number of frames now has to wait for `platform.is_shown()` (mg-look-at-me's `headless_run` has `_shown(client)`, capped at 240 frames).

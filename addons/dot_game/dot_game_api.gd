@@ -25,5 +25,7 @@ extends RefCounted
 #    DotGameRoster's loading state and COVER_KIND; DotGameClient report_loading and the
 #    static report_cover.
 # 10: DotGameLink.attach / retire, a game's RPC link under the server node, freed with its bridge.
-const LEVEL := 10
+# 11: DotGameClient set_hud / set_chat (after setup), cover_scene / cover (the gate's cover),
+#    pointer_fn (when the pointer is taken back), public refresh_blocked().
+const LEVEL := 11
 const OLDEST := 1

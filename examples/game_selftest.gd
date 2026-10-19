@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 174
+const CHECKS := 183
 
 var _entered := 0
 var _completed := 0
@@ -1094,6 +1094,14 @@ func _frames(n: int) -> void:
 		await get_tree().process_frame
 
 
+## A cover of the game's own, in the shape DotLoadGate drives.
+class ClientCover extends Control:
+	func show_cover() -> void: pass
+	func hide_cover() -> void: pass
+	func set_status(_text: String) -> void: pass
+	func set_progress(_fraction: float) -> void: pass
+
+
 ## The client's platform, with dot-menu and dot-console stood in by fixtures in their shape.
 func _test_client_platform() -> void:
 	_section("the client's platform: the cover first, then the menu, the console and the keys")
@@ -1186,6 +1194,46 @@ func _test_client_platform() -> void:
 	_check(not again.ok and again.error.code == DotError.CODE_STATE, "a second setup is refused")
 	_check(client.describe().get("console", false) == true and client.describe_lines().size() >= 4,
 		"describe says what was built")
+
+	# Hooks for what a game builds later, or wants its own way (API level 11).
+	var late_hud := Control.new()
+	host.add_child(late_hud)
+	client.set_hud(late_hud)
+	_check((menu.get(&"followed") as Array).size() == 2 and (menu.get(&"followed") as Array)[1][0] == late_hud
+			and (menu.get(&"unfollowed") as Array) == [hud],
+		"set_hud after setup follows the new HUD and lets the old one go")
+	var late_chat := ClientChat.new()
+	client.set_chat(late_chat)
+	_check(late_chat.is_inside_tree(), "set_chat after setup takes the new box in")
+	late_chat.set_typing(true)
+	_check(client.is_input_blocked(), "and typing in it blocks input")
+	late_chat.set_typing(false)
+	_check(not chat.is_connected(&"typing_changed", client._refresh_blocked), "the old box is let go")
+	var before := blocked_seen.size()
+	busy[0] = true
+	client.refresh_blocked()
+	_check(blocked_seen.size() == before + 1 and blocked_seen.back() == true,
+		"refresh_blocked signals a change in the frame it is called")
+	busy[0] = false
+	client.refresh_blocked()
+	var rule := [false]
+	client.pointer_fn = func() -> bool: return rule[0]
+	_check(not client._pointer_wanted(), "pointer_fn false keeps the pointer free")
+	rule[0] = true
+	_check(client._pointer_wanted(), "and true takes it")
+	client.pointer_fn = Callable()
+	_check(client._pointer_wanted(), "unset keeps the old behaviour")
+	var custom_cover := ClientCover.new()
+	var cover_host := Node.new()
+	add_child(cover_host)
+	var covered := DotGameClient.new()
+	covered.require_camera = false
+	covered.cover = custom_cover
+	cover_host.add_child(covered)
+	_check(covered.gate != null and covered.gate.cover == custom_cover,
+		"a cover assigned to the client is the gate's cover")
+	custom_cover.free()
+	cover_host.queue_free()
 
 	# A settings file that will not load costs the menu, not the game.
 	var refused_host := Node.new()
