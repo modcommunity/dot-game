@@ -66,6 +66,10 @@ Each is additive; leaving it alone keeps the old behaviour.
 - **A cover of your own: `platform.cover_scene` (a `PackedScene`, an export) or `platform.cover` (a node with `show_cover`, `hide_cover`, `set_status`, `set_progress`), set before `add_child`.** They are handed to the gate's own `cover_scene` / `cover`; unset keeps `DotLoadingCover`. A subclass can still override `_make_gate`.
 - **`platform.pointer_fn`, a `func() -> bool`.** Asked wherever the platform would take the pointer back (a click, the menu closing); false leaves it free. For a game whose own screens or modes free the pointer, instead of a private rule reading `Input.mouse_mode`. Unset captures whenever nothing blocks input.
 - **`platform.refresh_blocked()`.** Re-reads the input block and emits `input_blocked_changed` in the same frame, for an overlay or chat that opens mid-frame. It is otherwise polled once a frame.
+- **`platform.menu = my_menu` (or `adopt_menu(menu, board)` after setup), no settings needed (API 12).** A game that built its own dot-menu `DotMenu` gets the input block, `menu_state_changed`, the HUD theme, Tab and M from the platform without handing over a settings node; no settings are built over an assigned menu. An assigned `board` is kept instead of the menu's, and `board_prepare_fn` (a `func(board)`) runs before it is fed.
+- **`platform.add_console(manager)`.** Builds the console now, for a game whose console must come after its menu (turn `use_console` off, call this later). A second call keeps the first.
+- **`platform.gate_only = true`.** `setup()` wires only the chat's keyboard and the input block: no settings, menu, console, board, Tab, M or pointer capture. The gate, the link, the web flush and the block stay.
+- **`platform.escape_releases_pointer = true`.** The first Escape on a captured pointer frees it and is consumed; the next opens the menu. Not while a menu, the chat or `busy_fn` has the keys.
 
 ## Gotchas
 

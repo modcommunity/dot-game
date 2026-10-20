@@ -27,5 +27,7 @@ extends RefCounted
 # 10: DotGameLink.attach / retire, a game's RPC link under the server node, freed with its bridge.
 # 11: DotGameClient set_hud / set_chat (after setup), cover_scene / cover (the gate's cover),
 #    pointer_fn (when the pointer is taken back), public refresh_blocked().
-const LEVEL := 11
+# 12: DotGameClient adopts a menu and board the game built (menu / board / board_prepare_fn /
+#    adopt_menu, no settings needed), add_console(), gate_only, escape_releases_pointer.
+const LEVEL := 12
 const OLDEST := 1

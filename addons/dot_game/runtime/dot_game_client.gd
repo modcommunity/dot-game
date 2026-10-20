@@ -46,6 +46,13 @@ extends Node
 ## [b]A HUD or chat built after [method setup][/b] goes through [method set_hud] and
 ## [method set_chat]; [member pointer_fn] decides when the pointer may be taken back; and
 ## [method refresh_blocked] updates the input block in the frame something opens.
+##
+## [b]A game with its own menu[/b] ([member menu] assigned before [method setup], or
+## [method adopt_menu] after) gets the same input block, [signal menu_state_changed], Tab board
+## and HUD theme without settings from here; [method add_console] builds the console later,
+## around a menu or manager the game made. [member gate_only] takes the gate, the link, the
+## input block and the web flush and nothing else. [member escape_releases_pointer] makes the
+## first Escape free the pointer and the second open the menu.
 
 const CHANNEL := "game.client"
 
@@ -127,6 +134,14 @@ var console_kit_path: String = CONSOLE_KIT_SCRIPT
 ## free. Unset keeps the default (capture whenever nothing blocks input). For a game whose
 ## own screens or modes free the pointer. Needs [member capture_pointer].
 var pointer_fn: Callable = Callable()
+## Escape on a captured pointer frees it and does nothing else; the next Escape opens the menu
+## as usual. For a game whose Escape would otherwise open a menu over a pointer the player
+## was still using for the game (a screen stack of its own). Needs [member capture_pointer].
+@export var escape_releases_pointer: bool = false
+## Gate-only mode: [method setup] wires the chat's keyboard and the input block and builds
+## nothing else (no settings, menu, console, board, Tab, M or pointer capture). For a game
+## that owns those itself and wants the cover, the link, the web flush and the block.
+@export var gate_only: bool = false
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
 
@@ -166,8 +181,14 @@ var offline: bool = true
 ## dot-core's load gate, under [member host]. Hold more on it: [code]gate.hold(&"map")[/code].
 var gate: DotLoadGate = null
 ## The settings' menu (dot-menu's [code]DotMenu[/code]), its board and its map menu.
+## A game that built its own menu assigns [member menu] before [method setup] (or calls
+## [method adopt_menu]): no settings are built over it. Assigned [member board] is kept
+## instead of the menu's own.
 var menu: Object = null
 var board: Object = null
+## [code]func(board)[/code]: the game's own preparation of the board, run before it is fed
+## from the link or the snapshot (columns, teams, a header). Unset does nothing.
+var board_prepare_fn: Callable = Callable()
 var maps: Object = null
 ## dot-console's controller.
 var console: Node = null
@@ -247,10 +268,13 @@ func setup() -> DotResult:
 	_set_up = true
 
 	_wire_chat()
-	if use_settings:
+	if gate_only:
+		_refresh_blocked()
+		return DotResult.success(self)
+	if use_settings and menu == null:
 		_build_settings()
 	if use_console:
-		_build_console()
+		add_console()
 	_wire_menu()
 
 	if capture_pointer and not DotPlatform.is_web():
@@ -342,44 +366,80 @@ func _build_settings() -> void:
 
 	var got: Variant = settings.get(&"menu")
 	menu = got if got is Object else null
-	if settings.has_signal(&"menu_state_changed"):
-		settings.connect(&"menu_state_changed", _on_menu_state)
 
 
-func _build_console() -> void:
+## Hands over a menu the game built itself (dot-menu's [code]DotMenu[/code] or anything with
+## [code]is_open()[/code]), with its own board if it has one other than the menu's. Before
+## [method setup] it is the same as assigning [member menu]; after, it is wired at once: the
+## input block, [signal menu_state_changed], the HUD theme, Tab and the board.
+func adopt_menu(adopted: Object, adopted_board: Object = null) -> void:
+	menu = adopted
+	if adopted_board != null:
+		board = adopted_board
+	if _set_up:
+		_wire_menu()
+		_refresh_blocked()
+
+
+## Builds the console (dot-console) now, over [param manager] (the settings manager) and the
+## menu. [method setup] calls it with the settings' own manager; a game that builds its menu
+## first and its console later turns [member use_console] off and calls this itself. A second
+## call replaces nothing: the first console stays.
+func add_console(manager: Object = null) -> Node:
+	if console != null and is_instance_valid(console):
+		return console
 	if not ResourceLoader.exists(console_kit_path):
 		DotLog.info(CHANNEL, "dot-console is not in this build: no console")
-		return
+		return null
 	var kit: Variant = load(console_kit_path)
 	if not (kit is GDScript):
 		DotLog.warn(CHANNEL, "dot-console's kit would not load", {"path": console_kit_path})
-		return
-	var manager: Variant = settings.get(&"settings") if settings != null else null
+		return null
+	if manager == null and settings != null:
+		var got: Variant = settings.get(&"settings")
+		manager = got if got is Object else null
 	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
 	console = built if built is Node else null
+	return console
+
+
+## Relays the menu's open and close as [signal menu_state_changed], once, from the settings
+## node when there is one, else from the menu itself.
+func _connect_menu_state() -> void:
+	var source: Object = settings if settings != null and settings.has_signal(&"menu_state_changed") else null
+	var signal_name := &"menu_state_changed"
+	if source == null and menu != null and menu.has_signal(&"overlays_changed"):
+		source = menu
+		signal_name = &"overlays_changed"
+	if source != null and not source.is_connected(signal_name, _on_menu_state):
+		source.connect(signal_name, _on_menu_state)
 
 
 func _wire_menu() -> void:
-	if menu == null:
-		return
-	# The chat line and the game's own keyboard owners keep Escape and the menu's keys.
-	menu.set(&"busy", func() -> bool: return _chat_typing() or _busy())
-	# By name: a game delivered to an older client shell finds a dot-menu without it.
-	_follow_hud()
-
-	if scoreboard_action != &"" and &"scoreboard_action" in menu:
-		_ensure_scoreboard_action()
-		menu.set(&"scoreboard_action", scoreboard_action)
-	var got: Variant = menu.get(&"scoreboard")
-	board = got if got is Object else null
+	if menu != null:
+		_connect_menu_state()
+		# The chat line and the game's own keyboard owners keep Escape and the menu's keys.
+		menu.set(&"busy", func() -> bool: return _chat_typing() or _busy())
+		# By name: a game delivered to an older client shell finds a dot-menu without it.
+		_follow_hud()
+		if scoreboard_action != &"" and &"scoreboard_action" in menu:
+			_ensure_scoreboard_action()
+			menu.set(&"scoreboard_action", scoreboard_action)
+		if board == null:
+			var got: Variant = menu.get(&"scoreboard")
+			board = got if got is Object else null
 	if board != null:
+		if board_prepare_fn.is_valid():
+			board_prepare_fn.call(board)
 		if not offline and link != null and link.has_signal(&"scoreboard_received") and board.has_method(&"feed_from"):
 			board.call(&"feed_from", link)
 		elif board_snapshot_fn.is_valid():
 			board.set(&"source", board_snapshot_fn)
 
-	if maps_rows_fn.is_valid() and maps_change_fn.is_valid() and settings.has_method(&"use_maps"):
-		var made: Variant = settings.call(&"use_maps", maps_rows_fn, maps_change_fn)
+	var maps_owner: Object = settings if settings != null and settings.has_method(&"use_maps") else menu
+	if maps_rows_fn.is_valid() and maps_change_fn.is_valid() and maps_owner != null \
+			and maps_owner.has_method(&"use_maps"):
+		var made: Variant = maps_owner.call(&"use_maps", maps_rows_fn, maps_change_fn)
 		maps = made if made is Object else null
 		if maps != null:
 			if maps_title != "":
@@ -413,8 +473,38 @@ func _on_menu_state(any_open: bool) -> void:
 	_refresh_blocked()
 
 
+func _input(event: InputEvent) -> void:
+	# Before the menu's own _unhandled_input, which would open on this same press.
+	if _release_pointer_on_escape(event):
+		get_viewport().set_input_as_handled()
+
+
+## Whether [param event] was an Escape that only freed the captured pointer (see
+## [member escape_releases_pointer]). Nothing is freed while a menu, the chat or the game's
+## own keyboard owner has the keys: Escape is theirs then.
+func _release_pointer_on_escape(event: InputEvent) -> bool:
+	if not escape_releases_pointer or not capture_pointer or not _set_up or gate_only:
+		return false
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo or key.physical_keycode != KEY_ESCAPE:
+		return false
+	if not _pointer_captured() or is_menu_open() or _chat_typing() or _busy():
+		return false
+	_free_pointer()
+	return true
+
+
+# Two seams: a headless display server keeps no captured mode, so the suite overrides these.
+func _pointer_captured() -> bool:
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+
+
+func _free_pointer() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not capture_pointer or not _set_up:
+	if not capture_pointer or not _set_up or gate_only:
 		return
 	var click := event as InputEventMouseButton
 	if click == null or not click.pressed or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -462,6 +552,11 @@ func is_shown() -> bool:
 func is_menu_open() -> bool:
 	if settings != null and is_instance_valid(settings) and settings.has_method(&"is_open"):
 		return bool(settings.call(&"is_open"))
+	# A menu adopted without settings: its own answer, else what its signal last said.
+	if settings == null and menu != null and is_instance_valid(menu):
+		for method: StringName in [&"any_open", &"is_open"]:
+			if menu.has_method(method):
+				return bool(menu.call(method))
 	return _menu_open
 
 
