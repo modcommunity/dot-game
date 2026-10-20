@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 201
+const CHECKS := 216
 
 var _entered := 0
 var _completed := 0
@@ -1298,6 +1298,20 @@ class OwnMenu extends RefCounted:
 		return RefCounted.new()
 
 
+## A menu that opens on a real Escape press, as dot-menu's does in _unhandled_input.
+class EscMenu extends Node:
+	signal overlays_changed(open: bool)
+	var busy: Callable = Callable()
+	var open_now: bool = false
+	func is_open() -> bool:
+		return open_now
+	func _unhandled_input(event: InputEvent) -> void:
+		var key := event as InputEventKey
+		if key != null and key.pressed and key.physical_keycode == KEY_ESCAPE:
+			open_now = true
+			overlays_changed.emit(true)
+
+
 ## The hooks for a game with its own menu, a board of its own, a console built later, no
 ## settings at all, and Escape that frees the pointer before it opens anything (API level 12).
 func _test_client_hooks_menu() -> void:
@@ -1370,40 +1384,80 @@ func _test_client_hooks_menu() -> void:
 			and bare.console == null and not bare_settings.is_inside_tree(),
 		"gate_only keeps the gate and builds no settings, menu or console")
 	_check(bare.is_input_blocked(), "and the cover still blocks input")
-	var busy_flag := [true]
+	# The cover hides busy_fn, so wait for it to lift: only then does busy_fn alone decide.
+	for i in range(240):
+		if bare.is_shown():
+			break
+		await get_tree().process_frame
+	var busy_flag := [false]
 	bare.busy_fn = func() -> bool: return busy_flag[0]
 	bare.refresh_blocked()
-	_check(bare.is_input_blocked(), "busy_fn still counts")
+	_check(bare.is_shown() and not bare.is_input_blocked(), "once the cover lifts nothing blocks", str(bare.is_shown()))
+	busy_flag[0] = true
+	bare.refresh_blocked()
+	_check(bare.is_input_blocked(), "busy_fn still counts (it alone blocks, the cover being up no longer)")
+	busy_flag[0] = false
+
+	# gate_only with the default capture_pointer (true): nothing is captured or released.
+	var gp := FakePointerClient.new()
+	gp.gate_only = true
+	gp.require_camera = false
+	gp.escape_releases_pointer = true
+	_check(gp.capture_pointer, "capture_pointer defaults to true")
+	host.add_child(gp)
+	var gp_up := gp.setup()
+	gp.captured = true
+	var gesc := InputEventKey.new()
+	gesc.physical_keycode = KEY_ESCAPE
+	gesc.pressed = true
+	_check(gp_up.ok and not gp._release_pointer_on_escape(gesc) and gp.captured,
+		"gate_only with capture_pointer on neither captures nor frees the pointer on Escape")
+	gp._on_menu_state(true)
+	_check(gp.captured, "and a menu state change does not touch the pointer")
+	gp._on_menu_state(false)
 
 	# Release-then-open pointer.
 	var esc := InputEventKey.new()
 	esc.physical_keycode = KEY_ESCAPE
 	esc.pressed = true
+	var esc_menu := EscMenu.new()
+	host.add_child(esc_menu)
 	var ptr := FakePointerClient.new()
 	ptr.use_gate = false
 	ptr.use_settings = false
 	ptr.use_console = false
 	ptr.capture_pointer = false
 	ptr.escape_releases_pointer = true
+	ptr.menu = esc_menu
 	host.add_child(ptr)
 	var _p := ptr.setup()
 	ptr.capture_pointer = true
 	ptr.captured = true
-	_check(ptr._release_pointer_on_escape(esc) and not ptr.captured,
-		"the first Escape on a captured pointer frees it and is consumed")
-	_check(not ptr._release_pointer_on_escape(esc), "the second Escape is left for the menu")
+	var vp := get_viewport()
+	vp.push_input(esc)
+	_check(not ptr.captured and not esc_menu.open_now,
+		"the first real Escape press frees a captured pointer and the menu stays shut")
+	vp.push_input(esc)
+	_check(esc_menu.open_now and ptr.is_menu_open(), "the second opens the menu")
+	esc_menu.open_now = false
 	ptr.captured = true
 	var typing := [true]
 	ptr.busy_fn = func() -> bool: return typing[0]
-	_check(not ptr._release_pointer_on_escape(esc) and ptr.captured,
-		"nothing is freed while the game's own keyboard owner has Escape")
+	vp.push_input(esc)
+	_check(ptr.captured and esc_menu.open_now,
+		"nothing is freed while the game's own keyboard owner has Escape; the menu gets it")
+	esc_menu.open_now = false
 	typing[0] = false
 	var other := InputEventKey.new()
 	other.physical_keycode = KEY_E
 	other.pressed = true
-	_check(not ptr._release_pointer_on_escape(other) and ptr.captured, "only Escape does it")
+	vp.push_input(other)
+	_check(ptr.captured, "only Escape does it")
 	ptr.escape_releases_pointer = false
-	_check(not ptr._release_pointer_on_escape(esc) and ptr.captured, "off by default: Escape is not touched")
+	vp.push_input(esc)
+	_check(ptr.captured and esc_menu.open_now, "off by default: Escape is not touched, the menu opens")
+
+	_test_client_hooks_rewire(host)
 
 	host.queue_free()
 	await get_tree().process_frame
@@ -1444,6 +1498,79 @@ func _test_client_reports_cover() -> void:
 	host.queue_free()
 	await get_tree().process_frame
 	_done()
+
+
+## adopt_menu twice, adopt_menu beside settings, and a board prepared once.
+func _test_client_hooks_rewire(host: Node) -> void:
+	var a := OwnMenu.new()
+	var b := OwnMenu.new()
+	var hud := Control.new()
+	var prepared: Array = []
+	var c := DotGameClient.new()
+	c.use_gate = false
+	c.use_settings = false
+	c.use_console = false
+	c.capture_pointer = false
+	c.hud = hud
+	c.board_prepare_fn = func(x: Object) -> void: prepared.append(x)
+	c.adopt_menu(a)
+	host.add_child(c)
+	var _s := c.setup()
+	_check(c.board == a.scoreboard and prepared == [a.scoreboard], "adopt_menu before setup: its board, prepared once")
+	c.adopt_menu(b)
+	_check(c.menu == b and c.board == b.scoreboard and prepared == [a.scoreboard, b.scoreboard],
+		"adopt_menu twice: the second menu's own board is fed and prepared")
+	a.set_open(true)
+	_check(not c.is_menu_open() and not a.busy.is_valid(), "the first menu is unwired: no state, no busy callable")
+	_check(a.followed.size() == 1 and b.followed.size() == 1, "and the HUD follows the second")
+	b.set_open(true)
+	_check(c.is_menu_open() and c.is_input_blocked(), "the second blocks input")
+	b.set_open(false)
+	var mine := RefCounted.new()
+	var d := OwnMenu.new()
+	c.board = mine
+	c.adopt_menu(d)
+	_check(c.board == mine, "an assigned board survives adopt_menu without one")
+	c.adopt_menu(OwnMenu.new(), d.scoreboard)
+	_check(c.board == d.scoreboard, "and an explicit board argument replaces it")
+
+	# A board assigned before setup, then adopt_menu: prepared once.
+	var once: Array = []
+	var pre := OwnMenu.new()
+	var c2 := DotGameClient.new()
+	c2.use_gate = false
+	c2.use_settings = false
+	c2.use_console = false
+	c2.capture_pointer = false
+	c2.menu = pre
+	c2.board = pre.scoreboard
+	c2.board_prepare_fn = func(x: Object) -> void: once.append(x)
+	host.add_child(c2)
+	var _s2 := c2.setup()
+	c2.adopt_menu(pre)
+	_check(once.size() == 1, "an assigned board adopted again is prepared once", str(once.size()))
+
+	# Adopted after setup with settings present: it blocks input and relays, beside the settings.
+	var settings := ClientSettings.new()
+	var c3 := DotGameClient.new()
+	c3.use_gate = false
+	c3.use_console = false
+	c3.capture_pointer = false
+	c3.settings = settings
+	host.add_child(c3)
+	var _s3 := c3.setup()
+	var relayed: Array = []
+	c3.menu_state_changed.connect(func(on: bool) -> void: relayed.append(on))
+	var adopted := OwnMenu.new()
+	c3.adopt_menu(adopted)
+	adopted.set_open(true)
+	_check(c3.is_menu_open() and c3.is_input_blocked() and relayed == [true],
+		"adopt_menu with settings present: the adopted menu blocks input and relays")
+	adopted.set_open(false)
+	settings.open_now = true
+	_check(c3.is_menu_open(), "and the settings still count")
+	settings.open_now = false
+	_check(not c3.is_menu_open() and relayed == [true, false], "both closed: open is false")
 
 
 ## This suite's project has neither dot-menu nor dot-console, which is a real build.

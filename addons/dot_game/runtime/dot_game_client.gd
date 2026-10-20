@@ -185,7 +185,10 @@ var gate: DotLoadGate = null
 ## [method adopt_menu]): no settings are built over it. Assigned [member board] is kept
 ## instead of the menu's own.
 var menu: Object = null
-var board: Object = null
+var board: Object = null:
+	set(value):
+		board = value
+		_board_auto = false
 ## [code]func(board)[/code]: the game's own preparation of the board, run before it is fed
 ## from the link or the snapshot (columns, teams, a header). Unset does nothing.
 var board_prepare_fn: Callable = Callable()
@@ -194,6 +197,14 @@ var maps: Object = null
 var console: Node = null
 
 var _set_up: bool = false
+# True while board came from the menu's own scoreboard, not from the caller: adopting another
+# menu then takes that menu's board instead of keeping the old one.
+var _board_auto: bool = false
+# Boards already given to board_prepare_fn: each is prepared once, however often it is wired.
+var _prepared_boards: Array[int] = []
+# The menu whose signal and busy callable are currently wired, and the signal used.
+var _wired_menu: Object = null
+var _wired_signal: StringName = &""
 var _blocked: bool = false
 var _menu_open: bool = false
 
@@ -373,9 +384,13 @@ func _build_settings() -> void:
 ## [method setup] it is the same as assigning [member menu]; after, it is wired at once: the
 ## input block, [signal menu_state_changed], the HUD theme, Tab and the board.
 func adopt_menu(adopted: Object, adopted_board: Object = null) -> void:
+	if _set_up:
+		_unwire_menu()
 	menu = adopted
 	if adopted_board != null:
 		board = adopted_board
+	elif _board_auto:
+		board = null
 	if _set_up:
 		_wire_menu()
 		_refresh_blocked()
@@ -404,15 +419,47 @@ func add_console(manager: Object = null) -> Node:
 
 
 ## Relays the menu's open and close as [signal menu_state_changed], once, from the settings
-## node when there is one, else from the menu itself.
+## node when there is one, else from the menu itself. An adopted menu that is not the
+## settings' own (adopt_menu after setup with settings present) is relayed from its own
+## [code]overlays_changed[/code] as well, and is_menu_open() asks it too: refusing would leave
+## a game that built its own menu with no way to have it block input.
 func _connect_menu_state() -> void:
-	var source: Object = settings if settings != null and settings.has_signal(&"menu_state_changed") else null
-	var signal_name := &"menu_state_changed"
-	if source == null and menu != null and menu.has_signal(&"overlays_changed"):
-		source = menu
-		signal_name = &"overlays_changed"
-	if source != null and not source.is_connected(signal_name, _on_menu_state):
-		source.connect(signal_name, _on_menu_state)
+	if settings != null and settings.has_signal(&"menu_state_changed") \
+			and not settings.is_connected(&"menu_state_changed", _on_menu_state):
+		settings.connect(&"menu_state_changed", _on_menu_state)
+	if menu == null or not menu.has_signal(&"overlays_changed"):
+		return
+	if menu == _settings_menu() and settings != null and settings.has_signal(&"menu_state_changed"):
+		return
+	if not menu.is_connected(&"overlays_changed", _on_menu_state):
+		menu.connect(&"overlays_changed", _on_menu_state)
+		_wired_menu = menu
+		_wired_signal = &"overlays_changed"
+
+
+func _settings_menu() -> Object:
+	if settings == null or not is_instance_valid(settings):
+		return null
+	var got: Variant = settings.get(&"menu")
+	return got if got is Object else null
+
+
+## Undoes _wire_menu for the menu being replaced: its signal, its busy callable and the HUD
+## follow, so a menu no longer adopted cannot keep reporting or reacting.
+func _unwire_menu() -> void:
+	var old: Object = menu
+	if old == null or not is_instance_valid(old):
+		_wired_menu = null
+		return
+	if old.has_signal(&"overlays_changed") and old.is_connected(&"overlays_changed", _on_menu_state):
+		old.disconnect(&"overlays_changed", _on_menu_state)
+	_wired_menu = null
+	_wired_signal = &""
+	if &"busy" in old:
+		old.set(&"busy", Callable())
+	if hud != null and is_instance_valid(hud) and old.has_method(&"unfollow_hud"):
+		old.call(&"unfollow_hud", hud)
+	_menu_open = false
 
 
 func _wire_menu() -> void:
@@ -428,8 +475,10 @@ func _wire_menu() -> void:
 		if board == null:
 			var got: Variant = menu.get(&"scoreboard")
 			board = got if got is Object else null
+			_board_auto = board != null
 	if board != null:
-		if board_prepare_fn.is_valid():
+		if board_prepare_fn.is_valid() and not _prepared_boards.has(board.get_instance_id()):
+			_prepared_boards.append(board.get_instance_id())
 			board_prepare_fn.call(board)
 		if not offline and link != null and link.has_signal(&"scoreboard_received") and board.has_method(&"feed_from"):
 			board.call(&"feed_from", link)
@@ -551,7 +600,15 @@ func is_shown() -> bool:
 ## True while the Escape menu, one of its screens or the console is open.
 func is_menu_open() -> bool:
 	if settings != null and is_instance_valid(settings) and settings.has_method(&"is_open"):
-		return bool(settings.call(&"is_open"))
+		if bool(settings.call(&"is_open")):
+			return true
+		# An adopted menu beside the settings (see _connect_menu_state) counts too.
+		var own: Object = _settings_menu()
+		if menu != null and menu != own and is_instance_valid(menu):
+			for method: StringName in [&"any_open", &"is_open"]:
+				if menu.has_method(method):
+					return bool(menu.call(method))
+		return false
 	# A menu adopted without settings: its own answer, else what its signal last said.
 	if settings == null and menu != null and is_instance_valid(menu):
 		for method: StringName in [&"any_open", &"is_open"]:
