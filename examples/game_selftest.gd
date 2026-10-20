@@ -1648,7 +1648,9 @@ class ErrorCatcher extends Logger:
 func _links_named(parent: Node, wanted: StringName) -> Array[Node]:
 	var found: Array[Node] = []
 	for child in parent.get_children():
-		if child.get_script() == TestLink:
+		# A retired link stays in the tree for a grace period (in-flight RPCs from clients that
+		# have not heard of the new game yet); only a live one counts.
+		if child.get_script() == TestLink and not String(child.name).begins_with(DotGameLink.RETIRED):
 			found.append(child)
 	return found
 
@@ -1695,8 +1697,14 @@ func _test_link_survives_reload() -> void:
 	_check(links.size() == 1 and links[0].name == TestLink.NODE_NAME,
 		"and it has the name the clients route to",
 		str(links[0].name) if links.size() == 1 else "")
-	_check(server.get_child_count() == 2, "and nothing else was left under the server",
+	var retired_count := 0
+	for child in server.get_children():
+		if String(child.name).begins_with(DotGameLink.RETIRED):
+			retired_count += 1
+	_check(server.get_child_count() - retired_count == 2, "and nothing else live was left under the server",
 		str(server.get_children()))
+	_check(retired_count == 2, "the retired links wait out the grace period for in-flight RPCs",
+		str(retired_count))
 
 	# A link left by an unclean unload is retired by the next attach.
 	var orphan := TestLink.new()

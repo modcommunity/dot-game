@@ -22,6 +22,9 @@ extends RefCounted
 ## The prefix a retired link carries until the queue frees it.
 const RETIRED := "retired_"
 
+## How long a retired link stays in the tree. Matches DotGameManager.RETIRED_SECONDS.
+const RETIRED_SECONDS := 10.0
+
 
 ## Adds [param link] under [param parent] as [param link_name] and frees it when [param owner]
 ## leaves the tree. A link of the same name already there (a module that was not unloaded
@@ -66,5 +69,22 @@ static func retire(link: Node) -> void:
 	# retirements can land in one frame.
 	if not String(link.name).begins_with(RETIRED):
 		link.name = "%s%s_%d" % [RETIRED, link.name, link.get_instance_id()]
-	if not link.is_queued_for_deletion():
+	if link.is_queued_for_deletion():
+		return
+	# Kept in the tree for RETIRED_SECONDS rather than freed at once. A client keeps sending
+	# to the old game until LOAD_GAME reaches it (a game's input every frame), and Godot
+	# caches the receiving node's OBJECT under the id it gave the client, dropping that entry
+	# when the node leaves the tree. Freed at once, every one of those in-flight calls logged
+	# "Node not found: Server/<name>" and "Failed to get cached node" on the server, in every
+	# game, on every switch. DotGameManager does the same for what a game leaves under the
+	# server node. A link whose bridge is gone drops what it receives (`bridge` is null).
+	if not link.is_inside_tree():
 		link.queue_free()
+		return
+	if "bridge" in link:
+		link.set("bridge", null)
+	link.get_tree().create_timer(RETIRED_SECONDS, true, false, true).timeout.connect(
+		func() -> void:
+			if is_instance_valid(link):
+				link.queue_free()
+	)
