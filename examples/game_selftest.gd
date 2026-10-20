@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 227
+const CHECKS := 236
 
 var _entered := 0
 var _completed := 0
@@ -102,6 +102,7 @@ func _run() -> void:
 		await _test_client_platform()
 		await _test_client_hooks_menu()
 		await _test_client_reports_cover()
+		await _test_client_page_guard()
 		await _test_client_without_the_addons()
 		await _test_link_survives_reload()
 
@@ -1351,6 +1352,74 @@ class EscMenu extends Node:
 		if key != null and key.pressed and key.physical_keycode == KEY_ESCAPE:
 			open_now = true
 			overlays_changed.emit(true)
+
+
+class GuardLink extends RefCounted:
+	var up: bool = false
+	func is_connected_to_server() -> bool:
+		return up
+
+
+## The browser guard: the leave-site prompt follows the live game, the keyboard lock listener is
+## installed once, and a desktop or headless client does nothing at all.
+func _test_client_page_guard() -> void:
+	_section("the page guard: leave-site prompt follows the live game, installed once, silent off the web")
+
+	var host := Node.new()
+	add_child(host)
+	var plain := DotGameClient.new()
+	plain.use_gate = false
+	plain.link = GuardLink.new()
+	host.add_child(plain)
+	plain._process(0.0)
+	_check(not plain.describe()["leave_guard_installed"] and not plain.describe()["leave_guard"],
+		"off the web nothing is installed or armed")
+
+	var sent: Array = []
+	var link := GuardLink.new()
+	var client := DotGameClient.new()
+	client.use_gate = false
+	client.link = link
+	client.web_eval_fn = func(code: String) -> void: sent.append(code)
+	host.add_child(client)
+	_check(sent.size() == 1 and "fullscreenchange" in sent[0] and "beforeunload" in sent[0]
+			and "if (!window.__dotTabGuard)" in sent[0],
+		"the listeners are installed once, behind a page flag")
+	client._process(0.0)
+	_check(sent.size() == 1 and not client.describe()["leave_guard"], "a disconnected link does not arm it")
+	link.up = true
+	client._process(0.0)
+	_check(sent.size() == 2 and "armed = true" in sent[1] and client.describe()["leave_guard"],
+		"a connected link arms the prompt")
+	client._process(0.0)
+	_check(sent.size() == 2, "and a steady state sends nothing")
+	client.clear_leave_guard()
+	_check(sent.size() == 3 and "armed = false" in sent[2] and not client.describe()["leave_guard"],
+		"a deliberate navigation can clear it")
+	client._process(0.0)
+	link.up = false
+	client._process(0.0)
+	client._process(0.0)
+	_check(not client.describe()["leave_guard"] and sent.size() == 5, "a dropped link disarms it")
+	link.up = true
+	client._process(0.0)
+	client.queue_free()
+	await get_tree().process_frame
+	_check("armed = false" in sent[sent.size() - 1], "leaving the tree disarms it")
+
+	var offline := DotGameClient.new()
+	offline.use_gate = false
+	offline.link = GuardLink.new()
+	offline.link.up = true
+	offline.force_offline = true
+	var off_sent: Array = []
+	offline.web_eval_fn = func(code: String) -> void: off_sent.append(code)
+	host.add_child(offline)
+	offline._process(0.0)
+	_check(off_sent.size() == 1 and not offline.is_in_live_game(), "an offline game never arms the prompt")
+	host.queue_free()
+	await get_tree().process_frame
+	_done()
 
 
 ## The hooks for a game with its own menu, a board of its own, a console built later, no

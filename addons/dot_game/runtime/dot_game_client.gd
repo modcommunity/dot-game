@@ -208,6 +208,39 @@ var _wired_signal: StringName = &""
 var _blocked: bool = false
 var _menu_open: bool = false
 
+## Test seam: when valid, the page-guard JavaScript goes here instead of the browser, and the
+## client behaves as if on the web. Unset in every real build.
+var web_eval_fn: Callable = Callable()
+var _guard_armed: bool = false
+var _guard_installed: bool = false
+
+# Runs once per page. [code]window.__dotTabGuard[/code] is the idempotence flag, so a second
+# client or a reconnect adds no listeners. The keyboard lock lives here, not in the menu,
+# because only some games build the menu's applier, and a page can enter fullscreen by other
+# routes (F11 aside, a game's own button). Ctrl+W, Ctrl+T/N and Ctrl+Tab are the browser's and
+# a page cannot cancel them; the lock (fullscreen only, where the API exists) hands them to the
+# game, and the beforeunload prompt is the net for everything the lock cannot cover.
+const _GUARD_JS := """
+if (!window.__dotTabGuard) {
+	var g = window.__dotTabGuard = { armed: false };
+	window.addEventListener('beforeunload', function (e) {
+		if (!g.armed) { return; }
+		e.preventDefault();
+		e.returnValue = '';
+		return '';
+	});
+	document.addEventListener('fullscreenchange', function () {
+		var k = navigator.keyboard;
+		if (!k) { return; }
+		try {
+			if (document.fullscreenElement) {
+				if (k.lock) { var p = k.lock(); if (p && p.catch) { p.catch(function () {}); } }
+			} else if (k.unlock) { k.unlock(); }
+		} catch (err) {}
+	});
+}
+"""
+
 
 func _ready() -> void:
 	host = _resolve_host()
@@ -223,6 +256,7 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_blocked = is_input_blocked()
+	_install_page_guard()
 
 
 func _on_gate_cover(covered: bool) -> void:
@@ -570,6 +604,55 @@ func _pointer_wanted() -> bool:
 func _process(_delta: float) -> void:
 	# Polled as well as signalled: busy_fn is the game's and says nothing when it changes.
 	_refresh_blocked()
+	_refresh_page_guard()
+
+
+func _guard_web() -> bool:
+	return web_eval_fn.is_valid() or DotPlatform.is_web()
+
+
+func _guard_eval(code: String) -> void:
+	if web_eval_fn.is_valid():
+		web_eval_fn.call(code)
+	else:
+		DotWeb.eval(code, true)
+
+
+func _install_page_guard() -> void:
+	if _guard_installed or not _guard_web():
+		return
+	_guard_installed = true
+	_guard_eval(_GUARD_JS)
+
+
+## True while this client is in a live game: online and the link connected to the server. The
+## main menu, a normal leave and a dropped link are all false, so none of them prompts.
+func is_in_live_game() -> bool:
+	if offline or link == null or not is_instance_valid(link):
+		return false
+	return link.has_method(&"is_connected_to_server") and bool(link.call(&"is_connected_to_server"))
+
+
+func _refresh_page_guard() -> void:
+	if not _guard_installed:
+		return
+	var want := is_in_live_game()
+	if want == _guard_armed:
+		return
+	_guard_armed = want
+	_guard_eval("window.__dotTabGuard.armed = %s;" % ("true" if want else "false"))
+	DotLog.debug(CHANNEL, "leave-site prompt %s" % ("armed" if want else "disarmed"))
+
+
+## Drops the leave-site prompt now. Code that deliberately navigates the page (a reload to
+## apply an update, a return to the site) calls this first, or the player is asked to confirm
+## something the game itself chose to do. The next frame re-arms it if the link is still live,
+## so call it in the same frame as the navigation.
+func clear_leave_guard() -> void:
+	if _guard_installed and _guard_armed:
+		_guard_armed = false
+		_guard_eval("window.__dotTabGuard.armed = false;")
+		DotLog.debug(CHANNEL, "leave-site prompt cleared for a deliberate navigation")
 
 
 ## Re-reads whether input is blocked now and emits [signal input_blocked_changed] if it
@@ -632,6 +715,9 @@ func _busy() -> bool:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_EXIT_TREE and _guard_armed:
+		_guard_armed = false
+		_guard_eval("window.__dotTabGuard.armed = false;")
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
@@ -657,6 +743,8 @@ func describe() -> Dictionary:
 		"scoreboard_action": String(scoreboard_action),
 		"input_blocked": is_input_blocked(),
 		"capture_pointer": capture_pointer,
+		"leave_guard": _guard_armed,
+		"leave_guard_installed": _guard_installed,
 	}
 
 
@@ -672,4 +760,5 @@ func describe_lines() -> PackedStringArray:
 		"yes" if d["chat"] else "no", " (typing)" if d["typing"] else "",
 		"yes" if d["board"] else "no", "yes" if d["maps"] else "no"])
 	out.append("  input %s" % ("blocked" if d["input_blocked"] else "live"))
+	out.append("  leave-site prompt %s" % ("armed" if d["leave_guard"] else "off"))
 	return out
