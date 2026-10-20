@@ -1416,7 +1416,8 @@ func _test_client_page_guard() -> void:
 	offline.web_eval_fn = func(code: String) -> void: off_sent.append(code)
 	host.add_child(offline)
 	offline._process(0.0)
-	_check(off_sent.size() == 1 and not offline.is_in_live_game(), "an offline game never arms the prompt")
+	_check(off_sent.size() == 2 and "armed = true" in off_sent[1] and not offline.is_in_live_game(),
+		"a solo game (offline) arms the prompt too")
 	host.queue_free()
 	await get_tree().process_frame
 	_done()

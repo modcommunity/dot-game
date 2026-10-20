@@ -220,7 +220,9 @@ var _guard_installed: bool = false
 # routes (F11 aside, a game's own button). Ctrl+W, Ctrl+T/N and Ctrl+Tab are the browser's and
 # a page cannot cancel them; the lock (fullscreen only, where the API exists) hands them to the
 # game, and the beforeunload prompt is the net for everything the lock cannot cover.
+# Wrapped in a function because a global-scope eval would leave `g` on the game's window.
 const _GUARD_JS := """
+(function () {
 if (!window.__dotTabGuard) {
 	var g = window.__dotTabGuard = { armed: false };
 	window.addEventListener('beforeunload', function (e) {
@@ -239,6 +241,7 @@ if (!window.__dotTabGuard) {
 		} catch (err) {}
 	});
 }
+})();
 """
 
 
@@ -636,7 +639,9 @@ func is_in_live_game() -> bool:
 func _refresh_page_guard() -> void:
 	if not _guard_installed:
 		return
-	var want := is_in_live_game()
+	# Offline is a solo game in the tab (the shell starts the game scene with no link), and a
+	# solo round lost to Ctrl+W is lost all the same; this client only exists while a game runs.
+	var want := offline or is_in_live_game()
 	if want == _guard_armed:
 		return
 	_guard_armed = want
