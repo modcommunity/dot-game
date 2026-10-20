@@ -175,6 +175,32 @@ static func build(
 	return DotResult.success({"net": net, "bridge": bridge})
 
 
+## Copies the server's snapshot worker count ([method DotServerConfig.net_snapshot_workers],
+## cvars [code]sv_threads_net[/code] and [code]sv_worker_threads[/code]) into
+## [member DotNetConfig.snapshot_workers], unless the game set one itself.
+##
+## [b]An explicit value in the game's config wins, and 0 is "not set"[/b]: dot-net's default is
+## off, so a game that wrote a number meant it and an operator's switch must not undo it. Returns
+## whether [param config] follows the server (the caller calls this again each tick so the
+## cvars stay live, and only for a config that does). [param server_config] is duck-typed so
+## this addon does not need dot-server's class to parse.
+static func follow_server_threads(config: DotNetConfig, server_config: Object) -> bool:
+	if config == null:
+		return false
+	if config.snapshot_workers != 0 and not config.has_meta(THREADS_FOLLOW_META):
+		return false
+	if server_config == null or not server_config.has_method("net_snapshot_workers"):
+		return false
+	config.set_meta(THREADS_FOLLOW_META, true)
+	config.snapshot_workers = int(server_config.call("net_snapshot_workers"))
+	return true
+
+
+## Marks a [DotNetConfig] whose snapshot_workers this addon wrote, so a later call knows the
+## value is its own and not the game's.
+const THREADS_FOLLOW_META := &"dot_game_follows_server_threads"
+
+
 ## Applies an operator's [param ceiling] to the game's [param config], in place.
 ##
 ## [b]Effective value = min(game, operator), and 0 on either side means no limit from that

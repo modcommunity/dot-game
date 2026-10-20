@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 216
+const CHECKS := 224
 
 var _entered := 0
 var _completed := 0
@@ -93,6 +93,7 @@ func _run() -> void:
 		await _test_a_refused_attach_unwinds()
 		_test_operator_net_ceiling()
 		await _test_operator_ceiling_reaches_the_netcode()
+		await _test_server_threads_reach_the_netcode()
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()
@@ -726,6 +727,46 @@ func _test_operator_net_ceiling() -> void:
 	_check(c.snapshot_rate == 32, "a snapshot cap of 0 uses the game's rate")
 	c = _caps({"snapshot_rate": 32}, {})
 	_check(c.snapshot_rate == 32 and DotGameNetcode.cap(c, {}).is_empty(), "no ceiling changes nothing, and logs nothing")
+	_done()
+
+
+func _test_server_threads_reach_the_netcode() -> void:
+	_section("sv_threads_net reaches DotNetConfig.snapshot_workers, and the game's own value wins")
+
+	var sc := DotServerConfig.new()
+	var c := DotNetConfig.new()
+	_check(not DotGameNetcode.follow_server_threads(c, null), "no server config changes nothing")
+	_check(DotGameNetcode.follow_server_threads(c, sc) and c.snapshot_workers == 0,
+		"the default stays 0 with the switch off")
+	sc.threads_net = true
+	sc.worker_threads = 3
+	_check(DotGameNetcode.follow_server_threads(c, sc) and c.snapshot_workers == 3,
+		"switched on, the server's worker count is copied")
+	sc.worker_threads = -1
+	DotGameNetcode.follow_server_threads(c, sc)
+	_check(c.snapshot_workers == -1, "a later cvar change is followed")
+	sc.threads_net = false
+	DotGameNetcode.follow_server_threads(c, sc)
+	_check(c.snapshot_workers == 0, "switched off again, back to 0")
+
+	var own := DotNetConfig.new()
+	own.snapshot_workers = 2
+	sc.threads_net = true
+	sc.worker_threads = 5
+	_check(not DotGameNetcode.follow_server_threads(own, sc) and own.snapshot_workers == 2,
+		"a value the game set is kept")
+
+	# Through the module: the config the game returns, as the server's switch has it.
+	_server.config.threads_net = true
+	_server.config.worker_threads = 2
+	var loaded: DotResult = await _load_module()
+	if _check(loaded.ok, "the module loads", str(loaded.error)):
+		var module := loaded.value as DotGameModule
+		_check(module.net != null and module.net.config.snapshot_workers == 2,
+			"the module wired it into the live netcode")
+		_unload_module()
+	_server.config.threads_net = false
+	_server.config.worker_threads = -1
 	_done()
 
 

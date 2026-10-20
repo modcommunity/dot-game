@@ -283,6 +283,8 @@ func _module_load() -> DotResult:
 				"module": String(_module_name()), "changes": "; ".join(capped),
 			})
 
+		DotGameNetcode.follow_server_threads(config, server.config if server != null else null)
+
 		var built := DotGameNetcode.build(
 			self, server, game, config, _make_bridge()
 		)
@@ -607,6 +609,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	tick += 1
+
+	# The cvars are live: a config this addon filled in follows them; the game's own does not.
+	if net != null and server != null and net.config != null:
+		DotGameNetcode.follow_server_threads(net.config, server.config)
 
 	if bridge != null and bridge.has_method("server_tick"):
 		bridge.call("server_tick", tick)
