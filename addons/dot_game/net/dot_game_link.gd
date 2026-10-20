@@ -35,6 +35,7 @@ static func attach(link: Node, parent: Node, owner: Node, link_name: StringName)
 		retire(stale)
 	link.name = link_name
 	parent.add_child(link)
+	_free_retired_named(parent, link_name, link)
 	# add_child renames on a clash without a word, and a renamed link is the bug this class
 	# exists to stop: every RPC to it is lost. Say so where it happened.
 	if link.name != link_name:
@@ -48,6 +49,21 @@ static func attach(link: Node, parent: Node, owner: Node, link_name: StringName)
 	owner.tree_exiting.connect(_retire_id.bind(link.get_instance_id()), CONNECT_ONE_SHOT)
 
 
+## Frees at once every retired link of [param link_name] under [param parent]. A client's cache
+## id resolves to the cached OBJECT before the node path, so while a retired link of the name
+## the new link now holds is still in the tree, the client's input lands on it (bridge null) and
+## is dropped for the whole grace period. Nobody else is reusing that name, so no in-flight RPC
+## has anything to gain from waiting; a link retired by a switch to another game keeps its wait.
+static func _free_retired_named(parent: Node, link_name: StringName, keep: Node) -> void:
+	var prefix := "%s%s_" % [RETIRED, link_name]
+	for child in parent.get_children():
+		if child == keep or child.is_queued_for_deletion():
+			continue
+		var n := String(child.name)
+		if n.begins_with(prefix) and n.substr(prefix.length()).is_valid_int():
+			child.queue_free()
+
+
 static func _retire_id(id: int) -> void:
 	retire(instance_from_id(id) as Node)
 
@@ -55,11 +71,12 @@ static func _retire_id(id: int) -> void:
 ## Frees [param link] without touching its parent's child list. Safe while the parent is
 ## busy, and safe to call twice.
 ##
-## For the rest of the frame the retired node is still in the tree, and the engine's RPC
-## cache routes by instance id before path, so an RPC that arrives in the same poll as a
-## reload reaches the retired link, whose bridge is gone, and is dropped. From the next
-## frame the path finds the new link. Only a reload issued from inside the poll (an RPC
-## command) can lose the rest of that batch.
+## The retired node stays in the tree for [constant RETIRED_SECONDS], bridge cleared, so a
+## client still sending to the old game (it keeps going until LOAD_GAME reaches it) does not
+## log "Node not found". The engine's RPC cache routes by instance id before path, so a retired
+## link that shares its name with a newer one would swallow that client's input: [method attach]
+## therefore queue_frees any retired link of the name it takes. Only a link nobody re-attaches
+## under (a switch to another game) waits out the full grace period.
 static func retire(link: Node) -> void:
 	if link == null or not is_instance_valid(link):
 		return

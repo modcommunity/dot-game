@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 224
+const CHECKS := 227
 
 var _entered := 0
 var _completed := 0
@@ -1703,8 +1703,29 @@ func _test_link_survives_reload() -> void:
 			retired_count += 1
 	_check(server.get_child_count() - retired_count == 2, "and nothing else live was left under the server",
 		str(server.get_children()))
-	_check(retired_count == 2, "the retired links wait out the grace period for in-flight RPCs",
+	_check(retired_count == 0, "a same-name reload frees the retired links within a frame or two (a client's cache id must not land on one)",
 		str(retired_count))
+
+	# A link nobody re-attaches under (a switch to another game) keeps its grace period.
+	var holder := Node.new()
+	server.add_child(holder)
+	var game_a := TestLink.new()
+	var owner_a := Node.new()
+	holder.add_child(owner_a)
+	DotGameLink.attach(game_a, holder, owner_a, &"GameA")
+	owner_a.free()
+	await get_tree().process_frame
+	var game_b := TestLink.new()
+	var owner_b := Node.new()
+	holder.add_child(owner_b)
+	DotGameLink.attach(game_b, holder, owner_b, &"GameB")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(is_instance_valid(game_a) and game_a.is_inside_tree() and not game_a.is_queued_for_deletion()
+		and String(game_a.name).begins_with(DotGameLink.RETIRED + "GameA_"),
+		"a link retired by an attach under a different name survives for the grace period")
+	_check(is_instance_valid(game_b) and game_b.name == &"GameB", "and the new link has its own name")
+	holder.queue_free()
 
 	# A link left by an unclean unload is retired by the next attach.
 	var orphan := TestLink.new()
