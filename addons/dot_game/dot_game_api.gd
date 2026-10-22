@@ -29,5 +29,7 @@ extends RefCounted
 #    pointer_fn (when the pointer is taken back), public refresh_blocked().
 # 12: DotGameClient adopts a menu and board the game built (menu / board / board_prepare_fn /
 #    adopt_menu, no settings needed), add_console(), gate_only, escape_releases_pointer.
-const LEVEL := 12
+# 13: DotGameClient user_cfg / listen_host_fn / user_cfg_files / open_user_cfg, the player's cfg tier
+#    for solo and listen-host play, and the editor entry on the Advanced page.
+const LEVEL := 13
 const OLDEST := 1

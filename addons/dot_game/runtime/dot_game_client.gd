@@ -61,6 +61,9 @@ const LINK_SERVICE := &"dot_client_link"
 ## dot-menu's settings node, made when a game assigns none. Never named: dot-menu is optional.
 const SETTINGS_SCRIPT := "res://addons/dot_menu/runtime/dot_menu_settings.gd"
 ## dot-console's one-call console. Never named, for the same reason.
+const EDITOR_SCRIPT := "res://addons/dot_menu/ui/dot_addon_config_editor_screen.gd"
+const ROW_SCRIPT := "res://addons/dot_menu/core/dot_menu_row.gd"
+const USER_CFG_PAGE := &"advanced"
 const CONSOLE_KIT_SCRIPT := "res://addons/dot_console/runtime/dot_console_kit.gd"
 ## The Tab action made when the game's own key table has none.
 const SCOREBOARD_ACTION := &"dot_game_scoreboard"
@@ -109,6 +112,16 @@ var cover: Node = null
 var spawned_fn: Callable = Callable()
 
 # --- Set before setup -------------------------------------------------------------
+
+## Turns on dot-core's player cfg tier (and the menu entry that edits it) when this process is
+## solo or the listen host. Off keeps the tier off everywhere.
+@export var user_cfg: bool = true
+## [code]func() -> bool[/code]: this client also hosts the server it is connected to (a listen
+## server). Unset means a connected client is somebody else's guest and gets no tier.
+var listen_host_fn: Callable = Callable()
+## Files the player may edit, each [code]{addon, file, schema, label}[/code] ([code]schema[/code] is
+## [code]DotProfileSet.field[/code]s); addons and games append before [method setup]. Empty hides the entry.
+var user_cfg_files: Array[Dictionary] = []
 
 ## Build the settings and the Escape menu (dot-menu).
 @export var use_settings: bool = true
@@ -178,6 +191,9 @@ var host: Node = null
 var link: Object = null
 ## No server: no link, [member force_offline], or [code]--offline[/code] on the command line.
 var offline: bool = true
+## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
+var user_tier_on: bool = false
+var user_cfg_overlay: UserCfgOverlay = null
 ## dot-core's load gate, under [member host]. Hold more on it: [code]gate.hold(&"map")[/code].
 var gate: DotLoadGate = null
 ## The settings' menu (dot-menu's [code]DotMenu[/code]), its board and its map menu.
@@ -258,8 +274,20 @@ func _ready() -> void:
 			if report_loading:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
+	_apply_user_tier()
 	_blocked = is_input_blocked()
 	_install_page_guard()
+
+
+## Whether the player's cfg tier may be on: solo or listen host, never a dedicated server or a guest.
+static func user_tier_allowed(opt_in: bool, solo: bool, listen_host: bool, dedicated: bool) -> bool:
+	return opt_in and not dedicated and (solo or listen_host)
+
+
+func _apply_user_tier() -> void:
+	var host_here := listen_host_fn.is_valid() and bool(listen_host_fn.call())
+	user_tier_on = user_tier_allowed(user_cfg, offline, host_here, OS.has_feature("dedicated_server"))
+	DotAddonConfig.set_user_tier(user_tier_on)
 
 
 func _on_gate_cover(covered: bool) -> void:
@@ -414,6 +442,92 @@ func _build_settings() -> void:
 
 	var got: Variant = settings.get(&"menu")
 	menu = got if got is Object else null
+	_add_user_cfg_entry()
+
+
+# The "Your mods" row on the Advanced page: a dot-menu row and editor loaded by path, so a build
+# without dot-menu's newer editor just has no entry.
+func _add_user_cfg_entry() -> void:
+	if not user_tier_on or user_cfg_files.is_empty() or menu == null or not menu.has_method(&"page"):
+		return
+	if not ResourceLoader.exists(ROW_SCRIPT) or not ResourceLoader.exists(EDITOR_SCRIPT):
+		DotLog.info(CHANNEL, "dot-menu has no cfg editor: no mods entry")
+		return
+	var page: Variant = menu.call(&"page", USER_CFG_PAGE)
+	var row_script: Variant = load(ROW_SCRIPT)
+	if page == null or not (row_script is GDScript):
+		return
+	var row: Variant = (row_script as GDScript).call(&"button", "Your mods",
+			"Tune the game's own settings files for this device.", "Edit", open_user_cfg)
+	var sec: Variant = (page as Object).call(&"section", "Mods", &"user_cfg")
+	(sec as Object).call(&"add", row)
+
+
+## Opens the cfg editor over the menu. False without the tier, files, menu or editor.
+func open_user_cfg() -> bool:
+	if not user_tier_on or user_cfg_files.is_empty() or menu == null:
+		return false
+	if not ResourceLoader.exists(EDITOR_SCRIPT):
+		return false
+	if user_cfg_overlay != null and is_instance_valid(user_cfg_overlay):
+		user_cfg_overlay.open()
+		return true
+	# A CanvasLayer above the menu's own, or the editor draws underneath it.
+	var layer := CanvasLayer.new()
+	layer.layer = 200
+	add_child(layer)
+	user_cfg_overlay = UserCfgOverlay.new()
+	layer.add_child(user_cfg_overlay)
+	var ed: Control = (load(EDITOR_SCRIPT) as GDScript).new()
+	user_cfg_overlay.host_editor(ed)
+	for f in user_cfg_files:
+		ed.call(&"add_file", f.get("addon", ""), f.get("file", ""), f.get("schema", []), f.get("label", ""))
+	var first: Dictionary = user_cfg_files[0]
+	var _opened: Variant = ed.call(&"open", first.get("addon", ""), first.get("file", ""))
+	if menu.has_method(&"add_overlay"):
+		menu.call(&"add_overlay", user_cfg_overlay)
+	user_cfg_overlay.open()
+	if menu.has_method(&"overlay_opened"):
+		menu.call(&"overlay_opened")
+	return true
+
+
+## The editor, full screen, with a Close button; the shape dot-menu's add_overlay wants.
+class UserCfgOverlay extends Control:
+	signal closed()
+	var _editor: Control = null
+
+	func _init() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		visible = false
+
+	func host_editor(ed: Control) -> void:
+		_editor = ed
+		ed.set_anchors_preset(Control.PRESET_FULL_RECT)
+		ed.offset_bottom = -48
+		var back := ColorRect.new()
+		back.color = Color(0.05, 0.06, 0.08, 1.0)
+		back.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(back)
+		add_child(ed)
+		var b := Button.new()
+		b.text = "Close"
+		b.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		b.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		b.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		b.pressed.connect(close)
+		add_child(b)
+
+	func open() -> void:
+		visible = true
+
+	func close() -> void:
+		if visible:
+			visible = false
+			closed.emit()
+
+	func is_open() -> bool:
+		return visible
 
 
 ## Hands over a menu the game built itself (dot-menu's [code]DotMenu[/code] or anything with
@@ -734,6 +848,7 @@ func describe() -> Dictionary:
 	return {
 		"host": str(host.name) if host != null else "",
 		"offline": offline,
+		"user_tier": user_tier_on,
 		"link": link != null,
 		"gate": gate.describe() if gate != null and is_instance_valid(gate) else {},
 		"set_up": _set_up,

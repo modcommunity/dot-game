@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 236
+const CHECKS := 244
 
 var _entered := 0
 var _completed := 0
@@ -103,6 +103,7 @@ func _run() -> void:
 		await _test_client_hooks_menu()
 		await _test_client_reports_cover()
 		await _test_client_page_guard()
+		await _test_client_user_tier()
 		await _test_client_without_the_addons()
 		await _test_link_survives_reload()
 
@@ -1358,6 +1359,49 @@ class GuardLink extends RefCounted:
 	var up: bool = false
 	func is_connected_to_server() -> bool:
 		return up
+
+
+## The player's cfg tier: on solo and for a listen host, off for a dedicated server, a guest, or an opt-out.
+func _test_client_user_tier() -> void:
+	_section("the user cfg tier: solo and listen host only")
+	var host := Node.new()
+	add_child(host)
+	var solo := DotGameClient.new()
+	solo.use_gate = false
+	solo.force_offline = true
+	host.add_child(solo)
+	_check(solo.user_tier_on and DotAddonConfig.user_tier_enabled, "solo turns the tier on")
+	_check(solo.describe()["user_tier"], "describe reports it")
+
+	var guest := DotGameClient.new()
+	guest.use_gate = false
+	guest.link = GuardLink.new()
+	host.add_child(guest)
+	_check(not guest.offline and not guest.user_tier_on and not DotAddonConfig.user_tier_enabled,
+		"joined to someone else's server turns it off")
+
+	var listen := DotGameClient.new()
+	listen.use_gate = false
+	listen.link = GuardLink.new()
+	listen.listen_host_fn = func() -> bool: return true
+	host.add_child(listen)
+	_check(listen.user_tier_on and DotAddonConfig.user_tier_enabled, "a listen host turns it on")
+
+	var out := DotGameClient.new()
+	out.use_gate = false
+	out.force_offline = true
+	out.user_cfg = false
+	host.add_child(out)
+	_check(not out.user_tier_on and not DotAddonConfig.user_tier_enabled, "user_cfg = false opts out")
+
+	_check(not DotGameClient.user_tier_allowed(true, true, true, true), "a dedicated server never has it")
+	_check(DotGameClient.user_tier_allowed(true, false, true, false)
+			and not DotGameClient.user_tier_allowed(true, false, false, false)
+			and not DotGameClient.user_tier_allowed(false, true, false, false), "the rule table")
+	_check(not out.open_user_cfg(), "and refuses without the tier")
+	DotAddonConfig.set_user_tier(false)
+	host.queue_free()
+	_done()
 
 
 ## The browser guard: the leave-site prompt follows the live game, the keyboard lock listener is
