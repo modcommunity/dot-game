@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 244
+const CHECKS := 246
 
 var _entered := 0
 var _completed := 0
@@ -1399,6 +1399,14 @@ func _test_client_user_tier() -> void:
 			and not DotGameClient.user_tier_allowed(true, false, false, false)
 			and not DotGameClient.user_tier_allowed(false, true, false, false), "the rule table")
 	_check(not out.open_user_cfg(), "and refuses without the tier")
+	var solo2 := DotGameClient.new()
+	solo2.use_gate = false
+	solo2.force_offline = true
+	host.add_child(solo2)
+	_check(DotAddonConfig.user_tier_enabled, "a second solo client has the tier on")
+	host.remove_child(solo2)
+	_check(not DotAddonConfig.user_tier_enabled and not DotProfileSet.user_tier_enabled, "leaving the tree clears the process-wide tier")
+	solo2.free()
 	DotAddonConfig.set_user_tier(false)
 	host.queue_free()
 	_done()

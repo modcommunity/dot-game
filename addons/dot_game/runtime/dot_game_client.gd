@@ -834,6 +834,10 @@ func _busy() -> bool:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
+		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
+		user_tier_on = false
+		DotAddonConfig.set_user_tier(false)
 	if what == NOTIFICATION_EXIT_TREE and _guard_armed:
 		_guard_armed = false
 		_guard_eval("window.__dotTabGuard.armed = false;")
