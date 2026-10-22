@@ -1,0 +1,3 @@
+# frame-hazards
+# Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_game/runtime/dot_game_client.gd::_refresh_page_guard::string_build	2

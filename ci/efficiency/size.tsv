@@ -1,0 +1,12 @@
+# size
+# Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_game/core/dot_game_module.gd	815
+addons/dot_game/runtime/dot_game_services.gd	900
+addons/dot_game/runtime/dot_game_services.gd::_build_relay	82
+examples/game_selftest.gd	1881
+examples/game_selftest.gd::_test_client_hooks_menu	148
+examples/game_selftest.gd::_test_client_platform	165
+examples/game_selftest.gd::_test_link_survives_reload	113
+examples/game_selftest.gd::_test_still_loading	92
+examples/game_selftest.gd::_test_the_roster	98
+examples/game_selftest.gd::_test_the_sequence	86
