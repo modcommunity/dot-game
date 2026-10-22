@@ -2,6 +2,21 @@
 
 `DotGameClient` (dot-game API level 8) is the platform layer a client root adds: the loading cover, the settings and Escape menu, the console, the HUD's theme, Tab, M, the pointer, the input block and the browser's filesystem flush. Why it is a child node and not a base class is in [design.md](design.md#dotgameclient-the-platform-layer-every-client-wires). dot-game-template (`game/tpl_client.gd`) and mg-look-at-me (`game/lm_client.gd`) are the two converted clients to copy from.
 
+**First 10 minutes** (a new game): start from [dot-game-template](https://github.com/modcommunity/dot-game-template), run `../dot-ci/scripts/resolve-deps.sh .` to link the addons, do the steps below, then run `./game.sh test`. Moving an existing client over is the same steps.
+
+Settings layer the same way in every addon, weakest first: the addon's schema defaults, the addon's shipped `cfg/addons/<addon>/`, the game's `cfg/game/<game>/<addon>/`, the server operator's `cfg/server/addons/<addon>/` and `cfg/server/game/<game>/`, then environment variables, then the command line, then runtime changes (a console `set`). The folder is the addon name with `-` written as `_`. Secrets are read from files only: a key marked sensitive is refused from the environment and the command line. Details: [dot-core's addon-config.md](../../dot-core/docs/addon-config.md).
+
+`./game.sh` is the one entry point every game repository has (copy it from the reference game, `game-arena`):
+
+| Command | Does |
+| --- | --- |
+| `./game.sh play` | play offline in a window (the default) |
+| `./game.sh online` | a local server plus the browser client; prints the link (`online down` stops it) |
+| `./game.sh server` | a dedicated server only (`server check` boots, loads the game and exits 0) |
+| `./game.sh test` | parse every script, then run every suite (`test NAME` runs one) |
+| `./game.sh shot` | save a screenshot to `screenshots/` |
+| `./game.sh soak [MAP] [MIN]` | a bot soak run, where the game has `tools/soak.tscn` |
+
 ## The steps
 
 1. **Add it first in `_ready`**, before the world, the HUD or the camera are built, so the cover is the first thing drawn:
