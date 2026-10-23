@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 255
+const CHECKS := 257
 
 var _entered := 0
 var _completed := 0
@@ -2006,6 +2006,28 @@ func _test_look_mute() -> void:
 	host.add_child(bare)
 	var _b := bare.setup()
 	_check(bare.look_mute == null, "a chat with no voice builds nothing")
+
+	var rostered := DotGameClient.new()
+	rostered.require_camera = false
+	rostered.use_settings = false
+	rostered.use_console = false
+	rostered.capture_pointer = false
+	rostered.look_mute_script = "res://examples/fixtures/test_look_mute.gd"
+	var rchat: Node = load("res://examples/fixtures/test_voice_chat_box.gd").new()
+	rchat.self_mute.roster = [
+		{"id": 1, "name": "me", "key": "k1", "peer": 5, "bot": false},
+		{"id": 2, "name": "ann", "key": "k2", "peer": 9, "bot": false},
+		{"id": 3, "name": "bot", "key": "", "peer": 11, "bot": true}] as Array[Dictionary]
+	rchat.self_mute.you = 1
+	rostered.chat = rchat
+	rostered.look_position_fn = func(row: Dictionary) -> Variant:
+		return Vector3(0, 0, -4) if row["name"] == "ann" else Vector3(0, 0, -2)
+	host.add_child(rostered)
+	var _r := rostered.setup()
+	_check(rostered.call(&"_look_target") == 9, "a game's position-per-roster-row finds the peer looked at, skipping you and bots")
+	rostered.look_mute.call(&"tap", 0, true)
+	_check(rchat.voice.local_mutes.get(9, false) and rchat.self_mute.muted == [["ann", true]],
+		"a mute reaches the block list that !sm uses, by the roster row of that peer")
 
 	InputMap.erase_action(&"test_other_k")
 	InputMap.erase_action(&"test_other_g")

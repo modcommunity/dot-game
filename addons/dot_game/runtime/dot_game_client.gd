@@ -132,7 +132,12 @@ var look_target_fn: Callable = Callable()
 ## [code]func() -> Dictionary[/code] of peer id to head position (the other players); the key picks
 ## the nearest to the view axis. Unset, the chat's [code]voice_position_fn[/code] answers for speakers.
 var look_positions_fn: Callable = Callable()
-## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, a mute is voice only.
+## [code]func(row: Dictionary) -> Variant[/code]: a head position (Vector3, or null for "not here")
+## for a roster row [code]{id, name, key, peer, bot}[/code] of the chat's block list, which is how a
+## client learns who is whose voice. The one hook a game needs; [member look_positions_fn] wins.
+var look_position_fn: Callable = Callable()
+## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, the chat's block
+## list (the one `!sm` uses) mutes the roster row with that peer.
 var look_chat_mute_fn: Callable = Callable()
 ## The dot-voice look-mute node, once built; null without dot-voice or a voice chat.
 var look_mute: Node = null
@@ -785,7 +790,7 @@ func _build_look_mute() -> void:
 	look_mute.set(&"gag_action", look_gag_action)
 	look_mute.set(&"mute_action", look_mute_action)
 	look_mute.set(&"target_fn", look_target_fn if look_target_fn.is_valid() else _look_target)
-	look_mute.set(&"chat_mute_fn", look_chat_mute_fn)
+	look_mute.set(&"chat_mute_fn", look_chat_mute_fn if look_chat_mute_fn.is_valid() else _look_chat_mute)
 	add_child(look_mute)
 	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
 	if source != null and look_mute.has_method(&"follow_cvars"):
@@ -816,6 +821,27 @@ func find_look_conflicts() -> Array[Dictionary]:
 	return out
 
 
+func _look_roster() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var list: Object = chat.get(&"self_mute") if chat != null else null
+	if list == null or not (list.get(&"roster") is Array):
+		return out
+	var you := int(list.get(&"you"))
+	for row: Dictionary in list.get(&"roster"):
+		if not bool(row.get("bot", false)) and int(row.get("peer", 0)) > 0 and (you == 0 or int(row["id"]) != you):
+			out.append(row)
+	return out
+
+
+func _look_chat_mute(peer: int, muted: bool) -> void:
+	var list: Object = chat.get(&"self_mute") if chat != null else null
+	if list == null or not list.has_method(&"set_muted"):
+		return
+	for row: Dictionary in _look_roster():
+		if int(row["peer"]) == peer:
+			list.call(&"set_muted", {"key": row["key"], "name": row["name"]}, muted)
+
+
 # The default target: the other player nearest the view axis, from the game's positions or the
 # chat's speaker positions.
 func _look_target() -> int:
@@ -825,6 +851,11 @@ func _look_target() -> int:
 	var positions: Dictionary = {}
 	if look_positions_fn.is_valid():
 		positions = look_positions_fn.call()
+	elif look_position_fn.is_valid():
+		for row: Dictionary in _look_roster():
+			var at: Variant = look_position_fn.call(row)
+			if at is Vector3 and int(row["peer"]) > 0:
+				positions[int(row["peer"])] = at
 	elif chat != null and chat.get(&"voice_position_fn") is Callable \
 			and (chat.get(&"voice_position_fn") as Callable).is_valid():
 		var voice: Object = chat.get(&"voice")
