@@ -311,6 +311,9 @@ if (!window.__dotTabGuard) {
 
 func _ready() -> void:
 	host = _resolve_host()
+	var mp := multiplayer
+	if mp != null and not mp.server_disconnected.is_connected(restore_map_config):
+		mp.server_disconnected.connect(restore_map_config)
 	if link == null:
 		link = DotRegistry.get_service(LINK_SERVICE)
 	offline = force_offline or link == null or OS.get_cmdline_user_args().has("--offline")
@@ -595,6 +598,12 @@ func adopt_menu(adopted: Object, adopted_board: Object = null) -> void:
 	if _set_up:
 		_wire_menu()
 		_refresh_blocked()
+
+
+## Puts the last map's settings back. Called when the server connection drops, on teardown, and by a game that leaves a match another way; safe to call twice.
+func restore_map_config() -> void:
+	if map_config != null:
+		map_config.restore()
 
 
 ## The map changed on this client: applies the map's settings and puts the last map's back. Call it on every map load (a map's own load, a round's new layout); a no-op until [member map_config_keys] or its defaults and both functions are set.
@@ -1094,8 +1103,8 @@ func _busy() -> bool:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_EXIT_TREE and map_config != null:
-		map_config.restore()
+	if what == NOTIFICATION_EXIT_TREE:
+		restore_map_config()
 	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
 		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
 		user_tier_on = false

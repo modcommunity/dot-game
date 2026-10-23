@@ -8,7 +8,7 @@ extends Node
 ##
 ## The cvars start away from the files' values, so "got them" cannot be a default showing through.
 
-const CHECKS := 15
+const CHECKS := 16
 const FIXTURE_CFG := "res://examples/fixtures/mapcfg"
 
 var _passed := 0
@@ -83,6 +83,9 @@ func _run() -> void:
 	_check(air.get_float() == 150.0, "the client applies the map's file")
 	client.map_changed("dm_plain")
 	_check(air.get_float() == 90.0, "the client restores on the next map")
+	client.map_changed("surf_a")
+	client.restore_map_config()
+	_check(air.get_float() == 90.0, "restore_map_config (the disconnect path) puts the settings back without leaving the tree")
 
 	print("helper: for_console")
 	var cfg := DotGameMapConfig.for_console("test-game", console, {"test_air": {"type": "float"}})
