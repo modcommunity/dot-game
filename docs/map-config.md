@@ -36,7 +36,7 @@ A client that predicts with a setting needs the same value: assign `map_config_k
 
 ## The files
 
-`cfg/game/<game>/dot_map/map/<name>.yml`, `<name>` a map id or a glob (`surf_*.yml`), a flat key-to-scalar mapping; the operator overrides in `cfg/server/game/<game>/dot_map/map/`. The converter writes a commented starter for every map (dot-map's docs/map-config.md).
+`cfg/game/<game>/dot_map/map/<name>.yml`, `<name>` a map id or a glob (`surf_%.yml`: `%` is `*`, `@` is `?`, since a literal `*` or `?` cannot be a file name on Windows or in a pack), a flat key-to-scalar mapping; the operator overrides in `cfg/server/game/<game>/dot_map/map/`. The converter writes a commented starter for every map (dot-map's docs/map-config.md).
 
 ## The check
 
