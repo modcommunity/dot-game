@@ -108,6 +108,8 @@ var _warned_no_map_report := false
 
 ## The per-map settings, built on the first [method report_map] when [method _map_config_keys] names any.
 var map_config: DotGameMapConfig = null
+## Assign to handle a DotMapWorld's `script.*` events; its per-map switches join [method _map_config_keys] and it restores on a map change and on unload.
+var map_scripts: DotGameMapScripts = null
 
 ## The map [method report_map] last reported; a different one re-marks every seat loading.
 var _reported_map := ""
@@ -737,18 +739,28 @@ func _map_config_game() -> String:
 
 ## The key's current value; the server console's cvar unless overridden.
 func _map_config_get(key: String) -> Variant:
+	if map_scripts != null and map_scripts.owns_key(key):
+		return map_scripts.config_get(key)
 	var cv: DotConVar = console.find_cvar(key) if console != null else null
 	return cv.get_string() if cv != null else null
 
 
 ## Applies one value; false refuses it. The server console's cvar unless overridden.
 func _map_config_set(key: String, value: Variant) -> bool:
+	if map_scripts != null and map_scripts.owns_key(key):
+		return map_scripts.config_set(key, value)
 	return console != null and console.set_cvar(key, str(value)).ok
 
 
 func _apply_map_config(map_id: String) -> void:
+	if map_scripts != null:
+		if map_scripts.console == null:
+			map_scripts.console = console
+		map_scripts.map_changed()
 	if map_config == null:
 		var keys := _map_config_keys()
+		if map_scripts != null:
+			keys.merge(map_scripts.config_keys())
 		var defaults := _map_config_defaults()
 		if keys.is_empty() and defaults.is_empty():
 			return
@@ -825,6 +837,8 @@ func _teardown() -> void:
 		game.set(PEER_LOADING_PROPERTY, Callable())
 	_set_peer_loading = false
 	_reported_map = ""
+	if map_scripts != null:
+		map_scripts.restore()
 	if map_config != null:
 		map_config.restore()
 		map_config = null
