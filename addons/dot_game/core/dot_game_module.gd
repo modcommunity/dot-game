@@ -58,6 +58,9 @@ const CHANNEL := "game.module"
 ## register it.
 const PLATFORM_MODULE_PATH := "res://addons/dot_platform/dot_platform_module.gd"
 const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd"
+## dot-cloud's server auto-update, loaded by path: dot-cloud is not a dependency.
+const AUTO_UPDATE_SCRIPT := "res://addons/dot_cloud/server/dot_cloud_auto_update.gd"
+const AUTO_UPDATE_SERVICE := &"dot_cloud_autoupdate"
 
 ## A seat's client went behind its loading cover ([param loading] true: it joined, or a map
 ## change began) or came out of it (its cover lifted, it timed out, it left). [param seat] is
@@ -315,6 +318,7 @@ func _module_load() -> DotResult:
 
 	_follow_hibernation()
 	_attach_board()
+	start_auto_update(server)
 
 	log_info("%s loaded" % _module_name(), describe())
 	return DotResult.success(null)
@@ -714,6 +718,51 @@ func report_map(map_id: String) -> bool:
 func _module_unload() -> void:
 	_game_unload()
 	_teardown()
+
+
+## Starts dot-cloud's auto-update once per headless server process, under the server so a
+## game change keeps it. A no-op without dot-cloud, on a listen server and in a browser.
+static func start_auto_update(host: DotServer) -> Node:
+	if host == null or not DotPlatform.is_headless() or not ResourceLoader.exists(AUTO_UPDATE_SCRIPT):
+		return null
+	var existing := DotRegistry.get_node_service(AUTO_UPDATE_SERVICE)
+	if existing != null:
+		return existing
+	var script := load(AUTO_UPDATE_SCRIPT) as Script
+	if script == null or not bool(script.call("supported")):
+		return null
+	var node: Node = script.new()
+	node.name = "DotCloudAutoUpdate"
+	node.set("watch_fn", func() -> Array: return watched_packs(host))
+	node.set("players_fn", func() -> int: return host.sessions().size())
+	node.set("warn_fn", func(text: String) -> void: host.broadcast_message(text))
+	node.set("restart_fn", func(code: int, reason: String) -> void:
+		host.shutdown("Server restarting to update (%s)" % reason)
+		host.get_tree().quit(code))
+	host.add_child(node)
+	node.call("bind_console", host.console)
+	return node
+
+
+## Every delivered pack the server's games run, as `{id, version}`: each game's own, its
+## dependencies, server dependencies and maps. Games built into the binary add nothing.
+static func watched_packs(host: Object) -> Array:
+	var out: Array = []
+	var manager: Object = host.get(&"games") if host != null else null
+	var listed: Variant = manager.get(&"games") if manager != null else null
+	if not (listed is Array):
+		return out
+	for d: Variant in listed:
+		if not (d is DotGameDescriptor) or not (d as DotGameDescriptor).needs_delivered_content():
+			continue
+		out.append({"id": d.effective_content_id(), "version": d.version})
+		for list_name: StringName in [&"dependencies", &"server_dependencies", &"maps"]:
+			if not (list_name in d):
+				continue
+			for key: String in d.get(list_name):
+				var parts := DotGameDescriptor.split_key(key)
+				out.append({"id": parts[0], "version": parts[1]})
+	return out
 
 
 ## Everything the sequence built, in the reverse order it was built in.

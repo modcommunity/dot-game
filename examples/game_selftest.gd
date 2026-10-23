@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 258
+const CHECKS := 261
 
 var _entered := 0
 var _completed := 0
@@ -99,6 +99,7 @@ func _run() -> void:
 		await _test_chat_client_without_the_addons()
 		await _test_chat_client_server_lines()
 		await _test_map_content()
+		_test_auto_update_wiring()
 		await _test_client_platform()
 		await _test_look_mute()
 		await _test_client_hooks_menu()
@@ -1093,6 +1094,38 @@ class _FakeGames extends RefCounted:
 
 class _FakeServer extends RefCounted:
 	var games: Object = null
+
+
+class _FakeManager extends RefCounted:
+	var games: Array = []
+
+
+## What dot-cloud's auto-update is told to watch, and that a build without dot-cloud gets none.
+func _test_auto_update_wiring() -> void:
+	_section("server auto-update wiring")
+	var delivered := DotGameDescriptor.new()
+	delivered.game_id = "arena"
+	delivered.content_id = "me/arena"
+	delivered.version = "0.1.0"
+	delivered.scene = "scenes/main.tscn"
+	delivered.dependencies = PackedStringArray(["me/lib@1.0.0"])
+	delivered.maps = PackedStringArray(["me/dm_one@2"])
+	var built_in := DotGameDescriptor.new()
+	built_in.game_id = "local"
+	built_in.scene = "res://examples/fixtures/none.tscn"
+	var manager := _FakeManager.new()
+	manager.games = [delivered, built_in]
+	var fake := _FakeServer.new()
+	fake.games = manager
+	var watched := DotGameModule.watched_packs(fake)
+	_check(watched == [
+		{"id": "me/arena", "version": "0.1.0"},
+		{"id": "me/lib", "version": "1.0.0"},
+		{"id": "me/dm_one", "version": "2"},
+	], "a delivered game's own pack, dependencies and maps; a built-in game adds nothing", str(watched))
+	_check(DotGameModule.watched_packs(null).is_empty(), "no server watches nothing")
+	_check(DotGameModule.start_auto_update(_server) == null, "a build without dot-cloud starts no updater")
+	_done()
 
 
 ## DotGameContent, against a stand-in manager: the keys a server names, where each mounts,
