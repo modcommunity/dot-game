@@ -57,6 +57,7 @@ const CHANNEL := "game.module"
 ## through [DotRegistry] by the module it builds, which is why an identity layer has to
 ## register it.
 const PLATFORM_MODULE_PATH := "res://addons/dot_platform/dot_platform_module.gd"
+const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd"
 
 ## A seat's client went behind its loading cover ([param loading] true: it joined, or a map
 ## change began) or came out of it (its cover lifted, it timed out, it left). [param seat] is
@@ -439,6 +440,15 @@ func _build_services() -> DotResult:
 		var _voice_cvars: Variant = (router as Object).call(
 			"bind_cvars", Callable(self, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
 		)
+
+		# The look-to-gag and look-to-mute switches, so every game's server has them.
+		var look_script := load(LOOK_MUTE_SCRIPT) if ResourceLoader.exists(LOOK_MUTE_SCRIPT) else null
+		if look_script is Script and (look_script as Script).has_method("cvar_specs"):
+			for spec in (look_script as Object).call("cvar_specs"):
+				var _made := add_cvar(
+					String(spec["name"]), String(spec["value"]), String(spec["description"]),
+					DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+				)
 
 	return DotResult.success(services)
 
