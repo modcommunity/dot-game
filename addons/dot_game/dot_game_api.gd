@@ -31,5 +31,7 @@ extends RefCounted
 #    adopt_menu, no settings needed), add_console(), gate_only, escape_releases_pointer.
 # 13: DotGameClient user_cfg / listen_host_fn / user_cfg_files / open_user_cfg, the player's cfg tier
 #    for solo and listen-host play, and the editor entry on the Advanced page.
-const LEVEL := 13
+# 14: DotGameClient look-to-gag and look-to-mute (use_look_mute, look_*_action, look_positions_fn,
+#    look_target_fn, look_chat_mute_fn, look_mute, look_conflicts), on G and K, default on.
+const LEVEL := 14
 const OLDEST := 1

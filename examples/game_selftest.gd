@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 246
+const CHECKS := 255
 
 var _entered := 0
 var _completed := 0
@@ -100,6 +100,7 @@ func _run() -> void:
 		await _test_chat_client_server_lines()
 		await _test_map_content()
 		await _test_client_platform()
+		await _test_look_mute()
 		await _test_client_hooks_menu()
 		await _test_client_reports_cover()
 		await _test_client_page_guard()
@@ -1931,3 +1932,82 @@ func _teardown() -> void:
 	_unload_module()
 	if _server != null:
 		_server.shutdown("test over")
+
+
+func _test_look_mute() -> void:
+	_section("the look-to-gag keys: default on, G and K, a conflict is found, not clobbered")
+
+	var held := InputEventKey.new()
+	held.physical_keycode = KEY_K
+	InputMap.add_action(&"test_other_k")
+	InputMap.action_add_event(&"test_other_k", held)
+	for gone in [&"voice_gag", &"voice_mute"]:
+		if InputMap.has_action(gone):
+			InputMap.erase_action(gone)
+
+	var host := Node.new()
+	add_child(host)
+	var client := DotGameClient.new()
+	client.require_camera = false
+	client.capture_pointer = false
+	client.use_console = false
+	client.use_settings = false
+	client.look_mute_script = "res://examples/fixtures/test_look_mute.gd"
+	host.add_child(client)
+	var chat: Node = load("res://examples/fixtures/test_voice_chat_box.gd").new()
+	client.chat = chat
+	var cam := Camera3D.new()
+	host.add_child(cam)
+	cam.make_current()
+	client.look_positions_fn = func() -> Dictionary: return {7: Vector3(0, 0, -5)}
+	client.look_chat_mute_fn = func(peer: int, on: bool) -> void: chat.set_meta(&"chat_muted", [peer, on])
+	var done := client.setup()
+
+	_check(done.ok and client.look_mute != null, "on by default when the chat has a voice")
+	_check(InputMap.has_action(&"voice_gag") and InputMap.has_action(&"voice_mute"), "both actions exist")
+	_check(client.look_mute.get(&"separate_keys") == true and client.look_mute.get(&"manager") == chat.voice,
+		"on separate keys, driving the chat's voice manager")
+	var mute_key := (InputMap.action_get_events(&"voice_mute")[0] as InputEventKey).physical_keycode
+	_check(mute_key != KEY_K and mute_key != KEY_H and client.look_conflicts.is_empty(),
+		"the mute key skipped K (held by another action) and H (help): %s" % OS.get_keycode_string(mute_key))
+
+	client.look_mute.call(&"tap", 0, false)
+	_check(chat.voice.gagged.get(7, false), "the gag key gags the player looked at, through the voice state")
+	client.look_mute.call(&"tap", 0, true)
+	_check(chat.voice.local_mutes.get(7, false) and chat.get_meta(&"chat_muted") == [7, true],
+		"the mute key mutes voice and calls the chat hook")
+
+	var clash := InputEventKey.new()
+	clash.physical_keycode = KEY_G
+	InputMap.add_action(&"test_other_g")
+	InputMap.action_add_event(&"test_other_g", clash)
+	var found := client.find_look_conflicts()
+	_check(found.size() == 1 and found[0]["other"] == "test_other_g",
+		"a key another action holds is reported, and left bound")
+
+	var off := DotGameClient.new()
+	off.use_look_mute = false
+	off.require_camera = false
+	off.use_settings = false
+	off.use_console = false
+	off.capture_pointer = false
+	off.chat = load("res://examples/fixtures/test_voice_chat_box.gd").new()
+	host.add_child(off)
+	var _s := off.setup()
+	_check(off.look_mute == null, "use_look_mute = false builds nothing")
+
+	var bare := DotGameClient.new()
+	bare.require_camera = false
+	bare.use_settings = false
+	bare.use_console = false
+	bare.capture_pointer = false
+	bare.look_mute_script = "res://examples/fixtures/test_look_mute.gd"
+	bare.chat = ClientChat.new()
+	host.add_child(bare)
+	var _b := bare.setup()
+	_check(bare.look_mute == null, "a chat with no voice builds nothing")
+
+	InputMap.erase_action(&"test_other_k")
+	InputMap.erase_action(&"test_other_g")
+	host.queue_free()
+	_done()

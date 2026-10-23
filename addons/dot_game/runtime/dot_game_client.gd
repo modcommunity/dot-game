@@ -67,6 +67,8 @@ const USER_CFG_PAGE := &"advanced"
 const CONSOLE_KIT_SCRIPT := "res://addons/dot_console/runtime/dot_console_kit.gd"
 ## The Tab action made when the game's own key table has none.
 const SCOREBOARD_ACTION := &"dot_game_scoreboard"
+const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd"
+const BINDINGS_SCRIPT := "res://addons/dot_menu/core/dot_menu_bindings.gd"
 ## The gate's requirement for the local player.
 const REASON_SPAWNED := &"spawned"
 
@@ -112,6 +114,30 @@ var cover: Node = null
 var spawned_fn: Callable = Callable()
 
 # --- Set before setup -------------------------------------------------------------
+
+## Look at a player and press a key to gag (stop hearing) or mute them, on every game with a
+## voice chat. Off disables it; the keys are rows in the game's table unless it already has them.
+@export var use_look_mute: bool = true
+## The look-mute script, by path (dot-voice's); a suite points it at a stand-in.
+var look_mute_script: String = LOOK_MUTE_SCRIPT
+## The two actions. Defaults are G and K (never H: dot-menu's help key); a game binds its own.
+@export var look_gag_action: StringName = &"voice_gag"
+@export var look_mute_action: StringName = &"voice_mute"
+## Gag and mute on their own keys; off, one key taps gag and double-taps mute.
+@export var look_separate_keys: bool = true
+@export var look_max_distance: float = 30.0
+@export var look_max_angle_deg: float = 6.0
+## [code]func() -> int[/code]: the peer under the crosshair, 0 for nobody. Wins over the next.
+var look_target_fn: Callable = Callable()
+## [code]func() -> Dictionary[/code] of peer id to head position (the other players); the key picks
+## the nearest to the view axis. Unset, the chat's [code]voice_position_fn[/code] answers for speakers.
+var look_positions_fn: Callable = Callable()
+## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, a mute is voice only.
+var look_chat_mute_fn: Callable = Callable()
+## The dot-voice look-mute node, once built; null without dot-voice or a voice chat.
+var look_mute: Node = null
+## Keys held by another action at the time of the check: [code]{action, key, other}[/code].
+var look_conflicts: Array[Dictionary] = []
 
 ## Turns on dot-core's player cfg tier (and the menu entry that edits it) when this process is
 ## solo or the listen host. Off keeps the tier off everywhere.
@@ -352,6 +378,7 @@ func setup() -> DotResult:
 	if use_console:
 		add_console()
 	_wire_menu()
+	_build_look_mute()
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -433,6 +460,7 @@ func _build_settings() -> void:
 		DotLog.warn(CHANNEL, "the settings node has no setup(); it is left alone", {"node": str(settings)})
 		return
 
+	_add_look_rows()
 	var built: Variant = settings.call(&"setup")
 	if built is DotResult and not (built as DotResult).ok:
 		DotLog.warn(CHANNEL, "no settings; everything is at its default", {"why": (built as DotResult).error.message})
@@ -660,6 +688,158 @@ func _ensure_scoreboard_action() -> void:
 	InputMap.action_add_event(scoreboard_action, tab)
 
 
+func _look_wanted() -> bool:
+	return use_look_mute and chat != null and chat.get(&"voice") is Node
+
+
+# Rows in the game's key table (so the Controls page and help list them), unless it has its own.
+func _add_look_rows() -> void:
+	if not _look_wanted() or not ("bindings" in settings):
+		return
+	var table: Object = settings.get(&"bindings")
+	if table == null:
+		if not ResourceLoader.exists(BINDINGS_SCRIPT):
+			return
+		var script: Variant = load(BINDINGS_SCRIPT)
+		if not (script is GDScript):
+			return
+		table = (script as GDScript).new()
+		settings.set(&"bindings", table)
+	if not table.has_method(&"row_for_action") or not table.has_method(&"add"):
+		return
+	if table.call(&"row_for_action", look_gag_action).is_empty():
+		var gag_label := "Look at a player: stop (or resume) hearing them"
+		if not look_separate_keys:
+			gag_label = "Look at a player: tap to gag, double-tap to mute"
+		var _g: Variant = table.call(&"add", look_gag_action, &"bind_voice_gag", gag_label,
+			free_look_key(["G", "Y", "U"], table), "Communication")
+	if look_separate_keys and table.call(&"row_for_action", look_mute_action).is_empty():
+		var _m: Variant = table.call(&"add", look_mute_action, &"bind_voice_mute",
+			"Look at a player: mute (or unmute) their voice and chat",
+			free_look_key(["K", "J", "N", "L"], table), "Communication")
+
+
+## The first of [param candidates] no action holds and no row of [param table] defaults to.
+func free_look_key(candidates: Array, table: Object = null) -> String:
+	for c in candidates:
+		var code := OS.find_keycode_from_string(str(c))
+		if code == KEY_NONE or not key_holders(code).is_empty():
+			continue
+		if table != null and table.has_method(&"row_for_action") and _table_default_taken(table, str(c)):
+			continue
+		return str(c)
+	return str(candidates.back()) if not candidates.is_empty() else ""
+
+
+func _table_default_taken(table: Object, key: String) -> bool:
+	for row: Variant in table.get(&"rows"):
+		if str((row as Dictionary).get("default", "")).to_upper() == key.to_upper():
+			return true
+	return false
+
+
+## Actions other than the look-mute pair that hold [param keycode] (physical or logical).
+func key_holders(keycode: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	for action: StringName in InputMap.get_actions():
+		if action == look_gag_action or action == look_mute_action or str(action).begins_with("ui_") \
+				or action == &"voice_gag" or action == &"voice_mute":
+			continue
+		for e in InputMap.action_get_events(action):
+			if e is InputEventKey and ((e as InputEventKey).physical_keycode == keycode \
+					or (e as InputEventKey).keycode == keycode):
+				out.append(String(action))
+				break
+	return out
+
+
+# Without a menu table the actions are made here, on a key nobody holds.
+func _ensure_look_actions() -> void:
+	var pairs: Array = [[look_gag_action, ["G", "Y", "U"]]]
+	if look_separate_keys:
+		pairs.append([look_mute_action, ["K", "J", "N", "L"]])
+	for pair: Array in pairs:
+		if InputMap.has_action(pair[0]):
+			continue
+		InputMap.add_action(pair[0])
+		var key := InputEventKey.new()
+		key.physical_keycode = OS.find_keycode_from_string(free_look_key(pair[1]))
+		InputMap.action_add_event(pair[0], key)
+
+
+func _build_look_mute() -> void:
+	if not _look_wanted() or look_mute != null:
+		return
+	if not ResourceLoader.exists(look_mute_script):
+		DotLog.info(CHANNEL, "dot-voice is not in this build: no look-to-gag keys")
+		return
+	var script: Variant = load(look_mute_script)
+	if not (script is GDScript):
+		DotLog.warn(CHANNEL, "dot-voice's look-mute would not load", {"path": look_mute_script})
+		return
+	_ensure_look_actions()
+	look_mute = (script as GDScript).new() as Node
+	look_mute.name = "LookMute"
+	look_mute.set(&"manager", chat.get(&"voice"))
+	look_mute.set(&"separate_keys", look_separate_keys)
+	look_mute.set(&"gag_action", look_gag_action)
+	look_mute.set(&"mute_action", look_mute_action)
+	look_mute.set(&"target_fn", look_target_fn if look_target_fn.is_valid() else _look_target)
+	look_mute.set(&"chat_mute_fn", look_chat_mute_fn)
+	add_child(look_mute)
+	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
+	if source != null and look_mute.has_method(&"follow_cvars"):
+		var _f: Variant = look_mute.call(&"follow_cvars", source)
+	look_conflicts = find_look_conflicts()
+	for c in look_conflicts:
+		DotLog.warn(CHANNEL, "a look-to-gag key is also another action's key; rebind one",
+			{"action": c["action"], "key": c["key"], "other": c["other"]})
+
+
+## The look-mute actions whose key another action also holds, as [code]{action, key, other}[/code].
+func find_look_conflicts() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var actions: Array = [look_gag_action]
+	if look_separate_keys:
+		actions.append(look_mute_action)
+	for action: StringName in actions:
+		if not InputMap.has_action(action):
+			continue
+		for e in InputMap.action_get_events(action):
+			if not (e is InputEventKey):
+				continue
+			var code := (e as InputEventKey).physical_keycode
+			if code == KEY_NONE:
+				code = (e as InputEventKey).keycode
+			for other in key_holders(code):
+				out.append({"action": String(action), "key": OS.get_keycode_string(code), "other": other})
+	return out
+
+
+# The default target: the other player nearest the view axis, from the game's positions or the
+# chat's speaker positions.
+func _look_target() -> int:
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam == null:
+		return 0
+	var positions: Dictionary = {}
+	if look_positions_fn.is_valid():
+		positions = look_positions_fn.call()
+	elif chat != null and chat.get(&"voice_position_fn") is Callable \
+			and (chat.get(&"voice_position_fn") as Callable).is_valid():
+		var voice: Object = chat.get(&"voice")
+		var at: Callable = chat.get(&"voice_position_fn")
+		if voice != null and voice.has_method(&"active_speakers"):
+			for peer in voice.call(&"active_speakers"):
+				var pos: Variant = at.call(int(peer))
+				if pos is Vector3:
+					positions[int(peer)] = pos
+	if positions.is_empty() or look_mute == null:
+		return 0
+	return int(look_mute.get_script().call(&"pick_by_angle", cam.global_transform, positions,
+		look_max_distance, look_max_angle_deg))
+
+
 func _on_menu_state(any_open: bool) -> void:
 	_menu_open = any_open
 	if capture_pointer:
@@ -865,6 +1045,8 @@ func describe() -> Dictionary:
 		"board": board != null,
 		"maps": maps != null,
 		"scoreboard_action": String(scoreboard_action),
+		"look_mute": look_mute != null,
+		"look_conflicts": look_conflicts.size(),
 		"input_blocked": is_input_blocked(),
 		"capture_pointer": capture_pointer,
 		"leave_guard": _guard_armed,
