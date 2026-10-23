@@ -64,6 +64,12 @@ static func _free_retired_named(parent: Node, link_name: StringName, keep: Node)
 			child.queue_free()
 
 
+static func _free_id(id: int) -> void:
+	var node := instance_from_id(id) as Node
+	if node != null and not node.is_queued_for_deletion():
+		node.queue_free()
+
+
 static func _retire_id(id: int) -> void:
 	retire(instance_from_id(id) as Node)
 
@@ -101,7 +107,4 @@ static func retire(link: Node) -> void:
 	if "bridge" in link:
 		link.set("bridge", null)
 	link.get_tree().create_timer(RETIRED_SECONDS, true, false, true).timeout.connect(
-		func() -> void:
-			if is_instance_valid(link):
-				link.queue_free()
-	)
+		_free_id.bind(link.get_instance_id()))

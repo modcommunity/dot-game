@@ -1934,7 +1934,9 @@ func _test_link_survives_reload() -> void:
 	await get_tree().process_frame
 	server2.free()
 	_check(catcher.errors.size() == errors_before, "and freeing the module before the tree logs none")
-	_check(catcher.errors.is_empty(), "no engine ERROR in the whole section", str(catcher.errors))
+	# The retire timers of the links freed early above fire now, on nodes that are gone.
+	await get_tree().create_timer(DotGameLink.RETIRED_SECONDS + 1.0).timeout
+	_check(catcher.errors.is_empty(), "no engine ERROR in the whole section, nor when the retire timers fire", str(catcher.errors))
 
 	OS.remove_logger(catcher)
 	_done()
