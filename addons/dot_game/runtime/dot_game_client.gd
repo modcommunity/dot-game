@@ -139,6 +139,11 @@ var look_position_fn: Callable = Callable()
 ## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, the chat's block
 ## list (the one `!sm` uses) mutes the roster row with that peer.
 var look_chat_mute_fn: Callable = Callable()
+## For a client whose voice manager or chat is not [member chat]'s (its box predates
+## DotGameChatClient): the manager the keys act on, and the node holding the block list
+## (`self_mute`). Then call [method build_look_mute] once both exist.
+var look_voice: Node = null
+var look_chat: Node = null
 ## The dot-voice look-mute node, once built; null without dot-voice or a voice chat.
 var look_mute: Node = null
 ## Keys held by another action at the time of the check: [code]{action, key, other}[/code].
@@ -693,8 +698,18 @@ func _ensure_scoreboard_action() -> void:
 	InputMap.action_add_event(scoreboard_action, tab)
 
 
+func _look_voice() -> Node:
+	if look_voice != null:
+		return look_voice
+	return chat.get(&"voice") as Node if chat != null and chat.get(&"voice") is Node else null
+
+
+func _look_chat() -> Node:
+	return look_chat if look_chat != null else chat
+
+
 func _look_wanted() -> bool:
-	return use_look_mute and chat != null and chat.get(&"voice") is Node
+	return use_look_mute and _look_voice() != null
 
 
 # Rows in the game's key table (so the Controls page and help list them), unless it has its own.
@@ -772,6 +787,11 @@ func _ensure_look_actions() -> void:
 		InputMap.action_add_event(pair[0], key)
 
 
+## Builds the look keys now; [method setup] does it, so call this only when the voice came later.
+func build_look_mute() -> void:
+	_build_look_mute()
+
+
 func _build_look_mute() -> void:
 	if not _look_wanted() or look_mute != null:
 		return
@@ -785,7 +805,7 @@ func _build_look_mute() -> void:
 	_ensure_look_actions()
 	look_mute = (script as GDScript).new() as Node
 	look_mute.name = "LookMute"
-	look_mute.set(&"manager", chat.get(&"voice"))
+	look_mute.set(&"manager", _look_voice())
 	look_mute.set(&"separate_keys", look_separate_keys)
 	look_mute.set(&"gag_action", look_gag_action)
 	look_mute.set(&"mute_action", look_mute_action)
@@ -823,7 +843,8 @@ func find_look_conflicts() -> Array[Dictionary]:
 
 func _look_roster() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var list: Object = chat.get(&"self_mute") if chat != null else null
+	var holder := _look_chat()
+	var list: Object = holder.get(&"self_mute") if holder != null else null
 	if list == null or not (list.get(&"roster") is Array):
 		return out
 	var you := int(list.get(&"you"))
@@ -834,7 +855,8 @@ func _look_roster() -> Array[Dictionary]:
 
 
 func _look_chat_mute(peer: int, muted: bool) -> void:
-	var list: Object = chat.get(&"self_mute") if chat != null else null
+	var holder := _look_chat()
+	var list: Object = holder.get(&"self_mute") if holder != null else null
 	if list == null or not list.has_method(&"set_muted"):
 		return
 	for row: Dictionary in _look_roster():
@@ -858,7 +880,7 @@ func _look_target() -> int:
 				positions[int(row["peer"])] = at
 	elif chat != null and chat.get(&"voice_position_fn") is Callable \
 			and (chat.get(&"voice_position_fn") as Callable).is_valid():
-		var voice: Object = chat.get(&"voice")
+		var voice: Object = _look_voice()
 		var at: Callable = chat.get(&"voice_position_fn")
 		if voice != null and voice.has_method(&"active_speakers"):
 			for peer in voice.call(&"active_speakers"):

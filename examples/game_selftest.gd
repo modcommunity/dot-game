@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 257
+const CHECKS := 258
 
 var _entered := 0
 var _completed := 0
@@ -2006,6 +2006,19 @@ func _test_look_mute() -> void:
 	host.add_child(bare)
 	var _b := bare.setup()
 	_check(bare.look_mute == null, "a chat with no voice builds nothing")
+
+	var late := DotGameClient.new()
+	late.require_camera = false
+	late.use_settings = false
+	late.use_console = false
+	late.capture_pointer = false
+	late.look_mute_script = "res://examples/fixtures/test_look_mute.gd"
+	host.add_child(late)
+	var _l := late.setup()
+	late.look_voice = load("res://examples/fixtures/test_voice_state.gd").new()
+	late.build_look_mute()
+	_check(late.look_mute != null and late.look_mute.get(&"manager") == late.look_voice,
+		"a client whose voice comes after setup() builds the keys with build_look_mute()")
 
 	var rostered := DotGameClient.new()
 	rostered.require_camera = false
