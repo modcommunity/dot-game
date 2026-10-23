@@ -219,6 +219,18 @@ var maps_change_fn: Callable = Callable()
 var maps_title: String = ""
 var maps_noun: String = ""
 
+## Per-map settings on the client (cvars a map's file sets, see [DotGameMapConfig]): the whitelist, key -> `{type, min, max}`. Empty takes none.
+var map_config_keys: Dictionary = {}
+## The weakest layer for a map with no file: key -> value.
+var map_config_defaults: Dictionary = {}
+## The `cfg/game/<game>/dot_map/` game name; [code]DotAddonConfig.game[/code] when empty.
+var map_config_game: String = ""
+## `(key) -> Variant` and `(key, value) -> bool` over the client's cvars; both needed.
+var map_config_get_fn: Callable = Callable()
+var map_config_set_fn: Callable = Callable()
+## The built applier, after the first [method map_changed].
+var map_config: DotGameMapConfig = null
+
 # --- Built ------------------------------------------------------------------------
 
 ## The client root this serves.
@@ -583,6 +595,21 @@ func adopt_menu(adopted: Object, adopted_board: Object = null) -> void:
 	if _set_up:
 		_wire_menu()
 		_refresh_blocked()
+
+
+## The map changed on this client: applies the map's settings and puts the last map's back. Call it on every map load (a map's own load, a round's new layout); a no-op until [member map_config_keys] or its defaults and both functions are set.
+func map_changed(map_id: String) -> void:
+	if map_config == null:
+		if (map_config_keys.is_empty() and map_config_defaults.is_empty()) \
+				or not map_config_get_fn.is_valid() or not map_config_set_fn.is_valid():
+			return
+		map_config = DotGameMapConfig.new()
+		map_config.game_id = map_config_game if map_config_game != "" else DotAddonConfig.game
+		map_config.keys = map_config_keys
+		map_config.defaults = map_config_defaults
+		map_config.get_fn = map_config_get_fn
+		map_config.set_fn = map_config_set_fn
+	map_config.apply(map_id)
 
 
 ## Builds the console (dot-console) now, over [param manager] (the settings manager) and the
@@ -1067,6 +1094,8 @@ func _busy() -> bool:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_EXIT_TREE and map_config != null:
+		map_config.restore()
 	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
 		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
 		user_tier_on = false

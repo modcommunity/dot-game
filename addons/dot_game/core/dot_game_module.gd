@@ -106,6 +106,9 @@ var tick: int = 0
 ## [method report_map] said once that this server cannot take a map.
 var _warned_no_map_report := false
 
+## The per-map settings, built on the first [method report_map] when [method _map_config_keys] names any.
+var map_config: DotGameMapConfig = null
+
 ## The map [method report_map] last reported; a different one re-marks every seat loading.
 var _reported_map := ""
 
@@ -693,6 +696,8 @@ func _on_hibernation_changed(hibernating: bool) -> void:
 ## `DotGameManager.set_current_map` existed; it reports nothing there and says so once.
 ## Returns whether the server took it.
 func report_map(map_id: String) -> bool:
+	if map_id != _reported_map:
+		_apply_map_config(map_id)
 	# A different map is a map change: every client covers for it, so every seat is loading
 	# again. The first report is not one (nobody has seen a map yet), and the same map again
 	# changes nothing.
@@ -713,6 +718,47 @@ func report_map(map_id: String) -> bool:
 
 	server.games.call("set_current_map", map_id)
 	return true
+
+
+## The cvars a map's file may set: key -> `{type, min, max}` (dot-map's docs/map-config.md). Empty, the default, means this game takes no per-map settings.
+func _map_config_keys() -> Dictionary:
+	return {}
+
+
+## The weakest layer: key -> value for a map with no file (the converter's defaults).
+func _map_config_defaults() -> Dictionary:
+	return {}
+
+
+## The `cfg/game/<game>/dot_map/` folder's game name (the repository's, such as `game-arena`): `DotAddonConfig.game` when the host set it, else the module's name.
+func _map_config_game() -> String:
+	return DotAddonConfig.game if DotAddonConfig.game != "" else String(_module_name())
+
+
+## The key's current value; the server console's cvar unless overridden.
+func _map_config_get(key: String) -> Variant:
+	var cv: DotConVar = console.find_cvar(key) if console != null else null
+	return cv.get_string() if cv != null else null
+
+
+## Applies one value; false refuses it. The server console's cvar unless overridden.
+func _map_config_set(key: String, value: Variant) -> bool:
+	return console != null and console.set_cvar(key, str(value)).ok
+
+
+func _apply_map_config(map_id: String) -> void:
+	if map_config == null:
+		var keys := _map_config_keys()
+		var defaults := _map_config_defaults()
+		if keys.is_empty() and defaults.is_empty():
+			return
+		map_config = DotGameMapConfig.new()
+		map_config.game_id = _map_config_game()
+		map_config.keys = keys
+		map_config.defaults = defaults
+		map_config.get_fn = _map_config_get
+		map_config.set_fn = _map_config_set
+	map_config.apply(map_id)
 
 
 func _module_unload() -> void:
@@ -779,6 +825,9 @@ func _teardown() -> void:
 		game.set(PEER_LOADING_PROPERTY, Callable())
 	_set_peer_loading = false
 	_reported_map = ""
+	if map_config != null:
+		map_config.restore()
+		map_config = null
 
 	if server != null and server.hibernation_changed.is_connected(_on_hibernation_changed):
 		server.hibernation_changed.disconnect(_on_hibernation_changed)
@@ -867,6 +916,9 @@ func describe_lines() -> PackedStringArray:
 		"services   %s" % ("yes" if services != null else "no"),
 		"tick       %d" % tick,
 	])
+
+	if map_config != null:
+		lines.append_array(map_config.describe_lines())
 
 	if roster != null:
 		lines.append_array(roster.describe_lines())

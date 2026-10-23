@@ -10,6 +10,7 @@
 /addons/dot_core
 /addons/dot_server
 /addons/dot_net
+/addons/dot_map
 
 # Exports
 build/
