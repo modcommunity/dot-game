@@ -37,5 +37,7 @@ extends RefCounted
 # 16: DotGameMapScripts, the handler for dot-map's script.* events; DotGameModule.map_scripts.
 # 17: DotGameConfigBinder / DotGameConfigSchema, a DotConfig as layered load, cvars, `config` profile and yml diff.
 # 18: DotGameWorkbench and DotGameClient.add_workbench, the F9 tuning window.
-const LEVEL := 18
+# 19: DotGameNoblock, built by DotGameModule for a game with body_rules (_noblock_enabled / _noblock_side /
+#    _noblock_runtime, noblock), DotGameClient.add_noblock, DotGameConfigBinder.profile_kind.
+const LEVEL := 19
 const OLDEST := 1

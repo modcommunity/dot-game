@@ -321,6 +321,11 @@ func _module_load() -> DotResult:
 		_teardown()
 		return loaded
 
+	var blocked := _build_noblock()
+	if not blocked.ok:
+		_teardown()
+		return blocked
+
 	_follow_hibernation()
 	_attach_board()
 	start_auto_update(server)
@@ -489,6 +494,8 @@ func _build_roster() -> void:
 		roster.remove_fn = func(session: DotClientSession) -> void:
 			if bridge != null and bridge.has_method("remove_peer"):
 				bridge.call("remove_peer", session.peer_id)
+			if noblock != null:
+				noblock.rules.call(&"forget", session.userid)
 
 	roster.follow(services)
 
@@ -823,6 +830,50 @@ static func watched_packs(host: Object) -> Array:
 	return out
 
 
+## The block rules (teammates pass, enemies stop) when the game has a `body_rules`; null when off.
+var noblock: DotGameNoblock = null
+
+
+## Whether to wire dot-team's block rules. A game with its own `block_rules` wired by hand is left alone.
+func _noblock_enabled() -> bool:
+	return game != null and "body_rules" in game and game.get("body_rules") != null \
+		and not ("block_rules" in game and game.get("block_rules") != null)
+
+
+## `(player id) -> side id` for teammates ("" or null for none); the game's `team_of` by default.
+func _noblock_side(id: Variant) -> Variant:
+	if game == null or not game.has_method(&"team_of"):
+		return ""
+	var team := int(game.call(&"team_of", int(id)))
+	return str(team) if team > 0 else ""
+
+
+## The game's `DotProfileRuntime`, so the workbench lists the `noblock` kind; null for none.
+func _noblock_runtime() -> Object:
+	return null
+
+
+func _build_noblock() -> DotResult:
+	if not _noblock_enabled():
+		DotLog.debug(CHANNEL, "noblock off: no body_rules, or the game wires its own")
+		return DotResult.success(null)
+	if not DotGameNoblock.available():
+		DotLog.warn(CHANNEL, "noblock unavailable: dot-team is not in this build (players block each other)")
+		return DotResult.success(null)
+	var made := DotGameNoblock.create(String(_map_config_game()), Callable(self, "_noblock_side"))
+	if not made.ok:
+		return made
+	var built: DotGameNoblock = made.value
+	var bound := built.bind(add_cvar, self, _noblock_runtime())
+	if not bound.ok:
+		return bound.wrap("noblock")
+	built.feed(game.get("body_rules"))
+	if "block_rules" in game:
+		game.set("block_rules", built.rules)
+	noblock = built
+	return DotResult.success(built)
+
+
 ## Everything the sequence built, in the reverse order it was built in.
 ##
 ## [b]Reverse, and the order is not cosmetic.[/b] Services hold a callable the bridge
@@ -881,6 +932,7 @@ func _teardown() -> void:
 		_drop(net)
 		net = null
 
+	noblock = null
 	game = null
 	tick = 0
 

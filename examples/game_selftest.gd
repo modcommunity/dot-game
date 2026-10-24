@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 268
+const CHECKS := 272
 
 var _entered := 0
 var _completed := 0
@@ -89,6 +89,7 @@ func _run() -> void:
 			_test_hibernation()
 			await _test_the_teardown()
 
+		await _test_noblock_wired()
 		await _test_a_refused_game_load_unwinds()
 		await _test_a_refused_attach_unwinds()
 		_test_operator_net_ceiling()
@@ -631,6 +632,32 @@ func _test_the_teardown() -> void:
 
 
 # --- 6. Unwinding ----------------------------------------------------------
+
+class NoblockBody:
+	extends RefCounted
+	var pair_fn: Callable = Callable()
+
+
+func _test_noblock_wired() -> void:
+	_section("a game with body_rules gets the block rules from the module")
+
+	var body := NoblockBody.new()
+	_game.set("body_rules", body)
+	var loaded: DotResult = await _load_module()
+	_check(loaded.ok, "the module loads")
+	var module: DotGameModule = _server.modules.get_module("testgame") if loaded.ok else null
+	var wired := DotGameNoblock.available()
+	_check(
+		module != null and (module.noblock != null) == wired,
+		"noblock is built exactly when dot-team is in the build"
+	)
+	_check(body.pair_fn.is_valid() == wired, "and feeds the body's pair_fn")
+	_unload_module()
+	_game.set("body_rules", null)
+	_check(module == null or module.noblock == null, "and is gone after the unload")
+
+	_done()
+
 
 func _test_a_refused_game_load_unwinds() -> void:
 	_section("a game that refuses to load leaves nothing running")

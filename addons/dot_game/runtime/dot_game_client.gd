@@ -245,6 +245,8 @@ var user_tier_on: bool = false
 var user_cfg_overlay: UserCfgOverlay = null
 ## dot-core's load gate, under [member host]. Hold more on it: [code]gate.hold(&"map")[/code].
 var gate: DotLoadGate = null
+## Set by [method add_noblock].
+var noblock: DotGameNoblock = null
 ## The settings' menu (dot-menu's [code]DotMenu[/code]), its board and its map menu.
 ## A game that built its own menu assigns [member menu] before [method setup] (or calls
 ## [method adopt_menu]): no settings are built over it. Assigned [member board] is kept
@@ -1062,6 +1064,25 @@ func _refresh_blocked(_unused: Variant = null) -> void:
 ## True while the player's input should be off: covered, a menu open, typing, or busy.
 func is_input_blocked() -> bool:
 	return not is_shown() or is_menu_open() or _chat_typing() or _busy()
+
+
+## Follows the server's `mp_teamblock` family so this client predicts against the same pairs.
+## [param game] is the game object; its `block_rules` (set by the server module, or built here by
+## [DotGameNoblock]) feeds `body_rules.pair_fn`. Call once the link exists (after [method setup]).
+## Fails loudly when dot-team is absent or the link cannot replicate cvars.
+func add_noblock(game: Object, side_fn: Callable) -> DotResult:
+	if game == null or not ("body_rules" in game) or game.get("body_rules") == null:
+		return DotResult.fail(DotError.CODE_INVALID, "add_noblock needs a game with body_rules.")
+	var made := DotGameNoblock.create(map_config_game if map_config_game != "" else "game", side_fn)
+	if not made.ok:
+		return made
+	noblock = made.value
+	noblock.feed(game.get("body_rules"))
+	if "block_rules" in game:
+		game.set("block_rules", noblock.rules)
+	if link == null or not noblock.follow(link):
+		return DotResult.fail(DotError.CODE_STATE, "The game link cannot replicate cvars: noblock would not follow the server.")
+	return DotResult.success(noblock)
 
 
 ## Hosts a [DotGameWorkbench] on this client: its window counts as a menu overlay (pointer freed, input

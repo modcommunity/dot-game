@@ -11,6 +11,7 @@
 /addons/dot_server
 /addons/dot_net
 /addons/dot_map
+/addons/dot_team
 
 # Exports
 build/

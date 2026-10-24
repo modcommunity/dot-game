@@ -15,6 +15,9 @@ var players: Dictionary = {}
 ## Handed [method DotGameModule.is_peer_loading] by the module, because it is declared.
 var peer_loading_fn: Callable = Callable()
 
+## Set by a test to turn the module's noblock wiring on.
+var body_rules: Object = null
+
 
 func _ready() -> void:
 	DotRegistry.register(SERVICE, self)

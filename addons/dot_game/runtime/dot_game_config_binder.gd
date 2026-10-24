@@ -34,6 +34,8 @@ var json_path := ""
 ## Unknown keys, a bad JSON/profile file or a failed validate make [method load_layers] fail.
 var strict := default_strict()
 var profile_id := DEFAULT_ID
+## The workbench kind (and cfg subdirectory) of the profile set; a second binder in one game needs its own.
+var profile_kind := PROFILE_KIND
 ## Fields never exposed (on top of the config's sensitive keys).
 var skip_keys := PackedStringArray()
 ## Fields whose cvar is REPLICATED (a client predicts with them), by name or by `@export_group`.
@@ -117,7 +119,7 @@ func profile_set() -> DotProfileSet:
 			if e.has(k) and (k != "description" or e[k] != ""):
 				opts[k] = e[k]
 		fields.append(DotProfileSet.field(e["key"], e["type"], e["default"], opts))
-	_set = DotProfileSet.create("", game_id, PROFILE_KIND, fields)
+	_set = DotProfileSet.create("", game_id, profile_kind, fields)
 	_set.implicit_ids = PackedStringArray([profile_id])
 	_set.strict = strict
 	if not roots.is_empty():
@@ -168,7 +170,7 @@ func _file_present(set: DotProfileSet) -> bool:
 
 func _has_override() -> bool:
 	for a in OS.get_cmdline_user_args() + OS.get_cmdline_args():
-		if a.begins_with("--profile.%s/%s." % [PROFILE_KIND, profile_id]):
+		if a.begins_with("--profile.%s/%s." % [profile_kind, profile_id]):
 			return true
 	return false
 
@@ -313,7 +315,7 @@ func attach(runtime: DotProfileRuntime) -> void:
 
 
 func _on_profile(kind: String, id: String, _rev: int) -> void:
-	if kind != PROFILE_KIND or id != profile_id:
+	if kind != profile_kind or id != profile_id:
 		return
 	var set := profile_set()
 	var paths := set.runtime_paths(profile_id)
