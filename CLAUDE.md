@@ -13,6 +13,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/design.md](docs/design.md) | `DotGameModule`, `DotGameNetcode`, `DotGameRoster`, `DotGameChatClient`: why it exists, what belongs here, what is fatal, teardown order, `session_fn`, schema refusal, `report_map`, the Tab board, the suite |
 | [docs/services.md](docs/services.md) | `DotGameServices`: build order, loading by path, the live tools, the hooks, hibernation |
 | [docs/map-config.md](docs/map-config.md) | a game taking per-map settings (`DotGameMapConfig`, `_map_config_keys`, `DotGameClient.map_changed`) |
+| [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench` |
 | [docs/history.md](docs/history.md) | the bugs, and how each looked |
 
 ## Layout
@@ -21,7 +22,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | --- | --- |
 | `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses), `DotGameContent` |
 | `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer`; `DotGameLink`, a game's RPC link attached under the server node and freed with its bridge |
-| `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer), `DotGameMapConfig` (per-map settings) |
+| `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer), `DotGameWorkbench` (F9 tuning window and optional HTTP), `DotGameMapConfig` (per-map settings) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
 | `examples/game_selftest.tscn` | the suite; `examples/fixtures/` the module, bridge, identity and services it loads |
 

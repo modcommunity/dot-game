@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 261
+const CHECKS := 268
 
 var _entered := 0
 var _completed := 0
@@ -108,6 +108,7 @@ func _run() -> void:
 		await _test_client_user_tier()
 		await _test_client_without_the_addons()
 		await _test_link_survives_reload()
+		_test_workbench_hosting()
 
 	_teardown()
 
@@ -2080,4 +2081,21 @@ func _test_look_mute() -> void:
 	InputMap.erase_action(&"test_other_k")
 	InputMap.erase_action(&"test_other_g")
 	host.queue_free()
+	_done()
+
+
+func _test_workbench_hosting() -> void:
+	_section("the workbench is on where the player owns the process, off in production")
+	_check(DotGameWorkbench.default_panel(true, false, false, false), "the editor gets the panel")
+	_check(DotGameWorkbench.default_panel(false, true, false, false), "a debug build gets the panel")
+	_check(DotGameWorkbench.default_panel(false, false, true, false), "a listen host gets the panel")
+	_check(not DotGameWorkbench.default_panel(false, false, false, false), "a production client does not")
+	_check(not DotGameWorkbench.default_panel(true, true, true, true), "a dedicated server never builds a panel")
+	_check(not DotGameWorkbench.local_allowed(false, false, false), "the panel's actor is untrusted in production")
+	# this project links no dot-workbench: start() says so and builds nothing
+	var wb := DotGameWorkbench.new()
+	add_child(wb)
+	var res := wb.start()
+	_check(res.ok and res.value == false and wb.overlay == null, "without the addon there is no workbench and no error")
+	wb.queue_free()
 	_done()

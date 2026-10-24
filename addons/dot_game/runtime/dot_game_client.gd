@@ -64,6 +64,7 @@ const SETTINGS_SCRIPT := "res://addons/dot_menu/runtime/dot_menu_settings.gd"
 const EDITOR_SCRIPT := "res://addons/dot_menu/ui/dot_addon_config_editor_screen.gd"
 const ROW_SCRIPT := "res://addons/dot_menu/core/dot_menu_row.gd"
 const USER_CFG_PAGE := &"advanced"
+const LOCAL_SCRIPT := "res://addons/dot_console/core/dot_console_local.gd"
 const CONSOLE_KIT_SCRIPT := "res://addons/dot_console/runtime/dot_console_kit.gd"
 ## The Tab action made when the game's own key table has none.
 const SCOREBOARD_ACTION := &"dot_game_scoreboard"
@@ -1061,6 +1062,24 @@ func _refresh_blocked(_unused: Variant = null) -> void:
 ## True while the player's input should be off: covered, a menu open, typing, or busy.
 func is_input_blocked() -> bool:
 	return not is_shown() or is_menu_open() or _chat_typing() or _busy()
+
+
+## Hosts a [DotGameWorkbench] on this client: its window counts as a menu overlay (pointer freed, input
+## blocked, Escape closes it) and the console gets `workbench`. Call after [method setup] and after the
+## workbench's `start()` (which wants `listen_host_fn = client.listen_host_fn` set first). A workbench with no panel (production, or no dot-menu) only gets the command.
+func add_workbench(wb: Node) -> void:
+	if wb.get_parent() == null:
+		add_child(wb)
+	var panel: Variant = wb.get(&"overlay")
+	if panel is Control and menu != null and menu.has_method(&"add_overlay"):
+		menu.call(&"add_overlay", panel)
+		wb.connect(&"open_changed", func(open: bool) -> void:
+			if open and menu != null and is_instance_valid(menu) and menu.has_method(&"overlay_opened"):
+				menu.call(&"overlay_opened"))
+	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):
+		var local: Object = (load(LOCAL_SCRIPT) as GDScript).new()
+		local.call(&"add_command", &"workbench", "Tuning panel: workbench [open|close|toggle|export|http]", Callable(wb, &"console_command"))
+		console.call(&"add_source", local)
 
 
 ## True once the gate has lifted (or when there is none).
