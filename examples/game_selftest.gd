@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 294
+const CHECKS := 299
 
 var _entered := 0
 var _completed := 0
@@ -112,6 +112,7 @@ func _run() -> void:
 		_test_workbench_hosting()
 		await _test_avatar_actions()
 		await _test_avatar_content()
+		await _test_prejoin()
 
 	_teardown()
 
@@ -861,6 +862,46 @@ func _test_operator_ceiling_reaches_the_netcode() -> void:
 	_check(module.net != null and module.net.config.snapshot_rate == 12, "the snapshot rate is the operator's (12 divides tick 60)")
 	_check(module.net != null and module.net.config.max_entities_per_snapshot == 8, "and the entity cap")
 	_unload_module()
+	_done()
+
+
+func _test_prejoin() -> void:
+	_section("prejoin: avatar files come down before the shell connects, and never block it")
+	var host := Node.new()
+	add_child(host)
+	var progress := []
+	var pj := DotGamePrejoin.new()
+	pj.progress_fn = func(f: float, t: String) -> void: progress.append([f, t])
+	pj.rules_fn = func(_a: String) -> Dictionary: return {}
+	var none: DotResult = await pj.prepare(host, "127.0.0.1:1")
+	_check(none.ok and none.value == 0, "a server advertising nothing needs nothing")
+
+	var calls := []
+	pj.rules_fn = func(_a: String) -> Dictionary: return {"sv_avatar_content": "avatar/5/1"}
+	pj.fetch_fn = func(ids: Array, gate: DotLoadGate) -> DotResult:
+		calls.append(ids)
+		gate.hold(&"avatar_content", "Downloading avatars")
+		gate.set_progress(0.5, "Downloading avatar/5/1 (1 of 1)")
+		await get_tree().process_frame
+		gate.release(&"avatar_content")
+		return DotResult.success(1)
+	var got: DotResult = await pj.prepare(host, "127.0.0.1:1")
+	_check(got.ok and got.value == 1 and calls == [["avatar/5/1"]], "the advertised ids are fetched before the join")
+	_check(not progress.is_empty() and progress.back()[0] == 0.5, "progress reaches the loading screen's callback")
+
+	pj.fetch_fn = func(_ids: Array, _gate: DotLoadGate) -> DotResult:
+		return DotResult.fail(DotError.CODE_NETWORK, "cdn down")
+	var failed: DotResult = await pj.prepare(host, "127.0.0.1:1")
+	_check(not failed.ok and failed.error.code == DotError.CODE_NETWORK, "a failed download is reported so the caller can log it and join anyway")
+
+	pj.timeout_sec = 0.3
+	pj.fetch_fn = func(_ids: Array, _gate: DotLoadGate) -> DotResult:
+		await get_tree().create_timer(5.0).timeout
+		return DotResult.success(1)
+	var t0 := Time.get_ticks_msec()
+	var slow: DotResult = await pj.prepare(host, "127.0.0.1:1")
+	_check(not slow.ok and slow.error.code == DotError.CODE_TIMEOUT and Time.get_ticks_msec() - t0 < 2000, "a hung CDN times out and does not hold the join")
+	host.queue_free()
 	_done()
 
 
