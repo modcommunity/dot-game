@@ -35,5 +35,6 @@ extends RefCounted
 #    look_target_fn, look_chat_mute_fn, look_mute, look_conflicts), on G and K, default on.
 # 15: DotGameClient.restore_map_config, also run when the server connection drops (not only on EXIT_TREE).
 # 16: DotGameMapScripts, the handler for dot-map's script.* events; DotGameModule.map_scripts.
-const LEVEL := 16
+# 17: DotGameConfigBinder / DotGameConfigSchema, a DotConfig as layered load, cvars, `config` profile and yml diff.
+const LEVEL := 17
 const OLDEST := 1
