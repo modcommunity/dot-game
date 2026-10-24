@@ -16,6 +16,7 @@ const CHANNEL := "game.avatar_loadout"
 ## The scoped key's shape (dot-user-avatar's DotAvatarKey), checked before it reaches a URL.
 const _KEY_RE := "^[A-Za-z0-9_-]{8,128}$"
 const _CONTENT_RE := "^action/[1-9][0-9]{0,9}/[1-9][0-9]{0,9}$"
+const _WEARABLE_RE := "^wearable/[1-9][0-9]{0,9}/[1-9][0-9]{0,9}$"
 
 ## Built-in ids by wire kind (0 emote, 1 pose, 2 gesture): the site's BUILTIN_AVATAR_ACTIONS.
 const STARTER_KINDS := {
@@ -24,6 +25,9 @@ const STARTER_KINDS := {
 	"wave": 2, "point": 2, "thumbs_up": 2, "nod": 2, "shrug": 2,
 }
 const STARTER_LOOPS: PackedStringArray = ["dance", "clap", "sit", "salute", "arms_crossed", "hands_on_hips"]
+
+## The key [method parse_wearables] reads from the read's actions object.
+const WEARABLES_KEY := "WEARABLES"
 
 ## A client's [DotGameAvatarLoadoutAsk] is answered at most this often per peer.
 const ASK_MIN_SEC := 2.0
@@ -64,6 +68,8 @@ var reads: int = 0
 var refused: int = 0
 
 var _loadouts: Dictionary = {}
+## peer id -> the wearable content ids they have equipped.
+var _wearing: Dictionary = {}
 var _peers: Dictionary = {}
 var _gen: Dictionary = {}
 var _read_at: Dictionary = {}
@@ -74,6 +80,7 @@ var _idle := 0.0
 var _asked_at: Dictionary = {}
 static var _key_re: RegEx = null
 static var _content_re: RegEx = null
+static var _wearable_re: RegEx = null
 
 
 func _process(delta: float) -> void:
@@ -120,6 +127,7 @@ func remove_peer(peer_id: int) -> void:
 	_queue.erase(peer_id)
 	if relay != null and relay.has_method(&"forget"):
 		relay.call(&"forget", peer_id)
+	var _w := _wearing.erase(peer_id)
 	if _loadouts.erase(peer_id):
 		_send(peer_id, [], 0)
 
@@ -157,6 +165,35 @@ func entry_for(peer_id: int, id: String) -> Dictionary:
 		if e["id"] == id:
 			return e
 	return {}
+
+
+## The equipped wearables' content ids from the read (`WEARABLES`, the backbone's `wearables` rows): well-formed
+## `wearable/<id>/<version>` only, one per slot, at most [constant DotGameAvatarLoadoutMessage.MAX_WEARABLES].
+static func parse_wearables(actions: Variant) -> PackedStringArray:
+	var out := PackedStringArray()
+	var rows: Variant = (actions as Dictionary).get(WEARABLES_KEY) if actions is Dictionary else null
+	if not rows is Array:
+		return out
+	if _wearable_re == null:
+		_wearable_re = RegEx.create_from_string(_WEARABLE_RE)
+	var slots := {}
+	for row: Variant in rows:
+		if not row is Dictionary or not (row as Dictionary).get("contentId") is String:
+			continue
+		var id: String = row["contentId"]
+		var slot := String(row.get("slot", ""))
+		if _wearable_re.search(id) == null or slots.has(slot) or out.has(id):
+			continue
+		slots[slot] = true
+		out.append(id)
+		if out.size() >= DotGameAvatarLoadoutMessage.MAX_WEARABLES:
+			break
+	return out
+
+
+## The wearable ids [param peer_id] has equipped, as last read.
+func wearables_of(peer_id: int) -> PackedStringArray:
+	return _wearing.get(peer_id, PackedStringArray())
 
 
 ## The backbone's `actions` (`{EMOTE: [...], POSE: [...], GESTURE: [...]}`) as wire entries:
@@ -233,10 +270,12 @@ func _adopt(peer_id: int, res: DotResult) -> void:
 	var entries: Variant = parse(res.value)
 	if entries == null:
 		return
+	var worn := parse_wearables(res.value)
 	# A re-read that changed nothing is not worth a message to every player.
-	if _loadouts.has(peer_id) and _loadouts[peer_id] == entries:
+	if _loadouts.has(peer_id) and _loadouts[peer_id] == entries and _wearing.get(peer_id, PackedStringArray()) == worn:
 		return
 	_loadouts[peer_id] = entries
+	_wearing[peer_id] = worn
 	DotLog.debug(CHANNEL, "loadout read", {"peer": peer_id, "entries": (entries as Array).size()})
 	_send(peer_id, entries, 0)
 
@@ -247,6 +286,7 @@ func _send(actor: int, entries: Array, to_peer: int) -> void:
 	var m := DotGameAvatarLoadoutMessage.new()
 	m.actor = actor
 	m.entries = entries
+	m.wearables = _wearing.get(actor, PackedStringArray())
 	var targets: Array = [to_peer] if to_peer > 0 else _peers.keys()
 	for p: int in targets:
 		if not net.messages.peer_has(p, DotGameAvatarLoadoutMessage.NAME):
@@ -301,7 +341,15 @@ func _fetch(key: String) -> DotResult:
 		if res.error != null and res.error.http_status == 404:
 			return DotResult.success(null)
 		return res.wrap("reading avatar actions")
-	return DotResult.success((res.value as Dictionary).get("actions") if res.value is Dictionary else null)
+	var body: Dictionary = res.value if res.value is Dictionary else {}
+	var actions: Variant = body.get("actions")
+	var worn: Variant = body.get("wearables")
+	if worn is Array and not (worn as Array).is_empty():
+		# Carried beside the kinds, which [method parse] never reads; no actions still means the starters.
+		var merged: Dictionary = (actions as Dictionary).duplicate() if actions is Dictionary else {}
+		merged[WEARABLES_KEY] = worn
+		return DotResult.success(merged)
+	return DotResult.success(actions)
 
 
 func describe() -> Dictionary:

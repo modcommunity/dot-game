@@ -27,8 +27,14 @@ var content_fn: Callable = Callable()
 ## func(id: String) -> String: the site library's file url for an upload id, "" while the library is unread.
 var url_fn: Callable = Callable()
 
+## func(id: String) -> Dictionary: the site library's row for a wearable id (slot, bone, offset, sha256, url), empty while unread.
+var wearable_row_fn: Callable = Callable()
+
 ## func(rows: Dictionary) -> DotResult of the input's actions; default dot-user-avatar's `from_backbone`, by path.
 var actions_fn: Callable = Callable()
+
+## Seconds between looks at whether a figure has appeared, or been rebuilt, since its wearables were last hung.
+const WEAR_RETRY_SEC := 1.0
 
 ## Uploaded clip scenes kept, at most this many; a hostile server cannot make it fetch thousands.
 const MAX_SCENES := 64
@@ -44,6 +50,14 @@ var _ask_wait := 0.0
 var _ask_gap := 1.0
 var _scenes: Dictionary = {}
 var _fetching: Dictionary = {}
+## peer id -> the wearable ids the server said they wear, and what is hung on which figure.
+var worn: Dictionary = {}
+var _wearers: Dictionary = {}
+var _worn_on: Dictionary = {}
+var _wear_wait := 0.0
+var _wear_cache: RefCounted = null
+## Wearable ids already fetched once, so a failed download is not retried every second.
+var _wear_tried: Dictionary = {}
 ## Whether the keys were last built with a placeholder url, to rebuild them once the library names the real one.
 var _placeholder_urls := false
 
@@ -81,6 +95,11 @@ func _process(delta: float) -> void:
 			_ask()
 	if input != null and blocked_fn.is_valid():
 		input.set(&"enabled", not bool(blocked_fn.call()))
+	_wear_wait -= delta
+	if _wear_wait <= 0.0 and not worn.is_empty():
+		_wear_wait = WEAR_RETRY_SEC
+		for peer: int in worn:
+			var _w := wear(peer)
 
 
 ## Asks the server for every loadout: the ones told at the join reached no handler if this attached late.
@@ -120,6 +139,12 @@ func _on_loadout(message: DotNetMessage) -> void:
 	if m == null:
 		return
 	_ask_tries = 0
+	if m.wearables.is_empty():
+		var _x := worn.erase(m.actor)
+	else:
+		worn[m.actor] = m.wearables
+		_worn_on.erase(m.actor)
+	var _w := wear(m.actor)
 	if m.entries.is_empty():
 		var _e := loadouts.erase(m.actor)
 		return
@@ -192,7 +217,13 @@ func _fetch_clip(entry: Dictionary) -> void:
 	if _placeholder_urls and net != null and loadouts.has(net.local_peer_id):
 		var _a := apply_to_input(loadouts[net.local_peer_id])
 	if res is DotResult and (res as DotResult).ok and (res as DotResult).value is Node3D:
-		_scenes[id] = (res as DotResult).value
+		if id.begins_with("wearable/"):
+			# The file is in the cache now; each figure builds its own copy from there.
+			((res as DotResult).value as Node3D).free()
+			for peer: int in worn:
+				var _w := wear(peer)
+		else:
+			_scenes[id] = (res as DotResult).value
 	else:
 		DotLog.debug(CHANNEL, "clip not fetched", {"id": id,
 			"why": (res as DotResult).error.message if res is DotResult and not (res as DotResult).ok else "no scene"})
@@ -229,3 +260,49 @@ func _play(peer_id: int, id: String, loop: bool, elapsed: float) -> void:
 	else:
 		DotLog.debug(CHANNEL, "clip not playable on this figure", {"id": id,
 			"why": (added as DotResult).error.message if added is DotResult else "?"})
+
+
+## Hangs [param peer_id]'s wearables on their figure's skeleton ([code]DotAvatarWearables[/code], loaded by
+## path), once per figure: a figure that is not drawn yet, or a library not yet read, is tried again
+## later. Each item is fetched through [member content_fn] by id, which fills the file cache and the
+## library row [member wearable_row_fn] reads. True when something is hung, or nothing is to be.
+func wear(peer_id: int) -> bool:
+	var ids: PackedStringArray = worn.get(peer_id, PackedStringArray())
+	var figure: Object = figure_fn.call(peer_id) if figure_fn.is_valid() else null
+	if figure == null or not is_instance_valid(figure) or not figure.has_method(&"skeleton"):
+		return false
+	var skeleton: Skeleton3D = figure.call(&"skeleton")
+	if skeleton == null:
+		return false
+	if _worn_on.get(peer_id) == [figure.get_instance_id(), ids]:
+		return true
+	var wearer: RefCounted = _wearers.get(peer_id)
+	if ids.is_empty():
+		if wearer != null:
+			wearer.call(&"clear")
+		_worn_on[peer_id] = [figure.get_instance_id(), ids]
+		return true
+	var rows := []
+	for id in ids:
+		var row: Dictionary = wearable_row_fn.call(id) if wearable_row_fn.is_valid() else {}
+		if row.is_empty():
+			if not _wear_tried.has(id):
+				_wear_tried[id] = true
+				var _f := fetch_clip({"id": id})
+			return false
+		rows.append(row)
+	var script_path := "res://addons/dot_user_avatar/wearables/dot_avatar_wearables.gd"
+	if not ResourceLoader.exists(script_path):
+		return false
+	if wearer == null:
+		wearer = (load(script_path) as GDScript).new()
+		if _wear_cache == null:
+			_wear_cache = (load("res://addons/dot_user_avatar/actions/dot_avatar_content_cache.gd") as GDScript).new()
+		wearer.set(&"cache", _wear_cache)
+		_wearers[peer_id] = wearer
+	var res: DotResult = wearer.call(&"apply", skeleton, rows)
+	if not res.ok:
+		DotLog.debug(CHANNEL, "wearables not hung", {"peer": peer_id, "why": res.error.message})
+		return false
+	_worn_on[peer_id] = [figure.get_instance_id(), ids]
+	return true

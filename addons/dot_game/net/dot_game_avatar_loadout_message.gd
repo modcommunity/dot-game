@@ -11,6 +11,8 @@ const NAME := &"game.avatar_loadout"
 const MAX_ENTRIES := 24
 const MAX_ID := 32
 const MAX_CLIP := 64
+## Wearable slots the site has (dot-user-avatar's DotAvatarWearables.SLOT_BONES), one item each.
+const MAX_WEARABLES := 7
 
 ## Wire order of [code]kind[/code]: emote, pose, gesture.
 const KINDS: PackedStringArray = ["emote", "pose", "gesture"]
@@ -19,6 +21,10 @@ var actor: int = 0
 
 ## [code]{"id": String, "kind": int, "loop": bool, "clip": String}[/code]; clip is "" for a built-in.
 var entries: Array = []
+
+## The equipped wearables' content ids (`wearable/<id>/<version>`), in slot order. Ids only: the
+## client reads slot, bone, offset, url and hash from the site library and verifies the file.
+var wearables: PackedStringArray = PackedStringArray()
 
 
 func _type_name() -> StringName:
@@ -35,6 +41,10 @@ func _write(w: DotNetWriter) -> void:
 		w.write_uint(clampi(int(e.get("kind", 0)), 0, 2), 2)
 		w.write_bool(bool(e.get("loop", false)))
 		w.write_string(String(e.get("clip", "")), MAX_CLIP)
+	var worn := mini(wearables.size(), MAX_WEARABLES)
+	w.write_uint(worn, 3)
+	for i in worn:
+		w.write_string(wearables[i], MAX_ID)
 
 
 func _read(r: DotNetReader) -> void:
@@ -47,10 +57,13 @@ func _read(r: DotNetReader) -> void:
 		var loop := r.read_bool()
 		var clip := r.read_string(MAX_CLIP)
 		entries.append({"id": id, "kind": kind, "loop": loop, "clip": clip})
+	wearables = PackedStringArray()
+	for i in mini(r.read_uint(3), MAX_WEARABLES):
+		wearables.append(r.read_string(MAX_ID))
 
 
 func _validate() -> DotResult:
-	if actor <= 0 or entries.size() > MAX_ENTRIES:
+	if actor <= 0 or entries.size() > MAX_ENTRIES or wearables.size() > MAX_WEARABLES:
 		return DotResult.fail(DotError.CODE_INVALID, "avatar loadout out of range")
 	for e: Dictionary in entries:
 		var id := String(e.get("id", ""))

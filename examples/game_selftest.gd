@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 350
+const CHECKS := 358
 
 var _entered := 0
 var _completed := 0
@@ -852,6 +852,13 @@ class FakeActionInput extends Node:
 	var actions: Object = RefCounted.new()
 
 
+class FakeSkeletonFigure extends RefCounted:
+	var bones := Skeleton3D.new()
+
+	func skeleton() -> Skeleton3D:
+		return bones
+
+
 class FakeActionFigure extends RefCounted:
 	var clips := {}
 	var played: Array = []
@@ -1110,6 +1117,35 @@ func _test_avatar_loadout_client() -> void:
 	lm.entries = [{"id": "wave", "kind": 2, "loop": false, "clip": ""}]
 	deliver.call(lm)
 	_check(seen_rows.size() == 2, "another player's loadout leaves the local keys alone")
+	var wm := DotGameAvatarLoadoutMessage.new()
+	wm.actor = 9
+	wm.wearables = PackedStringArray(["wearable/3/1", "wearable/4/2"])
+	var ww := DotNetWriter.new()
+	var _we := server_net.messages.encode(wm, ww)
+	var wr := net.messages.decode(DotNetReader.new(ww.to_bytes()), 1, false)
+	_check(wr.ok and wr.value is DotGameAvatarLoadoutMessage and wr.value.wearables == wm.wearables, "the wearable ids ride the loadout message", str(wr.error.message if not wr.ok else ""))
+	wm.wearables = PackedStringArray(["a", "b", "c", "d", "e", "f", "g", "h"])
+	_check(not wm.validate().ok, "a loadout message with too many wearables is refused")
+	var parsed := DotGameAvatarLoadouts.parse_wearables({"WEARABLES": [
+		{"contentId": "wearable/3/1", "slot": "head"}, {"contentId": "wearable/4/2", "slot": "head"},
+		{"contentId": "wearable/../1", "slot": "back"}, {"contentId": "wearable/5/1", "slot": "back"}, 7]})
+	_check(parsed == PackedStringArray(["wearable/3/1", "wearable/5/1"]), "the read's wearables: well-formed ids, one per slot", str(parsed))
+	_check(DotGameAvatarLoadouts.parse_wearables("junk").is_empty() and DotGameAvatarLoadouts.parse_wearables({}).is_empty(), "no wearables in the read is none")
+	var skel_fig := FakeSkeletonFigure.new()
+	figures[9] = skel_fig
+	var looked := []
+	client.wearable_row_fn = func(id: String) -> Dictionary:
+		looked.append(id)
+		return {}
+	var wl := DotGameAvatarLoadoutMessage.new()
+	wl.actor = 9
+	wl.wearables = PackedStringArray(["wearable/3/1"])
+	deliver.call(wl)
+	_check(not client.wear(9) and looked.has("wearable/3/1") and client.worn[9] == wl.wearables, "wearables wait for the library row, and are asked for once", str(looked))
+	wl.wearables = PackedStringArray()
+	deliver.call(wl)
+	_check(not client.worn.has(9) and client.wear(9), "a loadout with no wearables takes them off")
+	skel_fig.bones.free()
 	client.queue_free()
 	input.queue_free()
 	net.queue_free()
