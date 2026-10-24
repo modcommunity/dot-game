@@ -244,8 +244,8 @@ var avatar_actions: DotGameAvatarActionClient = null
 ## The content fetcher of the last [method prepare_avatar_content], whose cache holds the files.
 var avatar_fetcher: RefCounted = null
 
-## The site and its id for this server, where other players' uploaded clips are fetched from. Set by
-## [method prepare_avatar_content]; a game that skips it sets them itself.
+## The site and its id for this server, where other players' uploaded clips are fetched from. Left
+## empty, [method avatar_site] and [method avatar_server] find them when a clip is fetched.
 var avatar_site_url: String = ""
 var avatar_server_id: int = 0
 var _avatar_library := {}
@@ -1102,6 +1102,8 @@ func add_noblock(game: Object, side_fn: Callable) -> DotResult:
 ## stays held showing why and the caller must not connect. [param server_id] is the site's id for the server.
 func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
 	var ids := DotGameAvatarContent.ids_from_rules(rules)
+	if server_id <= 0:
+		server_id = DotGameAvatarContent.server_id_from_rules(rules)
 	avatar_site_url = base_url
 	avatar_server_id = server_id
 	var kept := []
@@ -1111,6 +1113,20 @@ func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int,
 	if not res.ok:
 		DotLog.warn(CHANNEL, "avatar content not ready; not connecting", {"why": res.error.message})
 	return res
+
+
+## [member avatar_site_url], else the site this client signs in against.
+func avatar_site() -> String:
+	return avatar_site_url if avatar_site_url != "" else DotGameAvatarContent.default_site_url()
+
+
+## [member avatar_server_id], else the server's replicated [constant DotGameAvatarContent.SERVER_CVAR].
+func avatar_server() -> int:
+	if avatar_server_id > 0:
+		return avatar_server_id
+	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
+	var cvars: Variant = source.get(&"replicated_cvars") if source != null and is_instance_valid(source) else null
+	return DotGameAvatarContent.server_id_from_rules(cvars) if cvars is Dictionary else 0
 
 
 ## The signed-in member's equipped actions from the backbone's avatar read, ready for
@@ -1145,7 +1161,7 @@ func add_avatar_actions(net: DotNetManager, figure_fn: Callable, backbone_action
 	avatar_actions = DotGameAvatarActionClient.new()
 	avatar_actions.blocked_fn = is_input_blocked
 	avatar_actions.content_fn = func(entry: Dictionary) -> DotResult:
-		return await DotGameAvatarContent.fetch_clip(self, null, avatar_site_url, avatar_server_id, entry, _avatar_library)
+		return await DotGameAvatarContent.fetch_clip(self, null, avatar_site(), avatar_server(), entry, _avatar_library)
 	add_child(avatar_actions)
 	avatar_actions.attach(net, input, figure_fn)
 	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):

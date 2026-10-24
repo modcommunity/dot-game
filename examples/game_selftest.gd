@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 329
+const CHECKS := 350
 
 var _entered := 0
 var _completed := 0
@@ -114,6 +114,7 @@ func _run() -> void:
 		await _test_avatar_loadouts()
 		await _test_avatar_loadout_client()
 		await _test_avatar_content()
+		await _test_site_server()
 		await _test_prejoin()
 
 	_teardown()
@@ -782,6 +783,7 @@ func _test_avatar_actions() -> void:
 				var m := DotGameAvatarActionMessage.new()
 				m.sender_peer_id = peer
 				m.id = id
+				m.loop = true
 				module.net.messages.dispatch(m)
 			ask.call(7, "wave")
 			_check(sent.size() == 1 and sent[0][0] == 0, "a starter action is sent to everyone")
@@ -789,6 +791,34 @@ func _test_avatar_actions() -> void:
 			var read := module.net.messages.decode(DotNetReader.new(sent[0][1]), 1, false) if not sent.is_empty() else null
 			_check(read != null and read.ok and read.value is DotGameAvatarActionMessage and read.value.actor == 7 and read.value.id == "wave",
 				"naming who and what")
+			_check(read != null and read.ok and read.value.loop == false, "a built-in's loop is its own, not the client's (asked true)")
+			clock[0] += 1000
+			var asked_loop := func(peer: int, id: String, loop: bool) -> void:
+				var m := DotGameAvatarActionMessage.new()
+				m.sender_peer_id = peer
+				m.id = id
+				m.loop = loop
+				module.net.messages.dispatch(m)
+			asked_loop.call(7, "dance", false)
+			var dance := module.net.messages.decode(DotNetReader.new(sent[1][1]), 1, false) if sent.size() == 2 else null
+			_check(dance != null and dance.ok and dance.value.loop == true, "a looping built-in loops though the client asked not to")
+			sent.resize(1)
+			clock[0] += 1000
+			TestModule.avatar_veto = ["bow"]
+			ask.call(7, "bow")
+			TestModule.avatar_veto = []
+			_check(sent.size() == 1, "the module's own _avatar_action_veto override stops it")
+			var game_hook := Node.new()
+			game_hook.set_script(_veto_game_script())
+			var kept_game: Object = module.game
+			module.game = game_hook
+			ask.call(7, "bow")
+			module.game = kept_game
+			game_hook.free()
+			_check(sent.size() == 1, "and so does the game object's, when the module does not override it")
+			ask.call(7, "bow")
+			_check(sent.size() == 2, "with neither, it plays")
+			sent.resize(1)
 			ask.call(7, "dance")
 			_check(sent.size() == 1, "a second one inside the interval is dropped")
 			clock[0] += 1000
@@ -807,6 +837,13 @@ func _test_avatar_actions() -> void:
 			_check(DotGameAvatarActionRelay.STARTER_IDS.size() == 13, "thirteen starter ids")
 			_unload_module()
 	_done()
+
+
+func _veto_game_script() -> GDScript:
+	var g := GDScript.new()
+	g.source_code = "extends Node\nfunc _avatar_action_veto(_p: int, id: String) -> bool:\n\treturn id == \"bow\"\n"
+	var _r := g.reload()
+	return g
 
 
 class FakeActionInput extends Node:
@@ -918,6 +955,19 @@ func _test_avatar_loadouts() -> void:
 	var late := told.filter(func(t: Array) -> bool: return t[0] == 8 and t[1].actor == 5)
 	_check(late.size() == 1, "a late joiner is told the loadouts already read", str(told.size()))
 
+	# A client that wired its handler after that message asks, and is told again.
+	var ask_from := func(peer: int) -> int:
+		var before := sent.size()
+		var q := DotGameAvatarLoadoutAsk.new()
+		q.sender_peer_id = peer
+		module.net.messages.dispatch(q)
+		return _loadout_sent(module, sent.slice(before)).filter(func(t: Array) -> bool: return t[0] == peer and t[1].actor == 5).size()
+	sent.clear()
+	_check(ask_from.call(8) == 1, "a client's ask is answered with the loadouts already read")
+	_check(ask_from.call(8) == 0, "a second ask inside the interval is not")
+	clock[0] += 2500
+	_check(ask_from.call(8) == 1 and ask_from.call(77) == 0, "again after it, and never to a peer not in the game")
+
 	_check(not lo.refresh(5), "a second read inside the interval is refused")
 	clock[0] += 31000
 	_check(lo.refresh(5), "and allowed after it")
@@ -1001,6 +1051,11 @@ func _test_avatar_loadout_client() -> void:
 	var figures := {7: FakeActionFigure.new()}
 	var client := DotGameAvatarActionClient.new()
 	add_child(client)
+	var asks := []
+	net.send_fn = func(_peer: int, payload: PackedByteArray, _d: int) -> void:
+		var r := server_net.messages.decode(DotNetReader.new(payload), 4, true)
+		if r.ok and r.value is DotGameAvatarLoadoutAsk:
+			asks.append(true)
 	var fetched := []
 	client.content_fn = func(entry: Dictionary) -> DotResult:
 		fetched.append(entry["id"])
@@ -1016,8 +1071,13 @@ func _test_avatar_loadout_client() -> void:
 	var lm := DotGameAvatarLoadoutMessage.new()
 	lm.actor = 7
 	lm.entries = [{"id": "action/9/1", "kind": 0, "loop": true, "clip": "Hop"}, {"id": "wave", "kind": 2, "loop": false, "clip": ""}]
+	_check(asks.size() == 1, "attaching asks the server for the loadouts it may have missed", str(asks.size()))
+	client._process(1.1)
+	_check(asks.size() == 2, "and asks again while none has come")
 	deliver.call(lm)
 	deliver.call(lm)
+	client._process(10.0)
+	_check(asks.size() == 2, "and stops once one arrives")
 	for i in 3:
 		await get_tree().process_frame
 	_check(fetched == ["action/9/1"], "the upload is fetched once, the built-in not at all", str(fetched))
@@ -1147,6 +1207,69 @@ func _test_prejoin() -> void:
 	var slow: DotResult = await pj.prepare(host, "127.0.0.1:1")
 	_check(not slow.ok and slow.error.code == DotError.CODE_TIMEOUT and Time.get_ticks_msec() - t0 < 2000, "a hung CDN times out and does not hold the join")
 	host.queue_free()
+	_done()
+
+
+class FakeAuthServer extends RefCounted:
+	var audience := ""
+	func join_audience() -> String:
+		return audience
+
+
+class FakeAuthConfig extends RefCounted:
+	var backbone_url := "https://site.test/"
+
+
+class FakeAuthClient extends RefCounted:
+	var config := FakeAuthConfig.new()
+
+
+class FakeLink extends RefCounted:
+	var replicated_cvars := {}
+
+
+func _test_site_server() -> void:
+	_section("the server's site id: advertised as a replicated rule, read by prejoin and the client")
+	_check(DotGameAvatarContent.server_id_from_audience("server:42") == 42 and DotGameAvatarContent.server_id_from_audience("app:42") == 0
+		and DotGameAvatarContent.server_id_from_audience("server:x") == 0, "only a server: audience is a site server id")
+	_check(DotGameAvatarContent.server_id_from_rules({"sv_site_server": "17"}) == 17 and DotGameAvatarContent.server_id_from_rules({"sv_site_server": "-3"}) == 0
+		and DotGameAvatarContent.server_id_from_rules({}) == 0, "the rule parses, and nonsense is no id")
+	var auth := FakeAuthServer.new()
+	DotRegistry.register(&"dot_auth_server", auth)
+	TestModule.site_server = -1
+	var loaded: DotResult = await _load_module()
+	if _check(loaded.ok, "the module loads", str(loaded.error)):
+		var module := loaded.value as DotGameModule
+		var cv := module.console.find_cvar(DotGameAvatarContent.SERVER_CVAR)
+		_check(cv != null and cv.get_string() == "0" and cv.has_flag(DotConVar.FLAG_NOTIFY) and cv.has_flag(DotConVar.FLAG_REPLICATED),
+			"advertised as a notify, replicated cvar, 0 while dot-auth has not read it")
+		var timer := module.get_node_or_null("SiteServerRetry") as Timer
+		auth.audience = "server:42"
+		if _check(timer != null, "and looked for again"):
+			timer.timeout.emit()
+		_check(cv != null and cv.get_string() == "42", "it takes the audience dot-auth read", cv.get_string() if cv != null else "")
+		_unload_module()
+	DotRegistry.unregister_instance(&"dot_auth_server", auth)
+
+	var pj := DotGamePrejoin.new()
+	pj.rules_fn = func(_a: String) -> Dictionary: return {"sv_avatar_content": "avatar/5/1", "sv_site_server": "42"}
+	pj.fetch_fn = func(_ids: Array, _g: Object) -> DotResult: return DotResult.success(1)
+	var _p: DotResult = await pj.prepare(self, "127.0.0.1:1")
+	_check(pj.server_id == 42, "prejoin reads the server id from the rules", str(pj.server_id))
+
+	var ac := FakeAuthClient.new()
+	DotRegistry.register(&"dot_auth_client", ac)
+	_check(DotGameAvatarContent.default_site_url() == "https://site.test", "the site defaults to the one the client signs in against")
+	var platform := DotGameClient.new()
+	var link := FakeLink.new()
+	link.replicated_cvars = {"sv_site_server": "42"}
+	platform.link = link
+	_check(platform.avatar_site() == "https://site.test" and platform.avatar_server() == 42, "the client finds both by itself")
+	platform.avatar_site_url = "https://other.test"
+	platform.avatar_server_id = 9
+	_check(platform.avatar_site() == "https://other.test" and platform.avatar_server() == 9, "and a game's own values win")
+	platform.free()
+	DotRegistry.unregister_instance(&"dot_auth_client", ac)
 	_done()
 
 

@@ -45,5 +45,8 @@ extends RefCounted
 # 22: DotGameAvatarContent, DotGameModule._avatar_content_required (sv_avatar_content), DotGameClient.prepare_avatar_content / read_avatar_actions.
 # 23: DotGameAvatarLoadouts and DotGameAvatarLoadoutMessage (the server reads and relays every player's loadout),
 #    DotGameAvatarActionClient.content_fn / loadouts, DotGameAvatarContent.fetch_clip.
-const LEVEL := 23
+# 24: DotGameAvatarLoadoutAsk (a client asks for the loadouts it missed; DotGameAvatarLoadouts.answer),
+#    DotGameAvatarContent.SERVER_CVAR (sv_site_server) / default_site_url, DotGameModule._site_server_id,
+#    DotGameClient.avatar_site / avatar_server; the module's avatar hooks now reach the relay.
+const LEVEL := 24
 const OLDEST := 1

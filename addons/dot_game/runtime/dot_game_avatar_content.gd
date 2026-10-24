@@ -17,6 +17,10 @@ const FETCHER := "res://addons/dot_user_avatar/actions/dot_avatar_content_fetche
 ## Longest advertisement read; the fetcher then caps the id count.
 const MAX_TEXT := 4096
 
+## The server's numeric id on the site (its integration credential's `server:<id>`), a notify and
+## replicated cvar, so a browser row and a joined client both know which library to read.
+const SERVER_CVAR := "sv_site_server"
+
 
 static func format(ids: Array) -> String:
 	var parts := PackedStringArray()
@@ -38,6 +42,31 @@ static func parse(text: String) -> Array:
 ## The ids a server's query rules advertise; empty when it advertises none.
 static func ids_from_rules(rules: Dictionary) -> Array:
 	return parse(String(rules.get(CVAR, "")))
+
+
+## The site server id a server's query rules (or a link's replicated cvars) advertise; 0 for none.
+static func server_id_from_rules(rules: Dictionary) -> int:
+	var text := String(rules.get(SERVER_CVAR, "")).strip_edges()
+	return int(text) if text.is_valid_int() and int(text) > 0 else 0
+
+
+## The site the client signs in against: the registry's `dot_auth_client` (the shell's) or
+## `dot_backbone_client` config `backbone_url`; "" when neither is placed.
+static func default_site_url() -> String:
+	for service: StringName in [&"dot_auth_client", &"dot_backbone_client"]:
+		var client: Object = DotRegistry.get_service(service)
+		var cfg: Variant = client.get("config") if client != null else null
+		if cfg is Object and "backbone_url" in cfg and String(cfg.get("backbone_url")).strip_edges() != "":
+			return String(cfg.get("backbone_url")).strip_edges().trim_suffix("/")
+	return ""
+
+
+## The site id from [param audience] (`server:<id>`), 0 for anything else (an `app:` credential).
+static func server_id_from_audience(audience: String) -> int:
+	if not audience.begins_with("server:"):
+		return 0
+	var text := audience.trim_prefix("server:")
+	return int(text) if text.is_valid_int() and int(text) > 0 else 0
 
 
 static func available() -> bool:

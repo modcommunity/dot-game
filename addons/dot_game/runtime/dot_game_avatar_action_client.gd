@@ -34,6 +34,11 @@ const MAX_SCENES := 64
 var loadouts: Dictionary = {}
 
 var _online := false
+## Asks left for the loadouts; repeated, further apart each time, until one arrives (the first may
+## leave before the connection is up).
+var _ask_tries := 0
+var _ask_wait := 0.0
+var _ask_gap := 1.0
 var _scenes: Dictionary = {}
 var _fetching: Dictionary = {}
 
@@ -51,6 +56,10 @@ func attach(p_net: DotNetManager, p_input: Object, p_figure_fn: Callable) -> voi
 			DotLog.warn(CHANNEL, "type not registered before the seal; actions stay local",
 				{"why": on.error.message})
 		var _l := net.messages.on(DotGameAvatarLoadoutMessage.NAME, _on_loadout)
+		if _online and net.messages.type_names().has(String(DotGameAvatarLoadoutAsk.NAME)):
+			_ask_tries = 5
+			_ask_gap = 1.0
+			_ask()
 
 
 func _exit_tree() -> void:
@@ -60,9 +69,23 @@ func _exit_tree() -> void:
 	_scenes.clear()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _ask_tries > 0:
+		_ask_wait -= delta
+		if _ask_wait <= 0.0:
+			_ask()
 	if input != null and blocked_fn.is_valid():
 		input.set(&"enabled", not bool(blocked_fn.call()))
+
+
+## Asks the server for every loadout: the ones told at the join reached no handler if this attached late.
+func _ask() -> void:
+	_ask_tries -= 1
+	_ask_wait = _ask_gap
+	_ask_gap *= 2.0
+	var sent := net.send(DotGameAvatarLoadoutAsk.new())
+	if not sent.ok:
+		DotLog.debug(CHANNEL, "loadout ask not sent", {"why": sent.error.message})
 
 
 func _on_requested(entry: Dictionary) -> void:
@@ -91,6 +114,7 @@ func _on_loadout(message: DotNetMessage) -> void:
 	var m := message as DotGameAvatarLoadoutMessage
 	if m == null:
 		return
+	_ask_tries = 0
 	if m.entries.is_empty():
 		var _e := loadouts.erase(m.actor)
 		return

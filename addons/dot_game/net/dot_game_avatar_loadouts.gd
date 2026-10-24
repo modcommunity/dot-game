@@ -25,6 +25,9 @@ const STARTER_KINDS := {
 }
 const STARTER_LOOPS: PackedStringArray = ["dance", "clap", "sit", "salute", "arms_crossed", "hands_on_hips"]
 
+## A client's [DotGameAvatarLoadoutAsk] is answered at most this often per peer.
+const ASK_MIN_SEC := 2.0
+
 ## Per kind, as the site caps it (AVATAR_ACTION_EQUIP_MAX).
 const MAX_PER_KIND := 8
 
@@ -68,6 +71,7 @@ var _queue: Array[int] = []
 var _in_flight := 0
 var _http: DotHttp = null
 var _idle := 0.0
+var _asked_at: Dictionary = {}
 static var _key_re: RegEx = null
 static var _content_re: RegEx = null
 
@@ -93,9 +97,24 @@ func add_peer(peer_id: int) -> void:
 	var _q := refresh(peer_id, true)
 
 
+## A client's ask: tells [param peer_id] every loadout already read, its own included. False when
+## they are not in the game or asked less than [constant ASK_MIN_SEC] ago.
+func answer(peer_id: int) -> bool:
+	if not _peers.has(peer_id):
+		return false
+	var now := int(now_fn.call())
+	if _asked_at.has(peer_id) and now - int(_asked_at[peer_id]) < int(ASK_MIN_SEC * 1000.0):
+		return false
+	_asked_at[peer_id] = now
+	for other: int in _loadouts:
+		_send(other, _loadouts[other], peer_id)
+	return true
+
+
 ## The roster's leave: forget them, and tell everybody to.
 func remove_peer(peer_id: int) -> void:
 	_peers.erase(peer_id)
+	_asked_at.erase(peer_id)
 	_gen[peer_id] = int(_gen.get(peer_id, 0)) + 1
 	_read_at.erase(peer_id)
 	_queue.erase(peer_id)

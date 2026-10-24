@@ -50,6 +50,7 @@ static func serve(net: DotNetManager, game: Object = null, server: Object = null
 	if game != null and game.has_method(&"_avatar_action_veto"):
 		relay.veto_fn = Callable(game, &"_avatar_action_veto")
 	var _on := net.messages.on(DotGameAvatarActionMessage.NAME, relay._on_message)
+	var _ask := net.messages.on(DotGameAvatarLoadoutAsk.NAME, relay._on_ask)
 	relay.loadouts = DotGameAvatarLoadouts.new()
 	relay.loadouts.name = "AvatarLoadouts"
 	relay.loadouts.net = net
@@ -95,6 +96,11 @@ func forget(peer_id: int) -> void:
 	_last.erase(peer_id)
 
 
+func _on_ask(message: DotNetMessage) -> void:
+	if loadouts != null and message != null and message.sender_peer_id > 0:
+		var _sent := loadouts.answer(message.sender_peer_id)
+
+
 func _on_message(message: DotNetMessage) -> void:
 	var request := message as DotGameAvatarActionMessage
 	if request == null or request.sender_peer_id <= 0 or not allow(request.sender_peer_id, request.id):
@@ -103,7 +109,12 @@ func _on_message(message: DotNetMessage) -> void:
 	out.actor = request.sender_peer_id
 	out.id = request.id
 	var known: Dictionary = loadouts.entry_for(request.sender_peer_id, request.id) if loadouts != null else {}
-	out.loop = bool(known["loop"]) if not known.is_empty() else request.loop
+	if not known.is_empty():
+		out.loop = bool(known["loop"])
+	elif DotGameAvatarLoadouts.STARTER_KINDS.has(request.id):
+		out.loop = DotGameAvatarLoadouts.STARTER_LOOPS.has(request.id)
+	else:
+		out.loop = request.loop  # the game's own id (equipped_fn): the server has no definition
 	out.start_tick = _net.clock.tick
 	var sent := _net.send(out)
 	if not sent.ok:

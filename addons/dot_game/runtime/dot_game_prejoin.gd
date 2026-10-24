@@ -17,7 +17,8 @@ const TARGET_SCRIPT := "res://addons/dot_browser/core/dot_browser_target.gd"
 var timeout_sec: float = 20.0
 ## Longest the rules query may take.
 var query_timeout_sec: float = 3.0
-## The site the library is read from, and this server's id on it.
+## The site the library is read from, and this server's id on it (0: the advertised
+## [constant DotGameAvatarContent.SERVER_CVAR]).
 var site_url: String = ""
 var server_id: int = 0
 ## Called as `func(fraction: float, text: String)` while files arrive; the shell's loading screen.
@@ -36,6 +37,8 @@ func prepare(host: Node, address: String) -> DotResult:
 	var ids := DotGameAvatarContent.ids_from_rules(rules)
 	if ids.is_empty():
 		return DotResult.success(0)
+	if server_id <= 0:
+		server_id = DotGameAvatarContent.server_id_from_rules(rules)
 	var gate := DotLoadGate.new()
 	gate.register_service = false
 	gate.require_camera = false
@@ -64,7 +67,8 @@ func _run(host: Node, ids: Array, gate: DotLoadGate, state: Dictionary) -> void:
 	if fetch_fn.is_valid():
 		res = await fetch_fn.call(ids, gate)
 	else:
-		res = await DotGameAvatarContent.prepare(host, ids, site_url, server_id, gate, http)
+		var site := site_url if site_url != "" else DotGameAvatarContent.default_site_url()
+		res = await DotGameAvatarContent.prepare(host, ids, site, server_id, gate, http)
 	state["res"] = res
 	state["done"] = true
 

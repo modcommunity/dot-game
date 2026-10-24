@@ -48,6 +48,20 @@ func _avatar_content_required() -> Array:
 	return avatar_content
 
 
+## Action ids this module vetoes, as a game's round rule would.
+static var avatar_veto: Array = []
+## The site id `_site_server_id` reports; -1 uses the base's lookup.
+static var site_server := -1
+
+
+func _avatar_action_veto(peer_id: int, id: String) -> bool:
+	return avatar_veto.has(id) or super._avatar_action_veto(peer_id, id)
+
+
+func _site_server_id() -> int:
+	return site_server if site_server >= 0 else super._site_server_id()
+
+
 func _game_service() -> StringName:
 	return TestGame.SERVICE
 

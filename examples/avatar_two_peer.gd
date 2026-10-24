@@ -10,7 +10,9 @@ extends Node
 ##
 ## Client `a` joins first with one emote equipped; client `b` joins later with an
 ## upload equipped and its gestures replaced. `b` must hear `a`'s loadout (the late joiner), and
-## `a` must see `b`'s upload play, and never `b`'s unequipped upload or replaced starter.
+## `a` must see `b`'s upload play, and never `b`'s unequipped upload or replaced starter. `b` wires its
+## avatar actions two seconds after it connects, as a game that builds them late does, so `a`'s
+## loadout told at the join reaches no handler and only `b`'s ask brings it back.
 
 const CHECKS_A := 6
 const CHECKS_B := 4
@@ -125,16 +127,10 @@ func _join() -> void:
 	add_child(_input)
 	_client = DotGameAvatarActionClient.new()
 	add_child(_client)
-	var figures := {}
 	_client.content_fn = func(_entry: Dictionary) -> DotResult:
 		return DotResult.success(Node3D.new())
-	_client.attach(_net, _input, func(peer: int) -> Object:
-		if not figures.has(peer):
-			var f := FakeFigure.new()
-			f.peer = peer
-			f.owner_node = self
-			figures[peer] = f
-		return figures[peer])
+	if _role == "a":
+		_attach_client()
 	_peer.connect(&"peer_connected", func(id: int) -> void:
 		if id != 1:
 			return
@@ -147,7 +143,20 @@ func _join() -> void:
 	get_tree().create_timer(11.0 if _role == "a" else 14.0).timeout.connect(_finish)
 
 
+func _attach_client() -> void:
+	var figures := {}
+	_client.attach(_net, _input, func(peer: int) -> Object:
+		if not figures.has(peer):
+			var f := FakeFigure.new()
+			f.peer = peer
+			f.owner_node = self
+			figures[peer] = f
+		return figures[peer])
+
+
 func _play_b() -> void:
+	await get_tree().create_timer(2.0).timeout
+	_attach_client()
 	await get_tree().create_timer(1.5).timeout
 	_input.action_requested.emit({"id": "action/12/3", "loop": false})
 	await get_tree().create_timer(1.0).timeout

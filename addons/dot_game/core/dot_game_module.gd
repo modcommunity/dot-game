@@ -303,6 +303,7 @@ func _module_load() -> DotResult:
 
 		net = built.value["net"]
 		bridge = built.value["bridge"]
+		_bind_avatar_hooks()
 
 	var identified: DotResult = await _build_identity()
 	DotLog.result(CHANNEL, "the identity layer", identified)
@@ -327,6 +328,7 @@ func _module_load() -> DotResult:
 		return blocked
 
 	_advertise_avatar_content()
+	_advertise_site_server()
 	_follow_hibernation()
 	_attach_board()
 	start_auto_update(server)
@@ -845,15 +847,68 @@ func _follow_avatar_loadouts() -> void:
 		roster.follow((relay as DotGameAvatarActionRelay).loadouts)
 
 
+## The relay asks this module, which defers to the game object's hooks of the same names when the
+## module does not override them; the netcode only knows the game object.
+func _bind_avatar_hooks() -> void:
+	var relay: Variant = net.get_meta(DotGameAvatarActionRelay.NET_META, null) if net != null else null
+	if relay is DotGameAvatarActionRelay:
+		(relay as DotGameAvatarActionRelay).equipped_fn = _avatar_actions_equipped
+		(relay as DotGameAvatarActionRelay).veto_fn = _avatar_action_veto
+
+
 ## The avatar actions [param peer_id] may play, as ids, or null to use what the server read from
-## the backbone (else the starter set). Override for a game's own rule.
-func _avatar_actions_equipped(_peer_id: int) -> Variant:
+## the backbone (else the starter set). Override for a game's own rule; default asks the game object.
+func _avatar_actions_equipped(peer_id: int) -> Variant:
+	if game != null and game.has_method(&"_avatar_actions_equipped"):
+		return game.call(&"_avatar_actions_equipped", peer_id)
 	return null
 
 
-## True refuses [param id] for [param peer_id] now (dead, mid-round, in a cutscene). Default allows.
-func _avatar_action_veto(_peer_id: int, _id: String) -> bool:
+## True refuses [param id] for [param peer_id] now (dead, mid-round, in a cutscene). Default asks the
+## game object, else allows.
+func _avatar_action_veto(peer_id: int, id: String) -> bool:
+	if game != null and game.has_method(&"_avatar_action_veto"):
+		return bool(game.call(&"_avatar_action_veto", peer_id, id))
 	return false
+
+
+## This server's id on the site, advertised as [constant DotGameAvatarContent.SERVER_CVAR]; 0 while
+## unknown. Default: the `server:<id>` audience dot-auth's server read for its integration credential.
+func _site_server_id() -> int:
+	var auth: Object = DotRegistry.get_service(&"dot_auth_server")
+	if auth != null and auth.has_method(&"join_audience"):
+		return DotGameAvatarContent.server_id_from_audience(String(auth.call(&"join_audience")))
+	return 0
+
+
+## Seconds between looks for the site id while dot-auth has not read it yet, and how many looks.
+var site_server_retry_sec: float = 5.0
+var site_server_retries: int = 24
+
+
+func _advertise_site_server() -> void:
+	if console == null:
+		return
+	var id := _site_server_id()
+	var cv := add_cvar(DotGameAvatarContent.SERVER_CVAR, str(id),
+		"This server's id on the site, where clients read its avatar library.",
+		DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
+	if cv == null or id > 0 or site_server_retries <= 0 or not is_inside_tree():
+		return
+	# A Timer child, so a module freed mid-wait takes the retry with it.
+	var timer := Timer.new()
+	timer.name = "SiteServerRetry"
+	timer.wait_time = maxf(0.05, site_server_retry_sec)
+	add_child(timer)
+	var left := [site_server_retries]
+	timer.timeout.connect(func() -> void:
+		var found := _site_server_id()
+		left[0] -= 1
+		if found > 0:
+			var _set := cv.set_value(str(found))
+		if found > 0 or left[0] <= 0:
+			timer.queue_free())
+	timer.start()
 
 
 ## Content ids ([code]avatar/<id>/<version>[/code], [code]action/<id>/<version>[/code]) a client must
