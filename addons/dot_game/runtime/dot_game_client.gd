@@ -238,6 +238,8 @@ var map_config: DotGameMapConfig = null
 var host: Node = null
 ## The shell's link, or null offline. Assign before add_child to use another.
 var link: Object = null
+## The avatar actions' client half, once [method add_avatar_actions] has run.
+var avatar_actions: DotGameAvatarActionClient = null
 ## No server: no link, [member force_offline], or [code]--offline[/code] on the command line.
 var offline: bool = true
 ## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
@@ -471,6 +473,7 @@ func _make_settings() -> Node:
 		return null
 	var made: Node = (script as GDScript).new()
 	made.set(&"app_namespace", app_namespace)
+	made.set(&"avatar_actions", true)
 	made.set(&"directory", settings_directory if settings_directory != "" else "user://%s_settings" % app_namespace)
 	return made
 
@@ -1083,6 +1086,37 @@ func add_noblock(game: Object, side_fn: Callable) -> DotResult:
 	if link == null or not noblock.follow(link):
 		return DotResult.fail(DotError.CODE_STATE, "The game link cannot replicate cvars: noblock would not follow the server.")
 	return DotResult.success(noblock)
+
+
+## Wires the avatar actions (emote `,`, pose `.`, gesture `/`; dot-user-avatar's
+## [code]DotAvatarActionInput[/code], loaded by path) to the figures: a press plays on
+## [param figure_fn] (peer id -> a figure with `play_action`) and is relayed through
+## [param net] (null offline). [param backbone_actions] is the avatar read's `actions`; without it
+## the starter set. Register [DotGameAvatarActionMessage] on the client's manager before it
+## is sealed, or the actions stay local. Call after [method setup].
+func add_avatar_actions(net: DotNetManager, figure_fn: Callable, backbone_actions: Variant = null) -> DotResult:
+	var path := "res://addons/dot_user_avatar/actions/dot_avatar_action_input.gd"
+	if not ResourceLoader.exists(path):
+		return DotResult.fail(DotError.CODE_UNSUPPORTED, "dot-user-avatar is not in this build.")
+	var script := load(path) as GDScript
+	script.call(&"ensure_actions")
+	var input: Node = script.new()
+	if backbone_actions != null:
+		var read: DotResult = (load("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") as GDScript).call(&"from_backbone", backbone_actions)
+		if read.ok:
+			input.set(&"actions", read.value)
+		else:
+			DotLog.warn(CHANNEL, "avatar actions unreadable; starter set", {"why": read.error.message})
+	add_child(input)
+	avatar_actions = DotGameAvatarActionClient.new()
+	avatar_actions.blocked_fn = is_input_blocked
+	add_child(avatar_actions)
+	avatar_actions.attach(net, input, figure_fn)
+	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):
+		var local: Object = (load(LOCAL_SCRIPT) as GDScript).new()
+		input.call(&"register_console", local)
+		console.call(&"add_source", local)
+	return DotResult.success(avatar_actions)
 
 
 ## Hosts a [DotGameWorkbench] on this client: its window counts as a menu overlay (pointer freed, input

@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 272
+const CHECKS := 286
 
 var _entered := 0
 var _completed := 0
@@ -110,6 +110,7 @@ func _run() -> void:
 		await _test_client_without_the_addons()
 		await _test_link_survives_reload()
 		_test_workbench_hosting()
+		await _test_avatar_actions()
 
 	_teardown()
 
@@ -759,6 +760,48 @@ func _test_operator_net_ceiling() -> void:
 	_check(c.snapshot_rate == 32, "a snapshot cap of 0 uses the game's rate")
 	c = _caps({"snapshot_rate": 32}, {})
 	_check(c.snapshot_rate == 32 and DotGameNetcode.cap(c, {}).is_empty(), "no ceiling changes nothing, and logs nothing")
+	_done()
+
+
+func _test_avatar_actions() -> void:
+	_section("avatar actions: checked on the server, then told to everybody")
+	var loaded: DotResult = await _load_module()
+	if _check(loaded.ok, "the module loads", str(loaded.error)):
+		var module := loaded.value as DotGameModule
+		var relay := module.net.get_meta(DotGameAvatarActionRelay.NET_META, null) as DotGameAvatarActionRelay
+		if _check(relay != null, "the netcode serves the relay"):
+			var clock := [10000]
+			relay.now_fn = func() -> int: return clock[0]
+			var sent := []
+			module.net.send_fn = func(peer: int, payload: PackedByteArray, _d: int) -> void: sent.append([peer, payload])
+			var ask := func(peer: int, id: String) -> void:
+				var m := DotGameAvatarActionMessage.new()
+				m.sender_peer_id = peer
+				m.id = id
+				module.net.messages.dispatch(m)
+			ask.call(7, "wave")
+			_check(sent.size() == 1 and sent[0][0] == 0, "a starter action is sent to everyone")
+			var back := DotGameAvatarActionMessage.new()
+			var read := module.net.messages.decode(DotNetReader.new(sent[0][1]), 1, false) if not sent.is_empty() else null
+			_check(read != null and read.ok and read.value is DotGameAvatarActionMessage and read.value.actor == 7 and read.value.id == "wave",
+				"naming who and what")
+			ask.call(7, "dance")
+			_check(sent.size() == 1, "a second one inside the interval is dropped")
+			clock[0] += 1000
+			ask.call(7, "not_an_action")
+			_check(sent.size() == 1, "an id that is not equipped is dropped")
+			relay.equipped_fn = func(_p: int) -> Variant: return ["custom_clip"]
+			ask.call(7, "custom_clip")
+			_check(sent.size() == 2, "an equipped uploaded id passes")
+			clock[0] += 1000
+			relay.veto_fn = func(_p: int, _i: String) -> bool: return true
+			ask.call(7, "custom_clip")
+			_check(sent.size() == 2, "the game's veto stops it")
+			relay.veto_fn = Callable()
+			ask.call(0, "custom_clip")
+			_check(sent.size() == 2, "a request with no peer is dropped")
+			_check(DotGameAvatarActionRelay.STARTER_IDS.size() == 13, "thirteen starter ids")
+			_unload_module()
 	_done()
 
 

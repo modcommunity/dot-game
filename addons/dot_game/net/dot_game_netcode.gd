@@ -156,6 +156,12 @@ static func build(
 		net.peer_schema_refused.connect(func(peer_id: int, error: DotError) -> void:
 			refuse_peer(server, peer_id, error))
 
+	# Avatar actions ride on every game's manager; the type is not required, so a client that
+	# never registered it still plays.
+	var avatar := DotGameAvatarActionRelay.serve(net, game)
+	if not avatar.ok:
+		DotLog.warn(CHANNEL, "avatar actions not served", {"why": avatar.error.message})
+
 	# After the bridge, never before: see the class note.
 	net.messages.seal()
 

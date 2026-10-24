@@ -41,5 +41,6 @@ extends RefCounted
 #    _noblock_runtime, noblock), DotGameClient.add_noblock, DotGameConfigBinder.profile_kind.
 # 20: DotGameWorkbenchAuth, and DotGameWorkbench accounts / account_resolver / account_permit_fn / account_gate: dot-auth
 #    tickets admitted by default (admin_uids, admin_groups).
-const LEVEL := 20
+# 21: DotGameAvatarActionMessage / Relay / Client, DotGameClient.add_avatar_actions, DotGameModule._avatar_actions_equipped and _avatar_action_veto.
+const LEVEL := 21
 const OLDEST := 1

@@ -14,6 +14,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/services.md](docs/services.md) | `DotGameServices`: build order, loading by path, the live tools, the hooks, hibernation |
 | [docs/map-config.md](docs/map-config.md) | a game taking per-map settings (`DotGameMapConfig`, `_map_config_keys`, `DotGameClient.map_changed`) |
 | [docs/config-binder.md](docs/config-binder.md) | a game's `*Config` made server-tunable: `DotGameConfigBinder`, strict boot, the cvars, the workbench kind, the yml diff |
+| [docs/avatar-actions.md](docs/avatar-actions.md) | emotes, poses and gestures: the checked message and relay, `DotGameClient.add_avatar_actions`, the module's `_avatar_actions_equipped` and `_avatar_action_veto` hooks |
 | [docs/noblock.md](docs/noblock.md) | teammates passing through each other: `DotGameNoblock`, the module's `_noblock_*` hooks, `DotGameClient.add_noblock`, the `noblock` cfg kind |
 | [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench`, dot-auth accounts (`DotGameWorkbenchAuth`) |
 | [docs/history.md](docs/history.md) | the bugs, and how each looked |

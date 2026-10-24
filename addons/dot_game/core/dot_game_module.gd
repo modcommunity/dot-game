@@ -834,6 +834,17 @@ static func watched_packs(host: Object) -> Array:
 var noblock: DotGameNoblock = null
 
 
+## The avatar actions [param peer_id] has equipped, as ids, or null for the starter set. Where a
+## game reads the equipped loadout from the backbone.
+func _avatar_actions_equipped(_peer_id: int) -> Variant:
+	return null
+
+
+## True refuses [param id] for [param peer_id] now (dead, mid-round, in a cutscene). Default allows.
+func _avatar_action_veto(_peer_id: int, _id: String) -> bool:
+	return false
+
+
 ## Whether to wire dot-team's block rules. A game with its own `block_rules` wired by hand is left alone.
 func _noblock_enabled() -> bool:
 	return game != null and "body_rules" in game and game.get("body_rules") != null \
