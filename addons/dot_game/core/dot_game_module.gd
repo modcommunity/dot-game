@@ -499,6 +499,7 @@ func _build_roster() -> void:
 				noblock.rules.call(&"forget", session.userid)
 
 	roster.follow(services)
+	_follow_avatar_loadouts()
 
 	# Through the module's own helper, so it is unhooked when this unloads: a hook left
 	# pointing at a freed module is a server that crashes on the next spawn.
@@ -835,8 +836,17 @@ static func watched_packs(host: Object) -> Array:
 var noblock: DotGameNoblock = null
 
 
-## The avatar actions [param peer_id] has equipped, as ids, or null for the starter set. Where a
-## game reads the equipped loadout from the backbone.
+## The roster tells the relay's loadouts who joins and leaves, so each player's equipped actions
+## are read from the backbone and told to everybody (a late joiner too).
+func _follow_avatar_loadouts() -> void:
+	var relay: Variant = net.get_meta(DotGameAvatarActionRelay.NET_META, null) if net != null else null
+	if relay is DotGameAvatarActionRelay and (relay as DotGameAvatarActionRelay).loadouts != null:
+		(relay as DotGameAvatarActionRelay).loadouts.server = server
+		roster.follow((relay as DotGameAvatarActionRelay).loadouts)
+
+
+## The avatar actions [param peer_id] may play, as ids, or null to use what the server read from
+## the backbone (else the starter set). Override for a game's own rule.
 func _avatar_actions_equipped(_peer_id: int) -> Variant:
 	return null
 

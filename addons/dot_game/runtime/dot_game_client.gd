@@ -243,6 +243,12 @@ var avatar_actions: DotGameAvatarActionClient = null
 
 ## The content fetcher of the last [method prepare_avatar_content], whose cache holds the files.
 var avatar_fetcher: RefCounted = null
+
+## The site and its id for this server, where other players' uploaded clips are fetched from. Set by
+## [method prepare_avatar_content]; a game that skips it sets them itself.
+var avatar_site_url: String = ""
+var avatar_server_id: int = 0
+var _avatar_library := {}
 ## No server: no link, [member force_offline], or [code]--offline[/code] on the command line.
 var offline: bool = true
 ## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
@@ -1096,6 +1102,8 @@ func add_noblock(game: Object, side_fn: Callable) -> DotResult:
 ## stays held showing why and the caller must not connect. [param server_id] is the site's id for the server.
 func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
 	var ids := DotGameAvatarContent.ids_from_rules(rules)
+	avatar_site_url = base_url
+	avatar_server_id = server_id
 	var kept := []
 	var res: DotResult = await DotGameAvatarContent.prepare(self, ids, base_url, server_id, gate, http, kept)
 	if not kept.is_empty():
@@ -1136,6 +1144,8 @@ func add_avatar_actions(net: DotNetManager, figure_fn: Callable, backbone_action
 	add_child(input)
 	avatar_actions = DotGameAvatarActionClient.new()
 	avatar_actions.blocked_fn = is_input_blocked
+	avatar_actions.content_fn = func(entry: Dictionary) -> DotResult:
+		return await DotGameAvatarContent.fetch_clip(self, null, avatar_site_url, avatar_server_id, entry, _avatar_library)
 	add_child(avatar_actions)
 	avatar_actions.attach(net, input, figure_fn)
 	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):

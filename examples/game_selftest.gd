@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 299
+const CHECKS := 324
 
 var _entered := 0
 var _completed := 0
@@ -111,6 +111,8 @@ func _run() -> void:
 		await _test_link_survives_reload()
 		_test_workbench_hosting()
 		await _test_avatar_actions()
+		await _test_avatar_loadouts()
+		await _test_avatar_loadout_client()
 		await _test_avatar_content()
 		await _test_prejoin()
 
@@ -804,6 +806,211 @@ func _test_avatar_actions() -> void:
 			_check(sent.size() == 2, "a request with no peer is dropped")
 			_check(DotGameAvatarActionRelay.STARTER_IDS.size() == 13, "thirteen starter ids")
 			_unload_module()
+	_done()
+
+
+class FakeActionInput extends Node:
+	signal action_requested(entry: Dictionary)
+	var enabled := true
+
+
+class FakeActionFigure extends RefCounted:
+	var clips := {}
+	var played: Array = []
+	var added: Array = []
+
+	func play_action(id: StringName, loop: bool = false, elapsed: float = 0.0) -> bool:
+		if String(id).contains("/") and not clips.has(id):
+			return false
+		played.append([String(id), loop, elapsed])
+		return true
+
+	func add_action_scene(id: StringName, scene: Node, clip: String, loop: bool) -> DotResult:
+		added.append([String(id), scene, clip, loop])
+		clips[id] = true
+		return DotResult.success(true)
+
+
+func _loadout_sent(module: DotGameModule, sent: Array) -> Array:
+	var out := []
+	for s: Array in sent:
+		var read := module.net.messages.decode(DotNetReader.new(s[1]), 1, false)
+		if read.ok and read.value is DotGameAvatarLoadoutMessage:
+			out.append([s[0], read.value])
+	return out
+
+
+func _test_avatar_loadouts() -> void:
+	_section("avatar loadouts: read by the server, checked, bounded, told to everybody and to a late joiner")
+	var upload := {"contentId": "action/9/1", "clip": "Hop", "loop": false, "fileUrl": "https://cdn.test/a.glb"}
+	var parsed: Variant = DotGameAvatarLoadouts.parse({"EMOTE": [upload, upload, {"builtin": "wave"}, {"builtin": "nope"}],
+		"POSE": [{"contentId": "avatar/3/1", "clip": "X"}, {"contentId": "action/4/1", "clip": ""}],
+		"GESTURE": [{"builtin": "wave"}]})
+	var ids := []
+	for e: Dictionary in (parsed if parsed is Array else []):
+		ids.append(e["id"])
+	_check(ids == ["action/9/1", "sit", "salute", "arms_crossed", "hands_on_hips", "wave"], "parse keeps an upload once, a built-in only of its own kind, and gives an empty kind the starters", str(ids))
+	var many := []
+	for i in 30:
+		many.append({"contentId": "action/%d/1" % (i + 1), "clip": "c"})
+	var capped: Variant = DotGameAvatarLoadouts.parse({"EMOTE": many})
+	_check(capped is Array and (capped as Array).size() == DotGameAvatarLoadouts.MAX_PER_KIND + 9, "at most eight per kind", str((capped as Array).size() if capped is Array else capped))
+	_check(DotGameAvatarLoadouts.parse("junk") == null and DotGameAvatarLoadouts.parse(null) == null, "anything but an object is no loadout")
+	var big := DotGameAvatarLoadoutMessage.new()
+	big.actor = 3
+	for i in DotGameAvatarLoadoutMessage.MAX_ENTRIES + 1:
+		big.entries.append({"id": "wave", "kind": 2, "loop": false, "clip": ""})
+	_check(not big.validate().ok, "a loadout message over the cap is refused")
+
+	var loaded: DotResult = await _load_module()
+	if not _check(loaded.ok, "the module loads", str(loaded.error)):
+		_done()
+		return
+	var module := loaded.value as DotGameModule
+	var relay := module.net.get_meta(DotGameAvatarActionRelay.NET_META, null) as DotGameAvatarActionRelay
+	var lo: DotGameAvatarLoadouts = relay.loadouts if relay != null else null
+	if not _check(lo != null and module.roster.followers.has(lo) and lo.server == module.server, "the relay's loadouts follow the roster"):
+		_unload_module()
+		_done()
+		return
+	var clock := [100000]
+	relay.now_fn = func() -> int: return clock[0]
+	lo.now_fn = func() -> int: return clock[0]
+	var sent := []
+	module.net.send_fn = func(peer: int, payload: PackedByteArray, _d: int) -> void: sent.append([peer, payload])
+	var asked := []
+	lo.key_fn = func(peer: int) -> String: return "key-of-peer-%d" % peer if peer != 6 else ""
+	lo.fetch_fn = func(key: String) -> DotResult:
+		asked.append(key)
+		await get_tree().process_frame
+		return DotResult.success({"EMOTE": [upload], "GESTURE": [{"builtin": "wave"}]})
+	var ask := func(peer: int, id: String) -> int:
+		var before := sent.size()
+		var m := DotGameAvatarActionMessage.new()
+		m.sender_peer_id = peer
+		m.id = id
+		m.loop = true
+		module.net.messages.dispatch(m)
+		clock[0] += 1000
+		return sent.size() - before
+
+	lo.add_peer(6)
+	lo.add_peer(5)
+	for i in 4:
+		await get_tree().process_frame
+	_check(asked == ["key-of-peer-5"], "only a peer with a key is read from the backbone", str(asked))
+	var told := _loadout_sent(module, sent)
+	_check(told.size() == 2 and told[0][1].actor == 5 and told[0][1].ids().has("action/9/1"), "the read loadout is told to every player in", str(told.size()))
+	sent.clear()
+	_check(ask.call(5, "action/9/1") == 1, "an equipped upload passes")
+	var start := module.net.messages.decode(DotNetReader.new(sent[0][1]), 1, false) if not sent.is_empty() else null
+	_check(start != null and start.ok and start.value.loop == false, "with the loop the loadout says, not the client's")
+	_check(ask.call(5, "dance") == 0, "a starter emote they replaced is refused")
+	_check(ask.call(5, "action/8/1") == 0, "an upload they have not equipped is refused")
+	_check(ask.call(6, "dance") == 1 and ask.call(6, "action/9/1") == 0, "a player with no key plays the starter set, and nothing else")
+
+	sent.clear()
+	lo.add_peer(8)
+	for i in 4:
+		await get_tree().process_frame
+	told = _loadout_sent(module, sent)
+	var late := told.filter(func(t: Array) -> bool: return t[0] == 8 and t[1].actor == 5)
+	_check(late.size() == 1, "a late joiner is told the loadouts already read", str(told.size()))
+
+	_check(not lo.refresh(5), "a second read inside the interval is refused")
+	clock[0] += 31000
+	_check(lo.refresh(5), "and allowed after it")
+	for i in 4:
+		await get_tree().process_frame
+
+	sent.clear()
+	lo.remove_peer(5)
+	told = _loadout_sent(module, sent)
+	_check(lo.ids_for(5) == null and told.size() == 2 and told[0][1].actor == 5 and told[0][1].entries.is_empty(), "a leaver is forgotten, and everybody told")
+
+	lo.add_peer(9)
+	lo.remove_peer(9)
+	lo.add_peer(9)
+	lo.fetch_fn = func(_key: String) -> DotResult:
+		await get_tree().process_frame
+		return DotResult.success({"EMOTE": [upload]})
+	for i in 6:
+		await get_tree().process_frame
+	_check(lo.ids_for(9) != null, "a peer id that rejoins is read again")
+	lo.add_peer(10)
+	lo.remove_peer(10)
+	for i in 6:
+		await get_tree().process_frame
+	_check(lo.ids_for(10) == null, "a read that lands after its player left is dropped")
+
+	var forged := DotGameAvatarLoadoutMessage.new()
+	forged.actor = 6
+	forged.entries = [{"id": "action/77/1", "kind": 0, "loop": false, "clip": "c"}]
+	var w := DotNetWriter.new()
+	var _enc := module.net.messages.encode(forged, w)
+	var from_client := module.net.messages.decode(DotNetReader.new(w.to_bytes()), 6, true)
+	_check(not from_client.ok and lo.ids_for(6) == null, "a client cannot send a loadout")
+	_check(lo.describe().has("reads"), "describe() reports it")
+	_unload_module()
+	_done()
+
+
+func _test_avatar_loadout_client() -> void:
+	_section("avatar loadouts on a client: an uploaded clip is fetched once and handed to the figure")
+	var server_net := DotNetManager.new()
+	server_net.is_server = true
+	server_net.config_file = ""
+	var _sp := server_net.setup()
+	var _r := DotGameAvatarActionMessage.register(server_net)
+	server_net.messages.seal()
+	var net := DotNetManager.new()
+	net.local_peer_id = 4
+	net.config_file = ""
+	var _cp := net.setup()
+	var reg := DotGameAvatarActionMessage.register(net)
+	net.messages.seal()
+	_check(reg.ok and net.messages.type_names().has(String(DotGameAvatarLoadoutMessage.NAME)), "registering the action message registers the loadout too")
+	add_child(net)
+	var input := FakeActionInput.new()
+	add_child(input)
+	var figures := {7: FakeActionFigure.new()}
+	var client := DotGameAvatarActionClient.new()
+	add_child(client)
+	var fetched := []
+	client.content_fn = func(entry: Dictionary) -> DotResult:
+		fetched.append(entry["id"])
+		await get_tree().process_frame
+		return DotResult.success(Node3D.new())
+	client.attach(net, input, func(peer: int) -> Object: return figures.get(peer))
+	var deliver := func(m: DotNetMessage) -> void:
+		var w := DotNetWriter.new()
+		var _e := server_net.messages.encode(m, w)
+		var read := net.messages.decode(DotNetReader.new(w.to_bytes()), 1, false)
+		if read.ok:
+			net.messages.dispatch(read.value)
+	var lm := DotGameAvatarLoadoutMessage.new()
+	lm.actor = 7
+	lm.entries = [{"id": "action/9/1", "kind": 0, "loop": true, "clip": "Hop"}, {"id": "wave", "kind": 2, "loop": false, "clip": ""}]
+	deliver.call(lm)
+	deliver.call(lm)
+	for i in 3:
+		await get_tree().process_frame
+	_check(fetched == ["action/9/1"], "the upload is fetched once, the built-in not at all", str(fetched))
+	var start := DotGameAvatarActionMessage.new()
+	start.actor = 7
+	start.id = "action/9/1"
+	start.loop = true
+	start.start_tick = 0
+	deliver.call(start)
+	var fig: FakeActionFigure = figures[7]
+	_check(fig.added.size() == 1 and fig.added[0][2] == "Hop" and fig.played.size() == 1 and fig.played[0][0] == "action/9/1", "another player's upload plays on their figure", str(fig.added))
+	lm.entries = []
+	deliver.call(lm)
+	_check(not client.loadouts.has(7), "an empty loadout forgets them")
+	client.queue_free()
+	input.queue_free()
+	net.queue_free()
+	server_net.free()
 	_done()
 
 

@@ -66,3 +66,46 @@ static func prepare(host: Node, ids: Array, base_url: String, server_id: int, ga
 	if own != null and is_instance_valid(own):
 		own.queue_free()
 	return res
+
+
+## One uploaded action's clip, fetched mid-game for [DotGameAvatarActionClient]: the site's library
+## (cached in [param library], `{"rows": Dictionary, "at": ms}`, read again at most once a minute
+## when an id is missing) gives url, size and sha256, so the server only ever names an id and never
+## a url. Downloaded into dot-user-avatar's cache without the load gate; success is a Node3D the
+## caller owns.
+static func fetch_clip(host: Node, http: DotHttp, base_url: String, server_id: int, entry: Dictionary, library: Dictionary) -> DotResult:
+	var id := String(entry.get("id", ""))
+	if not available():
+		return DotResult.fail(DotError.CODE_UNSUPPORTED, "dot-user-avatar is not in this build.")
+	if base_url == "" or server_id <= 0:
+		return DotResult.fail(DotError.CODE_STATE, "No site to fetch avatar clips from.")
+	var script := load(FETCHER) as GDScript
+	var now := Time.get_ticks_msec()
+	var rows: Dictionary = library.get("rows", {})
+	if not rows.has(id) and (not library.has("at") or now - int(library["at"]) > 60000):
+		library["at"] = now
+		var own: DotHttp = http
+		if own == null:
+			own = DotHttp.new()
+			host.add_child(own)
+		var lib: DotResult = await own.get_json("%s/api/avatar/v1/library?server=%d" % [base_url.trim_suffix("/"), server_id])
+		if http == null and is_instance_valid(own):
+			own.queue_free()
+		if not lib.ok:
+			return lib.wrap("reading the avatar library")
+		rows = script.call(&"index_library", lib.value)
+		library["rows"] = rows
+	if not rows.has(id):
+		return DotResult.fail(DotError.CODE_INVALID, "the site's library does not list this action", id)
+	var fetcher: RefCounted = script.new()
+	var mine: DotHttp = http
+	if mine == null:
+		mine = DotHttp.new()
+		host.add_child(mine)
+	fetcher.set(&"http", mine)
+	var got: DotResult = await fetcher.call(&"fetch_rows", [rows[id]])
+	if http == null and is_instance_valid(mine):
+		mine.queue_free()
+	if not got.ok:
+		return got
+	return fetcher.get(&"cache").call(&"load_scene", id)

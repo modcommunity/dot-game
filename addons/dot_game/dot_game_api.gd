@@ -43,5 +43,7 @@ extends RefCounted
 #    tickets admitted by default (admin_uids, admin_groups).
 # 21: DotGameAvatarActionMessage / Relay / Client, DotGameClient.add_avatar_actions, DotGameModule._avatar_actions_equipped and _avatar_action_veto.
 # 22: DotGameAvatarContent, DotGameModule._avatar_content_required (sv_avatar_content), DotGameClient.prepare_avatar_content / read_avatar_actions.
-const LEVEL := 22
+# 23: DotGameAvatarLoadouts and DotGameAvatarLoadoutMessage (the server reads and relays every player's loadout),
+#    DotGameAvatarActionClient.content_fn / loadouts, DotGameAvatarContent.fetch_clip.
+const LEVEL := 23
 const OLDEST := 1

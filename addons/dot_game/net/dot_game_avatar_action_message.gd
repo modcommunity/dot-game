@@ -38,7 +38,11 @@ func _validate() -> DotResult:
 
 
 ## Registers the type on [param net]'s manager: call on both ends, before the schema is sealed.
-## Not required, so a peer without it still plays.
+## Not required, so a peer without it still plays. Registers [DotGameAvatarLoadoutMessage] too, so
+## every game that already calls this hears other players' loadouts.
 static func register(net: DotNetManager) -> DotResult:
+	if not net.messages.type_names().has(String(DotGameAvatarLoadoutMessage.NAME)):
+		var _l := net.messages.register(DotGameAvatarLoadoutMessage.NAME, DotGameAvatarLoadoutMessage,
+			DotNetMessage.Delivery.RELIABLE, DotNetMessage.Direction.TO_CLIENT, false)
 	return net.messages.register(NAME, DotGameAvatarActionMessage, DotNetMessage.Delivery.RELIABLE,
 		DotNetMessage.Direction.BOTH, false)

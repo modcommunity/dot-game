@@ -3,9 +3,9 @@ extends RefCounted
 
 ## The server half of avatar actions: checks a client's request and tells every peer.
 ##
-## Refused when the id is not one the peer has equipped (the starter set, or what
-## [member equipped_fn] says), when the peer asked less than [member min_interval_sec] ago, or
-## when [member veto_fn] says no (a dead player, a round in play).
+## Refused when the id is not one the peer has equipped (what [member equipped_fn] says, else what
+## [member loadouts] read from the backbone, else the starter set), when the peer asked less than
+## [member min_interval_sec] ago, or when [member veto_fn] says no (a dead player, a round in play).
 
 const CHANNEL := "game.avatar_action"
 
@@ -22,6 +22,9 @@ var equipped_fn: Callable = Callable()
 
 ## func(peer_id: int, id: String) -> bool: true refuses the action.
 var veto_fn: Callable = Callable()
+
+## The server-read loadouts; built by [method serve], a child of the manager.
+var loadouts: DotGameAvatarLoadouts = null
 
 ## Milliseconds; replaced by a suite.
 var now_fn: Callable = Callable(Time, &"get_ticks_msec")
@@ -44,6 +47,11 @@ static func serve(net: DotNetManager, game: Object = null) -> DotResult:
 	if game != null and game.has_method(&"_avatar_action_veto"):
 		relay.veto_fn = Callable(game, &"_avatar_action_veto")
 	var _on := net.messages.on(DotGameAvatarActionMessage.NAME, relay._on_message)
+	relay.loadouts = DotGameAvatarLoadouts.new()
+	relay.loadouts.name = "AvatarLoadouts"
+	relay.loadouts.net = net
+	relay.loadouts.relay = relay
+	net.add_child(relay.loadouts)
 	net.set_meta(NET_META, relay)
 	return DotResult.success(relay)
 
@@ -51,6 +59,8 @@ static func serve(net: DotNetManager, game: Object = null) -> DotResult:
 ## True when [param peer_id] may play [param id] now; records it as played.
 func allow(peer_id: int, id: String) -> bool:
 	var equipped: Variant = equipped_fn.call(peer_id) if equipped_fn.is_valid() else null
+	if equipped == null and loadouts != null:
+		equipped = loadouts.ids_for(peer_id)
 	var ok: bool = equipped.has(id) if equipped is Array else STARTER_IDS.has(id)
 	if not ok:
 		DotLog.debug(CHANNEL, "not equipped", {"peer": peer_id, "id": id})
@@ -79,7 +89,8 @@ func _on_message(message: DotNetMessage) -> void:
 	var out := DotGameAvatarActionMessage.new()
 	out.actor = request.sender_peer_id
 	out.id = request.id
-	out.loop = request.loop
+	var known: Dictionary = loadouts.entry_for(request.sender_peer_id, request.id) if loadouts != null else {}
+	out.loop = bool(known["loop"]) if not known.is_empty() else request.loop
 	out.start_tick = _net.clock.tick
 	var sent := _net.send(out)
 	if not sent.ok:
