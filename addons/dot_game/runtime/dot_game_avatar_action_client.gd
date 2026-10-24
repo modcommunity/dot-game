@@ -24,6 +24,9 @@ var blocked_fn: Callable = Callable()
 ## it. Null leaves uploaded clips unplayed (built-ins still play).
 var content_fn: Callable = Callable()
 
+## func(rows: Dictionary) -> DotResult of the input's actions; default dot-user-avatar's `from_backbone`, by path.
+var actions_fn: Callable = Callable()
+
 ## Uploaded clip scenes kept, at most this many; a hostile server cannot make it fetch thousands.
 const MAX_SCENES := 64
 
@@ -92,9 +95,45 @@ func _on_loadout(message: DotNetMessage) -> void:
 		var _e := loadouts.erase(m.actor)
 		return
 	loadouts[m.actor] = m.entries
+	if net != null and m.actor == net.local_peer_id:
+		apply_to_input(m.entries)
 	for e: Dictionary in m.entries:
 		if String(e.get("clip", "")) != "":
 			fetch_clip(e)
+
+
+## Makes the local keys play what the server says is equipped (the same list that decides what
+## it relays), keeping the rows [member input] already has for an id so their names and urls
+## survive. Without it the keys play whatever the client read for itself, which a re-equip
+## mid-game, or a failed read, leaves different from what the server accepts.
+func apply_to_input(entries: Array) -> bool:
+	if input == null or not input.get(&"actions") is Object:
+		return false
+	var current: Object = input.get(&"actions")
+	var rows := {}
+	for e: Dictionary in entries:
+		var kind := String(DotGameAvatarLoadoutMessage.KINDS[clampi(int(e["kind"]), 0, DotGameAvatarLoadoutMessage.KINDS.size() - 1)]).to_upper()
+		if not rows.has(kind):
+			rows[kind] = []
+		if String(e.get("clip", "")) == "":
+			(rows[kind] as Array).append({"builtin": e["id"]})
+			continue
+		var url := "/"
+		if current.has_method(&"equipped"):
+			for kept: Dictionary in current.call(&"equipped", StringName(kind.to_lower())):
+				if kept.get("id") == e["id"]:
+					url = String(kept.get("url", "/"))
+		(rows[kind] as Array).append({"contentId": e["id"], "clip": e["clip"], "loop": e["loop"], "fileUrl": url if url != "" else "/"})
+	var read: Variant = null
+	if actions_fn.is_valid():
+		read = actions_fn.call(rows)
+	else:
+		var script := load("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") as GDScript if ResourceLoader.exists("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") else null
+		read = script.call(&"from_backbone", rows) if script != null else null
+	if read is DotResult and (read as DotResult).ok:
+		input.set(&"actions", (read as DotResult).value)
+		return true
+	return false
 
 
 ## Fetches an uploaded entry's clip once, in the background. False when it is kept, on its way,

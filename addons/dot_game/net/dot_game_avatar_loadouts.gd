@@ -35,6 +35,10 @@ const MAX_QUEUE := 128
 ## A peer is read again ([method refresh]) at most this often.
 var refresh_min_sec: float = 30.0
 
+## Every player is read again this often, so a re-equip on the site reaches the game without a
+## rejoin; 0 turns it off. Never faster than [member refresh_min_sec].
+var auto_refresh_sec: float = 60.0
+
 ## The dot-server whose sessions hold the identities; the key is the `scoped_key` claim.
 var server: Object = null
 var net: DotNetManager = null
@@ -63,8 +67,20 @@ var _read_at: Dictionary = {}
 var _queue: Array[int] = []
 var _in_flight := 0
 var _http: DotHttp = null
+var _idle := 0.0
 static var _key_re: RegEx = null
 static var _content_re: RegEx = null
+
+
+func _process(delta: float) -> void:
+	if auto_refresh_sec <= 0.0 or _peers.is_empty():
+		return
+	_idle += delta
+	if _idle < auto_refresh_sec:
+		return
+	_idle = 0.0
+	for peer: int in _peers:
+		var _q := refresh(peer)
 
 
 ## The roster's join: tell [param peer_id] everyone's loadout, then read theirs.
@@ -197,6 +213,9 @@ func _adopt(peer_id: int, res: DotResult) -> void:
 		return
 	var entries: Variant = parse(res.value)
 	if entries == null:
+		return
+	# A re-read that changed nothing is not worth a message to every player.
+	if _loadouts.has(peer_id) and _loadouts[peer_id] == entries:
 		return
 	_loadouts[peer_id] = entries
 	DotLog.debug(CHANNEL, "loadout read", {"peer": peer_id, "entries": (entries as Array).size()})

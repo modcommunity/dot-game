@@ -35,8 +35,11 @@ var _last: Dictionary = {}
 
 ## Registers the type on [param net], answers requests and stores itself as the manager's
 ## [constant NET_META]. [param game] may define `_avatar_actions_equipped(peer)` and
-## `_avatar_action_veto(peer, id)`.
-static func serve(net: DotNetManager, game: Object = null) -> DotResult:
+## `_avatar_action_veto(peer, id)`. A game not on [DotGameModule] passes its dot-server as
+## [param server] (the session's key) and its [DotGameRoster] as [param roster], which then
+## tells the loadouts who joins and leaves.
+static func serve(net: DotNetManager, game: Object = null, server: Object = null,
+		roster: Object = null) -> DotResult:
 	var made := DotGameAvatarActionMessage.register(net)
 	if not made.ok:
 		return made
@@ -51,9 +54,19 @@ static func serve(net: DotNetManager, game: Object = null) -> DotResult:
 	relay.loadouts.name = "AvatarLoadouts"
 	relay.loadouts.net = net
 	relay.loadouts.relay = relay
+	relay.loadouts.server = server
+	if roster != null and roster.has_method(&"follow"):
+		roster.call(&"follow", relay.loadouts)
 	net.add_child(relay.loadouts)
 	net.set_meta(NET_META, relay)
 	return DotResult.success(relay)
+
+
+## The loadouts [method serve] built on [param net], or null. A server that is not on
+## [DotGameModule] calls `add_peer(peer)` / `remove_peer(peer)` on it as players join and leave.
+static func loadouts_of(net: DotNetManager) -> DotGameAvatarLoadouts:
+	var relay: Variant = net.get_meta(NET_META, null) if net != null else null
+	return (relay as DotGameAvatarActionRelay).loadouts if relay is DotGameAvatarActionRelay else null
 
 
 ## True when [param peer_id] may play [param id] now; records it as played.

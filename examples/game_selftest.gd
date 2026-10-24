@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 324
+const CHECKS := 329
 
 var _entered := 0
 var _completed := 0
@@ -812,6 +812,7 @@ func _test_avatar_actions() -> void:
 class FakeActionInput extends Node:
 	signal action_requested(entry: Dictionary)
 	var enabled := true
+	var actions: Object = RefCounted.new()
 
 
 class FakeActionFigure extends RefCounted:
@@ -923,6 +924,30 @@ func _test_avatar_loadouts() -> void:
 	for i in 4:
 		await get_tree().process_frame
 
+	# A re-equip on the site reaches the game by itself, and only a change is told.
+	var current := {"EMOTE": [{"builtin": "dance"}]}
+	lo.fetch_fn = func(_key: String) -> DotResult:
+		await get_tree().process_frame
+		return DotResult.success(current)
+	lo.auto_refresh_sec = 60.0
+	clock[0] += 31000
+	sent.clear()
+	lo._process(30.0)
+	for i in 4:
+		await get_tree().process_frame
+	_check(lo.reads > 0 and sent.is_empty() and lo.ids_for(5).has("action/9/1"), "the periodic read waits for its interval", str(lo.ids_for(5)))
+	lo._process(31.0)
+	for i in 4:
+		await get_tree().process_frame
+	_check(lo.ids_for(5).has("dance") and not lo.ids_for(5).has("action/9/1") and not _loadout_sent(module, sent).is_empty(), "a player who re-equips is read again and told", str(lo.ids_for(5)))
+	clock[0] += 31000
+	sent.clear()
+	lo._process(61.0)
+	for i in 4:
+		await get_tree().process_frame
+	_check(_loadout_sent(module, sent).is_empty(), "a re-read that changed nothing tells nobody")
+	lo.auto_refresh_sec = 0.0
+
 	sent.clear()
 	lo.remove_peer(5)
 	told = _loadout_sent(module, sent)
@@ -1007,6 +1032,19 @@ func _test_avatar_loadout_client() -> void:
 	lm.entries = []
 	deliver.call(lm)
 	_check(not client.loadouts.has(7), "an empty loadout forgets them")
+	var seen_rows := []
+	client.actions_fn = func(rows: Dictionary) -> DotResult:
+		seen_rows.append(rows)
+		return DotResult.success("actions")
+	var own := DotGameAvatarLoadoutMessage.new()
+	own.actor = 4
+	own.entries = [{"id": "action/9/1", "kind": 0, "loop": true, "clip": "Hop"}, {"id": "wave", "kind": 2, "loop": false, "clip": ""}]
+	deliver.call(own)
+	_check(seen_rows.size() == 1 and seen_rows[0]["EMOTE"][0]["contentId"] == "action/9/1" and seen_rows[0]["GESTURE"][0]["builtin"] == "wave", "the local player's keys are rebuilt from their own relayed loadout", str(seen_rows))
+	lm.actor = 7
+	lm.entries = [{"id": "wave", "kind": 2, "loop": false, "clip": ""}]
+	deliver.call(lm)
+	_check(seen_rows.size() == 1, "another player's loadout leaves the local keys alone")
 	client.queue_free()
 	input.queue_free()
 	net.queue_free()
