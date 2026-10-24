@@ -326,6 +326,7 @@ func _module_load() -> DotResult:
 		_teardown()
 		return blocked
 
+	_advertise_avatar_content()
 	_follow_hibernation()
 	_attach_board()
 	start_auto_update(server)
@@ -843,6 +844,22 @@ func _avatar_actions_equipped(_peer_id: int) -> Variant:
 ## True refuses [param id] for [param peer_id] now (dead, mid-round, in a cutscene). Default allows.
 func _avatar_action_veto(_peer_id: int, _id: String) -> bool:
 	return false
+
+
+## Content ids ([code]avatar/<id>/<version>[/code], [code]action/<id>/<version>[/code]) a client must
+## download before it connects; published as `sv_avatar_content` in the query rules. Default none.
+func _avatar_content_required() -> Array:
+	return []
+
+
+func _advertise_avatar_content() -> void:
+	var ids := _avatar_content_required()
+	if ids.is_empty() or console == null:
+		return
+	var made := add_cvar(DotGameAvatarContent.CVAR, DotGameAvatarContent.format(ids),
+		"Avatar and action files a client downloads before it joins.", DotConVar.FLAG_NOTIFY)
+	if made == null:
+		DotLog.warn(CHANNEL, "avatar content not advertised: no cvar")
 
 
 ## Whether to wire dot-team's block rules. A game with its own `block_rules` wired by hand is left alone.

@@ -51,7 +51,7 @@ const PORT := 27919
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 286
+const CHECKS := 294
 
 var _entered := 0
 var _completed := 0
@@ -111,6 +111,7 @@ func _run() -> void:
 		await _test_link_survives_reload()
 		_test_workbench_hosting()
 		await _test_avatar_actions()
+		await _test_avatar_content()
 
 	_teardown()
 
@@ -860,6 +861,36 @@ func _test_operator_ceiling_reaches_the_netcode() -> void:
 	_check(module.net != null and module.net.config.snapshot_rate == 12, "the snapshot rate is the operator's (12 divides tick 60)")
 	_check(module.net != null and module.net.config.max_entities_per_snapshot == 8, "and the entity cap")
 	_unload_module()
+	_done()
+
+
+func _test_avatar_content() -> void:
+	_section("avatar content: advertised as a rule, refused cleanly when it cannot be fetched")
+	_check(DotGameAvatarContent.parse(" avatar/5/1, action/7/2 ,,") == ["avatar/5/1", "action/7/2"], "the advertisement parses")
+	_check(DotGameAvatarContent.ids_from_rules({}) == [], "no rule is no ids")
+	_check(DotGameAvatarContent.ids_from_rules({"sv_avatar_content": "avatar/5/1"}) == ["avatar/5/1"], "ids come from a query rule")
+	var plain: DotResult = await _load_module()
+	var plain_module := _server.modules.get_module("testgame") if plain.ok else null
+	_check(plain_module != null and plain_module.console.find_cvar(DotGameAvatarContent.CVAR) == null, "a game requiring nothing publishes no cvar")
+	_unload_module()
+	TestModule.avatar_content = ["avatar/5/1", "action/7/1"]
+	var loaded: DotResult = await _load_module()
+	TestModule.avatar_content = []
+	var module := _server.modules.get_module("testgame") if loaded.ok else null
+	var cv: DotConVar = module.console.find_cvar(DotGameAvatarContent.CVAR) if module != null else null
+	_check(cv != null and cv.get_string() == "avatar/5/1,action/7/1" and cv.has_flag(DotConVar.FLAG_NOTIFY), "the module advertises it as a notify cvar")
+	_unload_module()
+	var host := Node.new()
+	add_child(host)
+	var empty: DotResult = await DotGameAvatarContent.prepare(host, [], "https://site.test", 3, null, null)
+	_check(empty.ok, "nothing required is ready at once")
+	if not DotGameAvatarContent.available():
+		var missing: DotResult = await DotGameAvatarContent.prepare(host, ["avatar/5/1"], "https://site.test", 3, null, null)
+		_check(not missing.ok and missing.error.code == DotError.CODE_UNSUPPORTED, "required files without dot-user-avatar refuse the connect")
+	else:
+		_check(true, "dot-user-avatar is present (its own suite covers the fetch)")
+	host.free()
+	_check(DotGameAvatarContent.format(["a/1/1", "b/2/1"]) == "a/1/1,b/2/1", "ids format back")
 	_done()
 
 

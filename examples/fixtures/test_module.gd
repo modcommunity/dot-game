@@ -23,6 +23,9 @@ static var refuse_attach := false
 static var skip_identity := false
 static var skip_services := false
 
+## Content ids the module advertises as `sv_avatar_content`.
+static var avatar_content: Array = []
+
 ## While true, [method _can_tick] says no — the lobby's "the world under me was freed".
 static var hold_ticks := false
 
@@ -39,6 +42,10 @@ var clock: Node = null
 
 func _module_name() -> String:
 	return "testgame"
+
+
+func _avatar_content_required() -> Array:
+	return avatar_content
 
 
 func _game_service() -> StringName:

@@ -240,6 +240,9 @@ var host: Node = null
 var link: Object = null
 ## The avatar actions' client half, once [method add_avatar_actions] has run.
 var avatar_actions: DotGameAvatarActionClient = null
+
+## The content fetcher of the last [method prepare_avatar_content], whose cache holds the files.
+var avatar_fetcher: RefCounted = null
 ## No server: no link, [member force_offline], or [code]--offline[/code] on the command line.
 var offline: bool = true
 ## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
@@ -1086,6 +1089,29 @@ func add_noblock(game: Object, side_fn: Callable) -> DotResult:
 	if link == null or not noblock.follow(link):
 		return DotResult.fail(DotError.CODE_STATE, "The game link cannot replicate cvars: noblock would not follow the server.")
 	return DotResult.success(noblock)
+
+
+## Downloads what a server advertises ([constant DotGameAvatarContent.CVAR] in its query rules, e.g.
+## `entry.rules`) before the client connects, holding [member gate] with the progress. On failure the gate
+## stays held showing why and the caller must not connect. [param server_id] is the site's id for the server.
+func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
+	var ids := DotGameAvatarContent.ids_from_rules(rules)
+	var kept := []
+	var res: DotResult = await DotGameAvatarContent.prepare(self, ids, base_url, server_id, gate, http, kept)
+	if not kept.is_empty():
+		avatar_fetcher = kept[0]
+	if not res.ok:
+		DotLog.warn(CHANNEL, "avatar content not ready; not connecting", {"why": res.error.message})
+	return res
+
+
+## The signed-in member's equipped actions from the backbone's avatar read, ready for
+## [method add_avatar_actions]'s third argument. Null (the starter set) when there is none.
+func read_avatar_actions(http: DotHttp, user_key: String, headers: Dictionary = {}) -> DotResult:
+	var path := "res://addons/dot_user_avatar/net/dot_avatar_sync.gd"
+	if http == null or not ResourceLoader.exists(path):
+		return DotResult.success(null)
+	return await (load(path) as GDScript).call(&"fetch_actions", http, user_key, headers)
 
 
 ## Wires the avatar actions (emote `,`, pose `.`, gesture `/`; dot-user-avatar's

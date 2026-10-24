@@ -42,5 +42,6 @@ extends RefCounted
 # 20: DotGameWorkbenchAuth, and DotGameWorkbench accounts / account_resolver / account_permit_fn / account_gate: dot-auth
 #    tickets admitted by default (admin_uids, admin_groups).
 # 21: DotGameAvatarActionMessage / Relay / Client, DotGameClient.add_avatar_actions, DotGameModule._avatar_actions_equipped and _avatar_action_veto.
-const LEVEL := 21
+# 22: DotGameAvatarContent, DotGameModule._avatar_content_required (sv_avatar_content), DotGameClient.prepare_avatar_content / read_avatar_actions.
+const LEVEL := 22
 const OLDEST := 1
