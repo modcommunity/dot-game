@@ -36,5 +36,6 @@ extends RefCounted
 # 15: DotGameClient.restore_map_config, also run when the server connection drops (not only on EXIT_TREE).
 # 16: DotGameMapScripts, the handler for dot-map's script.* events; DotGameModule.map_scripts.
 # 17: DotGameConfigBinder / DotGameConfigSchema, a DotConfig as layered load, cvars, `config` profile and yml diff.
-const LEVEL := 17
+# 18: DotGameWorkbench and DotGameClient.add_workbench, the F9 tuning window.
+const LEVEL := 18
 const OLDEST := 1
