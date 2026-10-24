@@ -39,6 +39,14 @@ var dedicated: bool = false
 var permit_fn: Callable = Callable()
 ## Callable() -> {cvar: value} of cvars changed from the shipped default, for the export.
 var cvars_fn: Callable = Callable()
+## On by default: with dot-auth running a ticket key, a connect ticket is also accepted as the bearer ([DotGameWorkbenchAuth]).
+var accounts: bool = true
+## Callable(token) -> identity or null, replacing the ticket check. Unset means dot-auth's offline ticket check.
+var account_resolver: Callable = Callable()
+## Callable(uid, flag) -> bool for a listed account; unset means [member permit_fn].
+var account_permit_fn: Callable = Callable()
+## The account gate once attached; null without dot-auth, a ticket key or `admin_uids` / `admin_groups` to resolve.
+var account_gate: RefCounted = null
 ## The `workbench:` block; read from cfg/server.yml by [method start] when empty.
 var config: Dictionary = {}
 
@@ -93,6 +101,7 @@ func start(runtime: Object = null) -> DotResult:
 		if actor is String and actor == LOCAL_ACTOR:
 			return local_ok
 		return permit_fn.is_valid() and bool(permit_fn.call(actor, flag)))
+	_attach_accounts()
 	var export_script: GDScript = load(EXPORT_SCRIPT)
 	exporter = export_script.new(api)
 	if cvars_fn.is_valid():
@@ -106,6 +115,18 @@ func start(runtime: Object = null) -> DotResult:
 	if not res.ok:
 		return res
 	return DotResult.success(overlay != null or running_http)
+
+
+func _attach_accounts() -> void:
+	if not accounts:
+		return
+	var resolver := account_resolver
+	if not resolver.is_valid():
+		resolver = DotGameWorkbenchAuth.ticket_resolver(DotRegistry.get_node_service(DotGameWorkbenchAuth.AUTH_SERVICE))
+	var permit: Callable = account_permit_fn if account_permit_fn.is_valid() else permit_fn
+	account_gate = DotGameWorkbenchAuth.attach(self, resolver, permit)
+	if account_gate != null:
+		DotLog.info(CHANNEL, "workbench accepts dot-auth accounts")
 
 
 func _build_panel() -> void:

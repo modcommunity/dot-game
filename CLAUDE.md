@@ -15,7 +15,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/map-config.md](docs/map-config.md) | a game taking per-map settings (`DotGameMapConfig`, `_map_config_keys`, `DotGameClient.map_changed`) |
 | [docs/config-binder.md](docs/config-binder.md) | a game's `*Config` made server-tunable: `DotGameConfigBinder`, strict boot, the cvars, the workbench kind, the yml diff |
 | [docs/noblock.md](docs/noblock.md) | teammates passing through each other: `DotGameNoblock`, the module's `_noblock_*` hooks, `DotGameClient.add_noblock`, the `noblock` cfg kind |
-| [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench` |
+| [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench`, dot-auth accounts (`DotGameWorkbenchAuth`) |
 | [docs/history.md](docs/history.md) | the bugs, and how each looked |
 
 ## Layout

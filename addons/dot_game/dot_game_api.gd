@@ -39,5 +39,7 @@ extends RefCounted
 # 18: DotGameWorkbench and DotGameClient.add_workbench, the F9 tuning window.
 # 19: DotGameNoblock, built by DotGameModule for a game with body_rules (_noblock_enabled / _noblock_side /
 #    _noblock_runtime, noblock), DotGameClient.add_noblock, DotGameConfigBinder.profile_kind.
-const LEVEL := 19
+# 20: DotGameWorkbenchAuth, and DotGameWorkbench accounts / account_resolver / account_permit_fn / account_gate: dot-auth
+#    tickets admitted by default (admin_uids, admin_groups).
+const LEVEL := 20
 const OLDEST := 1
