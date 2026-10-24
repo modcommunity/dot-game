@@ -24,6 +24,9 @@ var blocked_fn: Callable = Callable()
 ## it. Null leaves uploaded clips unplayed (built-ins still play).
 var content_fn: Callable = Callable()
 
+## func(id: String) -> String: the site library's file url for an upload id, "" while the library is unread.
+var url_fn: Callable = Callable()
+
 ## func(rows: Dictionary) -> DotResult of the input's actions; default dot-user-avatar's `from_backbone`, by path.
 var actions_fn: Callable = Callable()
 
@@ -41,6 +44,8 @@ var _ask_wait := 0.0
 var _ask_gap := 1.0
 var _scenes: Dictionary = {}
 var _fetching: Dictionary = {}
+## Whether the keys were last built with a placeholder url, to rebuild them once the library names the real one.
+var _placeholder_urls := false
 
 
 ## [param p_net] is null offline: the action plays locally and goes nowhere.
@@ -134,6 +139,7 @@ func apply_to_input(entries: Array) -> bool:
 	if input == null or not input.get(&"actions") is Object:
 		return false
 	var current: Object = input.get(&"actions")
+	_placeholder_urls = false
 	var rows := {}
 	for e: Dictionary in entries:
 		var kind := String(DotGameAvatarLoadoutMessage.KINDS[clampi(int(e["kind"]), 0, DotGameAvatarLoadoutMessage.KINDS.size() - 1)]).to_upper()
@@ -142,12 +148,17 @@ func apply_to_input(entries: Array) -> bool:
 		if String(e.get("clip", "")) == "":
 			(rows[kind] as Array).append({"builtin": e["id"]})
 			continue
-		var url := "/"
+		var url := ""
 		if current.has_method(&"equipped"):
 			for kept: Dictionary in current.call(&"equipped", StringName(kind.to_lower())):
 				if kept.get("id") == e["id"]:
-					url = String(kept.get("url", "/"))
-		(rows[kind] as Array).append({"contentId": e["id"], "clip": e["clip"], "loop": e["loop"], "fileUrl": url if url != "" else "/"})
+					url = String(kept.get("url", ""))
+		if (url == "" or url == "/") and url_fn.is_valid():
+			url = String(url_fn.call(String(e["id"])))
+		if url == "":
+			url = "/"
+			_placeholder_urls = true
+		(rows[kind] as Array).append({"contentId": e["id"], "clip": e["clip"], "loop": e["loop"], "fileUrl": url})
 	var read: Variant = null
 	if actions_fn.is_valid():
 		read = actions_fn.call(rows)
@@ -178,6 +189,8 @@ func _fetch_clip(entry: Dictionary) -> void:
 	var id := String(entry["id"])
 	var res: Variant = await content_fn.call(entry)
 	var _f := _fetching.erase(id)
+	if _placeholder_urls and net != null and loadouts.has(net.local_peer_id):
+		var _a := apply_to_input(loadouts[net.local_peer_id])
 	if res is DotResult and (res as DotResult).ok and (res as DotResult).value is Node3D:
 		_scenes[id] = (res as DotResult).value
 	else:

@@ -1101,10 +1101,15 @@ func _test_avatar_loadout_client() -> void:
 	own.entries = [{"id": "action/9/1", "kind": 0, "loop": true, "clip": "Hop"}, {"id": "wave", "kind": 2, "loop": false, "clip": ""}]
 	deliver.call(own)
 	_check(seen_rows.size() == 1 and seen_rows[0]["EMOTE"][0]["contentId"] == "action/9/1" and seen_rows[0]["GESTURE"][0]["builtin"] == "wave", "the local player's keys are rebuilt from their own relayed loadout", str(seen_rows))
+	_check(seen_rows[0]["EMOTE"][0]["fileUrl"] == "/", "with no library read yet the row keeps the valid placeholder")
+	client.url_fn = func(id: String) -> String:
+		return "https://cdn.test/hop.glb" if id == "action/9/1" else ""
+	var _ap := client.apply_to_input(own.entries)
+	_check(seen_rows.size() == 2 and seen_rows[1]["EMOTE"][0]["fileUrl"] == "https://cdn.test/hop.glb", "once the library names it, the keys get the real file url", str(seen_rows[-1]))
 	lm.actor = 7
 	lm.entries = [{"id": "wave", "kind": 2, "loop": false, "clip": ""}]
 	deliver.call(lm)
-	_check(seen_rows.size() == 1, "another player's loadout leaves the local keys alone")
+	_check(seen_rows.size() == 2, "another player's loadout leaves the local keys alone")
 	client.queue_free()
 	input.queue_free()
 	net.queue_free()

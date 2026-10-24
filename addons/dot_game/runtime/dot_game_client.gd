@@ -1162,6 +1162,8 @@ func add_avatar_actions(net: DotNetManager, figure_fn: Callable, backbone_action
 	avatar_actions.blocked_fn = is_input_blocked
 	avatar_actions.content_fn = func(entry: Dictionary) -> DotResult:
 		return await DotGameAvatarContent.fetch_clip(self, null, avatar_site(), avatar_server(), entry, _avatar_library)
+	avatar_actions.url_fn = func(id: String) -> String:
+		return String((_avatar_library.get("rows", {}) as Dictionary).get(id, {}).get("url", ""))
 	add_child(avatar_actions)
 	avatar_actions.attach(net, input, figure_fn)
 	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):
