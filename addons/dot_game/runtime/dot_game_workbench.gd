@@ -103,6 +103,7 @@ func start(runtime: Object = null) -> DotResult:
 				bind_cvar_set(made, api.get("runtime"), server.console)
 				add_set(made, "Server threads")
 		if relevance_cvars:
+			_Relevance.ensure_cvars(server.console)
 			var rel := cvar_set(server.console, _Relevance.TYPES, RELEVANCE_KIND, THREADS_ADDON)
 			if rel != null:
 				bind_cvar_set(rel, api.get("runtime"), server.console)
