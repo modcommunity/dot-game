@@ -20,6 +20,11 @@ JOIN_S = {"clean": 20.0, "lossy100": 30.0, "jitter200": 35.0, "awful400": 45.0, 
 WORST_ERR_M = {"clean": 0.5, "lossy100": 1.0, "jitter200": 1.5, "awful400": 3.0, "bwcap": 3.0, "blackout": 3.0}
 CORRECTION_RATE = {"clean": 0.10, "lossy100": 0.25, "jitter200": 0.40, "awful400": 0.60, "bwcap": 0.30, "blackout": 0.30}
 # Settled (everyone idle for the settle time) distance to the server's truth.
+# The blackout's resume: the server ran the dark seconds on neutral input while each client
+# predicted its own, so the first snapshot after it is a correction of up to speed x blackout.
+# That one is the server's honest answer, reported apart; the worst-correction limit judges the rest.
+RESUME_S = 2.0
+SPIKES_KEPT = 40  # dot_game_netchaos_client.gd keeps the first 40 spikes over 0.5 m
 POS_SELF_M = 0.25
 POS_OTHER_M = 0.75
 REJOIN_S = 25.0
@@ -122,7 +127,18 @@ def judge(run, profile, names):
         check(name, "correction rate under %.0f%%" % (lim * 100), rate <= lim,
               "%d of %d replays" % (p["corrections"], p["replays"]))
         lim = tun("WORST_ERR_M", WORST_ERR_M, profile)
-        check(name, "worst correction under %.2f m" % lim, p["worst_error_m"] <= lim, "%.3f m" % p["worst_error_m"])
+        worst, what = p["worst_error_m"], "worst correction under %.2f m" % lim
+        bo_at, bo_s = os.environ.get("NC_BLACKOUT_AT"), os.environ.get("NC_BLACKOUT_S")
+        spikes = rep.get("spikes", [])
+        if profile == "blackout" and bo_at and bo_s and len(spikes) < SPIKES_KEPT:
+            lo, hi = float(bo_at), float(bo_at) + float(bo_s) + tun("RESUME_S", RESUME_S)
+            resume = [s["error_m"] for s in spikes if lo <= s["t"] <= hi]
+            outside = [s["error_m"] for s in spikes if not lo <= s["t"] <= hi]
+            worst = max(outside) if outside else min(worst, 0.5)
+            what = "worst correction outside the blackout's resume under %.2f m" % lim
+            c["resume_correction_m"] = max(resume) if resume else 0.0
+            print("    NOTE %s: resume correction %.3f m (not judged)" % (name, c["resume_correction_m"]))
+        check(name, what, worst <= lim, "%.3f m" % worst)
         me = rep.get("self")
         pname = me["name"] if me else None
         if me and pname in tp and tp[pname][3] and me["alive"]:
