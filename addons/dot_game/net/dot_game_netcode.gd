@@ -59,7 +59,10 @@ const CEILING_KEYS: PackedStringArray = [
 ## Properties where a number the operator wrote REPLACES the game's. The interpolation
 ## buffer is a smoothness-versus-latency trade, not a resource limit: a ceiling could only
 ## shorten it, but the operator who sets it is on a jittery network and wants it longer.
-const OVERRIDE_KEYS: PackedStringArray = ["interpolation_buffer"]
+const OVERRIDE_KEYS: PackedStringArray = ["interpolation_buffer", "far_every", "far_distance"]
+
+## Ceilings in metres: the smaller of the operator's and the game's relevance radius (0 is no limit).
+const RADIUS_CEILING_KEYS: PackedStringArray = ["interest_radius"]
 
 
 ## Builds the manager, attaches the bridge, seals the schema and starts.
@@ -241,6 +244,14 @@ static func cap(config: DotNetConfig, ceiling: Dictionary) -> PackedStringArray:
 		if have <= 0 or have > limit:
 			changes.append("%s %d -> %d" % [key, have, limit])
 			config.set(key, limit)
+
+	for key in RADIUS_CEILING_KEYS:
+		if not ceiling.has(key) or float(ceiling[key]) <= 0.0:
+			continue
+		var cap_m := float(ceiling[key])
+		if float(config.get(key)) <= 0.0 or float(config.get(key)) > cap_m:
+			changes.append("%s %s -> %s" % [key, config.get(key), cap_m])
+			config.set(key, cap_m)
 
 	var rate := config.snapshot_rate
 	if ceiling.has("snapshot_rate") and int(ceiling["snapshot_rate"]) > 0:

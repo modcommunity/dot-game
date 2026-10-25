@@ -4,7 +4,7 @@
 
 **First 10 minutes** (a new game): start from [dot-game-template](https://github.com/modcommunity/dot-game-template), run `../dot-ci/scripts/resolve-deps.sh .` to link the addons, do the steps below, then run `./game.sh test`. Moving an existing client over is the same steps.
 
-Settings layer the same way in every addon, weakest first: the addon's schema defaults, the addon's shipped `cfg/addons/<addon>/`, the game's `cfg/game/<game>/<addon>/`, the server operator's `cfg/server/addons/<addon>/` and `cfg/server/game/<game>/`, then environment variables, then the command line, then runtime changes (a console `set`). The folder is the addon name with `-` written as `_`. Secrets are read from files only: a key marked sensitive is refused from the environment and the command line. Details: [dot-core's addon-config.md](../../dot-core/docs/addon-config.md).
+Settings layer the same way in every addon, weakest first: the addon's schema defaults, the addon's shipped `cfg/addon/<addon>/`, the game's `cfg/game/<game>/<addon>/`, the server operator's `cfg/server/addon/<addon>/` and `cfg/server/game/<game>/`, then environment variables, then the command line, then runtime changes (a console `set`). The folder is the addon name with `-` written as `_`. Secrets are read from files only: a key marked sensitive is refused from the environment and the command line. Details: [dot-core's addon-config.md](../../dot-core/docs/addon-config.md).
 
 `./game.sh` is the one entry point every game repository has (copy it from the reference game, `game-arena`):
 

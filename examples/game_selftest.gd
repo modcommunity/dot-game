@@ -730,6 +730,15 @@ func _test_operator_net_ceiling() -> void:
 	c = _caps({"interpolation_buffer": 2.0}, {"interpolation_buffer": 3.0})
 	_check(is_equal_approx(c.interpolation_buffer, 3.0), "the interpolation buffer is overridden, not capped")
 
+	c = _caps({"interest_radius": 300.0}, {"interest_radius": 150.0})
+	_check(is_equal_approx(c.interest_radius, 150.0), "the relevance radius is clamped to the operator's metres")
+	c = _caps({"interest_radius": 100.0}, {"interest_radius": 150.0})
+	_check(is_equal_approx(c.interest_radius, 100.0), "a game radius under the cap is kept")
+	c = _caps({"interest_radius": 300.0}, {"interest_radius": 0.0})
+	_check(is_equal_approx(c.interest_radius, 300.0), "an operator radius of 0 leaves the game's")
+	c = _caps({"far_every": 1, "far_distance": 0.0}, {"far_every": 4, "far_distance": 60.0})
+	_check(c.far_every == 4 and is_equal_approx(c.far_distance, 60.0), "far_every and far_distance are the operator's to set")
+
 	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 66})
 	_check(c.snapshot_rate == 32, "a snapshot cap above the game's rate changes nothing")
 	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 20})
