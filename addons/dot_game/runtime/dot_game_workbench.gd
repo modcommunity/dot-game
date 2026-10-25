@@ -45,7 +45,7 @@ var overlay: Control = null
 var exporter: RefCounted = null
 var running_http := false
 
-## Offer the DotServer's [constant THREAD_CVARS] as a set; Save writes `cfg/server/addons/dot_server/threads/server.yml`, applied at the next start.
+## Offer the DotServer's [constant THREAD_CVARS] as a set; Save writes `cfg/server/addon/dot_server/threads/server.yml`, applied at the next start.
 var thread_cvars: bool = true
 
 ## The server's thread cvars and their profile types.
