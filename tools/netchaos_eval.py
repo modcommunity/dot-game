@@ -23,6 +23,9 @@ CORRECTION_RATE = {"clean": 0.10, "lossy100": 0.25, "jitter200": 0.40, "awful400
 POS_SELF_M = 0.25
 POS_OTHER_M = 0.75
 REJOIN_S = 25.0
+# NC_SOLID=1: under this many summed bumps (sweeps stopped by another player) a run is noted as not
+# exercising solid players. A note, not a check: whether bots meet is chance (0 to 2000 a run).
+CONTACTS_MIN = 20
 SERVER_FRAME_MS = 500.0
 SERVER_ERR = re.compile(r"\bERROR\b|\bFATAL\b|SCRIPT ERROR")
 # The server's first calls reach a client before its game link node exists (see netchaos_client.gd).
@@ -78,6 +81,9 @@ def judge(run, profile, names):
     errs, n = grep(os.path.join(run, "server.log"), SERVER_ERR)
     check("server", "no ERROR lines in the server log", n == 0, "; ".join(errs))
     want = len(names)
+    solid = os.environ.get("NC_SOLID", "0") == "1"
+    if solid:
+        check("server", "players solid as asked (NC_SOLID=1)", str(srv.get("solid")) == "1", "solid=%s" % srv.get("solid"))
     check("server", "all %d clients still connected at the end" % want, srv.get("peers", -1) == want, "peers=%s" % srv.get("peers"))
     tp = (truth or {}).get("players", {})
     clients = []
@@ -93,7 +99,7 @@ def judge(run, profile, names):
         c.update(joins=rep["join_seconds"], sessions=rep["sessions"], disconnects=rep["disconnects"],
                  rejoin_seconds=rep["rejoin_seconds"], prediction=rep["prediction"],
                  max_gap_s=round(rep["max_snapshot_gap_s"], 2), stats=rep.get("stats", {}),
-                 rtt_p50=rep.get("stats", {}).get("rtt_p50"), rtt_p95=rep.get("stats", {}).get("rtt_p95"))
+                 contacts=rep.get("contacts", -1), rtt_p50=rep.get("stats", {}).get("rtt_p50"), rtt_p95=rep.get("stats", {}).get("rtt_p95"))
         check(name, "connected and playing at the end", rep["connected"] and rep.get("link_playing") and rep.get("clock_synced"),
               "errors=%s" % rep["errors"])
         check(name, "load gate open (not stuck loading)", rep.get("gate_open", False), "")
@@ -173,11 +179,15 @@ def summarise_run(run, profile, names):
     print("  %-10s %d checks, %d failed" % (profile, len(checks), len(failed)))
     for c in clients:
         p = c.get("prediction", {})
-        print("    %-3s %-9s join %s s  gap %s s  rtt p50/p95 %s/%s  corr %s/%s (%.0f%%)  worst %.3f m  err self %s others %s  sessions %s" % (
+        print("    %-3s %-9s join %s s  gap %s s  rtt p50/p95 %s/%s  corr %s/%s (%.0f%%)  worst %.3f m  err self %s others %s  sessions %s  contacts %s" % (
             c["name"], c["box"], ["%.1f" % j for j in c.get("joins", [])], c.get("max_gap_s"),
             c.get("rtt_p50") and round(c["rtt_p50"]), c.get("rtt_p95") and round(c["rtt_p95"]),
             p.get("corrections"), p.get("replays"), 100 * c.get("correction_rate", 0), p.get("worst_error_m", 0),
-            c.get("pos_error_self_m"), c.get("pos_error_others_m"), c.get("sessions")))
+            c.get("pos_error_self_m"), c.get("pos_error_others_m"), c.get("sessions"), c.get("contacts")))
+    counted = [c["contacts"] for c in clients if c.get("contacts", -1) >= 0]
+    lim = tun("CONTACTS_MIN", CONTACTS_MIN)
+    if os.environ.get("NC_SOLID", "0") == "1" and counted and sum(counted) < lim:
+        print("    note: players bumped %d times (under %d): this run did not exercise solid players" % (sum(counted), lim))
     for c in failed:
         print("    FAIL %s: %s %s" % (c["client"], c["check"], c["detail"]))
     return len(failed) == 0
@@ -198,7 +208,9 @@ def aggregate(out, profiles):
         total += r["checks"]
         failed += r["failed"]
         if r["failures"]:
-            failures.append({"name": "netchaos " + prof, "repro": "heavy -- tools/netchaos.sh --profile " + prof,
+            solid = os.environ.get("NC_SOLID", "0") == "1"
+            failures.append({"name": "netchaos " + prof + (" solid" if solid else ""),
+                             "repro": ("NC_SOLID=1 " if solid else "") + "heavy -- tools/netchaos.sh --profile " + prof,
                              "reasons": ["%s: %s %s" % (f["client"], f["check"], f["detail"]) for f in r["failures"]][:8]})
     with open(os.path.join(out, "summary.json"), "w") as f:
         json.dump({"runs": runs, "total": total, "failed": failed}, f, indent=1)

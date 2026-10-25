@@ -5,12 +5,13 @@
 #
 #   heavy -- tools/netchaos.sh [--profile clean,lossy100,awful400] [--remote 2] [--local 1]
 #                              [--boxes staging,staging02] [--active 30] [--settle 8] [--post] [--out DIR]
+#   (with --remote 0 the local clients' traffic on lo is impaired, for when the boxes are busy)
 #   tools/netchaos.sh selftest [staging|staging02]    the tc filter on one box with a harmless profile
 #   tools/netchaos.sh profiles                        list the profiles
 #
-# NC_SOLID=1 keeps mp_solidplayers on (the default is 0 here): a client predicts against the other
-# players' interpolated hulls, so every bump is a correction (3 players in 50 m: 6-32% of replays,
-# 0.4-0.6 m worst) and the profiles then measure the bumping, not the link.
+# NC_SOLID=1 keeps mp_solidplayers on (the default is 0 here) and is held to the same limits, plus
+# a contact count: a game whose bumps only stop the mover collides at the mover's view tick on
+# both ends (dot-net docs/prediction.md), so bumping costs no corrections.
 #
 # Exit 1 when any assertion of any profile fails. docs/testing.md "Network chaos" says what it
 # proves and why impairing only the game's ip:port is safe on a WiFi box.
@@ -146,6 +147,8 @@ for b in "${USE[@]}"; do
 	LAST_DEV_LOCAL=$(dev_for "${BOXIP[$b]}")
 done
 SERVER_IP=127.0.0.1; ((${#USE[@]})) && SERVER_IP=${BOXSRV[${USE[0]}]}
+# No boxes (--remote 0): the local clients' loopback traffic to and from the server port is impaired instead.
+((${#USE[@]})) || LAST_DEV_LOCAL=lo
 
 say "pre-check: tc must be clean on every box"
 for b in "${USE[@]}"; do tc_box "$b" check "${BOXDEV[$b]}" || die "$b not clean before the run"; done
@@ -184,6 +187,7 @@ for prof in ${PROFILES//,/ }; do
 			tc_box "$b" apply "${BOXDEV[$b]}" "$MAXSEC" "$NETEM" "ip=${BOXSRV[$b]},dport=$PORT" || { say "apply on $b failed"; overall=1; }
 			specs_srv+=("ip=${BOXIP[$b]},sport=$PORT")
 		done
+		((${#USE[@]})) || specs_srv=("ip=127.0.0.1,dport=$PORT" "ip=127.0.0.1,sport=$PORT")
 		tc_local apply "$LAST_DEV_LOCAL" "$MAXSEC" "$NETEM" "${specs_srv[@]}" || { say "apply on dev02 failed"; overall=1; }
 	fi
 
