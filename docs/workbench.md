@@ -30,3 +30,7 @@ Export builds need `*.html` in the preset's `include_filter` for the HTTP page. 
 ## The server's thread cvars
 
 `start()` adds a **Server threads** set to every game's panel when a `DotServer` is registered: `sv_worker_threads`, `sv_threads_net` and `sv_threads_npc` (`THREAD_CVARS`), each field built from its cvar (range, description, current value). An edit sets the cvar, which dot-server applies live; Save writes `cfg/server/addon/dot_server/threads/server.yml`, and the next `start()` applies that file to the cvars before anything reads them. Only what an edit moved is pushed, so a cvar changed at the console since is left alone. `thread_cvars = false` leaves the set out. `cvar_set(console, {name: type}, kind, addon)` and `bind_cvar_set(set, runtime, console)` build the same thing over any other cvars.
+
+## The relevance cvars
+
+`DotGameNetcode.build` registers `net_interest_radius`, `net_far_every` and `net_far_distance` on the server console (`DotGameRelevance`, archive flag) and follows them into the manager's default `DotNetInterestDistance`, live; a game that assigns its own interest strategy is left alone. 0 keeps the game's value; the radius is a ceiling (the smaller wins), the far pair replaces. The same names in the operator's `server.yml` seed the defaults. The workbench offers them as a "Relevance" set; Save writes `cfg/server/addon/dot_server/relevance/server.yml`, applied at the next start (the console changes them at once). `DotGameWorkbench.relevance_cvars = false` hides the set.

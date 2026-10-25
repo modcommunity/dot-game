@@ -48,9 +48,14 @@ var running_http := false
 ## Offer the DotServer's [constant THREAD_CVARS] as a set; Save writes `cfg/server/addon/dot_server/threads/server.yml`, applied at the next start.
 var thread_cvars: bool = true
 
+## Offer the relevance cvars (net_interest_radius, net_far_every, net_far_distance) as a set; Save writes `cfg/server/addon/dot_server/relevance/server.yml`, applied at the next start (the console changes them at once).
+var relevance_cvars: bool = true
+
 ## The server's thread cvars and their profile types.
 const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool"}
 const THREADS_KIND := "threads"
+const RELEVANCE_KIND := "relevance"
+const _Relevance := preload("res://addons/dot_game/net/dot_game_relevance.gd")
 const THREADS_ADDON := "dot_server"
 ## The one profile id a cvar set has.
 const CVAR_SET_ID := "server"
@@ -90,13 +95,18 @@ func start(runtime: Object = null) -> DotResult:
 		config = http_script.call("read_config")
 	var api_script: GDScript = load(API_SCRIPT)
 	api = api_script.new(runtime)
-	if thread_cvars:
-		var server := DotRegistry.get_node_service(DotServer.SERVICE) as DotServer
-		if server != null and server.console != null:
+	var server := DotRegistry.get_node_service(DotServer.SERVICE) as DotServer
+	if server != null and server.console != null:
+		if thread_cvars:
 			var made := cvar_set(server.console, THREAD_CVARS, THREADS_KIND, THREADS_ADDON)
 			if made != null:
 				bind_cvar_set(made, api.get("runtime"), server.console)
 				add_set(made, "Server threads")
+		if relevance_cvars:
+			var rel := cvar_set(server.console, _Relevance.TYPES, RELEVANCE_KIND, THREADS_ADDON)
+			if rel != null:
+				bind_cvar_set(rel, api.get("runtime"), server.console)
+				add_set(rel, "Relevance (saved values apply at next start)")
 	for s in _sets:
 		api.call("add_set", s)
 	var editor := OS.has_feature("editor")
