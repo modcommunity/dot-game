@@ -741,6 +741,11 @@ func _test_operator_net_ceiling() -> void:
 	c = _caps({"far_every": 1, "far_distance": 0.0}, {"far_every": 4, "far_distance": 60.0})
 	_check(c.far_every == 4 and is_equal_approx(c.far_distance, 60.0), "far_every and far_distance are the operator's to set")
 
+	c = _caps({}, {"stagger_snapshots": 1})
+	_check(c.stagger_snapshots, "stagger_snapshots is the operator's to turn on")
+	c = _caps({}, {})
+	_check(not c.stagger_snapshots, "and stays off without it")
+
 	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 66})
 	_check(c.snapshot_rate == 32, "a snapshot cap above the game's rate changes nothing")
 	c = _caps({"snapshot_rate": 32}, {"snapshot_rate": 20})
