@@ -200,6 +200,7 @@ static func build(
 static func follow_server_threads(config: DotNetConfig, server_config: Object) -> bool:
 	if config == null:
 		return false
+	_follow_server_native(config, server_config)
 	if config.snapshot_workers != 0 and not config.has_meta(THREADS_FOLLOW_META):
 		return false
 	if server_config == null or not server_config.has_method("net_snapshot_workers"):
@@ -207,6 +208,20 @@ static func follow_server_threads(config: DotNetConfig, server_config: Object) -
 	config.set_meta(THREADS_FOLLOW_META, true)
 	config.snapshot_workers = int(server_config.call("net_snapshot_workers"))
 	return true
+
+
+## ORs the server's [code]net_native[/code] cvar into [member DotNetConfig.native]: the game's own
+## true (its config, DOT_NET_NATIVE, --net-native) stays on whatever the operator says.
+static func _follow_server_native(config: DotNetConfig, server_config: Object) -> void:
+	if server_config == null or not ("net_native" in server_config):
+		return
+	if not config.has_meta(NATIVE_OWN_META):
+		config.set_meta(NATIVE_OWN_META, config.native)
+	config.native = bool(config.get_meta(NATIVE_OWN_META)) or bool(server_config.get("net_native"))
+
+
+## What [member DotNetConfig.native] was before this addon first followed the server.
+const NATIVE_OWN_META := &"dot_game_native_own"
 
 
 ## Marks a [DotNetConfig] whose snapshot_workers this addon wrote, so a later call knows the
