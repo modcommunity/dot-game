@@ -253,6 +253,12 @@ static func cap(config: DotNetConfig, ceiling: Dictionary) -> PackedStringArray:
 			changes.append("%s %s -> %s (operator)" % [key, config.get(key), wanted])
 			config.set(key, wanted)
 
+	# Off unless the operator asks: spreads peers over the ticks between snapshots, which only
+	# helps when the snapshot rate is under the tick rate (sv_tickrate 30 with a snapshot cap of 15).
+	if ceiling.has("stagger_snapshots") and config.stagger_snapshots != (int(ceiling["stagger_snapshots"]) != 0):
+		config.stagger_snapshots = int(ceiling["stagger_snapshots"]) != 0
+		changes.append("stagger_snapshots -> %s (operator)" % config.stagger_snapshots)
+
 	for key in CEILING_KEYS:
 		if not ceiling.has(key) or key == "snapshot_rate":
 			continue
