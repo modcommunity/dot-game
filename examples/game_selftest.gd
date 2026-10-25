@@ -779,6 +779,20 @@ func _test_server_threads_reach_the_netcode() -> void:
 	_check(not DotGameNetcode.follow_server_threads(own, sc) and own.snapshot_workers == 2,
 		"a value the game set is kept")
 
+	var nat := DotNetConfig.new()
+	DotGameNetcode.follow_server_threads(nat, sc)
+	_check(not nat.native, "net_native off leaves the native core off")
+	sc.net_native = true
+	DotGameNetcode.follow_server_threads(nat, sc)
+	_check(nat.native, "net_native on reaches DotNetConfig.native")
+	sc.net_native = false
+	DotGameNetcode.follow_server_threads(nat, sc)
+	_check(not nat.native, "net_native off again turns it off")
+	var nat_own := DotNetConfig.new()
+	nat_own.native = true
+	DotGameNetcode.follow_server_threads(nat_own, sc)
+	_check(nat_own.native, "the game's own native stays on with net_native off")
+
 	# Through the module: the config the game returns, as the server's switch has it.
 	_server.config.threads_net = true
 	_server.config.worker_threads = 2

@@ -52,7 +52,7 @@ var thread_cvars: bool = true
 var relevance_cvars: bool = true
 
 ## The server's thread cvars and their profile types.
-const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool"}
+const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool", "net_native": "bool"}
 const THREADS_KIND := "threads"
 const RELEVANCE_KIND := "relevance"
 const _Relevance := preload("res://addons/dot_game/net/dot_game_relevance.gd")
