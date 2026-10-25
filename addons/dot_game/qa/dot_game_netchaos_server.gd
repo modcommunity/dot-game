@@ -11,6 +11,9 @@ extends Node
 
 var port := 27210
 var data_dir := ""
+var _truth_at_path := ""
+var _stop_path := ""
+var _truth_out_path := ""
 var map_id := ""
 var solid := ""
 ## Set by [method _boot_world]: the loaded game module, which exposes `net` (a DotNetManager).
@@ -70,6 +73,9 @@ func _ready() -> void:
 
 func _boot() -> void:
 	DirAccess.make_dir_recursive_absolute(data_dir)
+	_truth_at_path = data_dir + "/truth_at"
+	_stop_path = data_dir + "/stop"
+	_truth_out_path = data_dir + "/truth.json"
 	await _boot_world()
 	if module == null:
 		printerr("netchaos server: the game did not load its module")
@@ -110,7 +116,7 @@ func boot_server(startup_config := "") -> DotResult:
 
 
 func _truth() -> Dictionary:
-	var players := {}
+	var players := Dictionary()
 	for p in _players():
 		var pos: Vector3 = p.controller.state.position
 		players[p.display_name] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001), p.is_alive(), _net_alive(p)]
@@ -123,11 +129,11 @@ func _process(delta: float) -> void:
 	_clock += delta
 	_frames += 1
 	_worst_frame = maxf(_worst_frame, delta * 1000.0)
-	if _snap.is_empty() and FileAccess.file_exists("%s/truth_at" % data_dir):
-		var at := FileAccess.get_file_as_string("%s/truth_at" % data_dir).to_float()
+	if _snap.is_empty() and FileAccess.file_exists(_truth_at_path):
+		var at := FileAccess.get_file_as_string(_truth_at_path).to_float()
 		if at > 0.0 and Time.get_unix_time_from_system() >= at:
 			_snap = _capture()
-	if FileAccess.file_exists("%s/stop" % data_dir):
+	if FileAccess.file_exists(_stop_path):
 		_finish()
 		return
 	if _clock >= _next_truth:
@@ -147,7 +153,7 @@ func _capture() -> Dictionary:
 func _finish() -> void:
 	var out := _snap if not _snap.is_empty() else _capture()
 	out["server"]["worst_frame_ms"] = _worst_frame
-	var f := FileAccess.open("%s/truth.json" % data_dir, FileAccess.WRITE)
+	var f := FileAccess.open(_truth_out_path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(out))
 	f.close()
 	set_process(false)

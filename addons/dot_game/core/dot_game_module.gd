@@ -137,14 +137,12 @@ func _game_unload() -> void:
 
 
 ## The server went to sleep ([param hibernating] true) or woke, after every clock this module found has heard it.
-##
 ## Votes and map sessions under this module are followed for you ([method _follow_hibernation]); a game's own round timer or warmup is a rule, so reset it here.
 func _game_hibernation(_hibernating: bool) -> void:
 	pass
 
 
 ## This game's own columns on the Tab board for one player (kills, points, a side), merged into that player's row of dot-server's roster.
-##
 ## The server's half of the scoreboard: only the server knows some numbers. Keyed by the session; [member roster] finds the player.
 func _game_board_fields(_session: Object) -> Dictionary:
 	return {}
@@ -164,14 +162,12 @@ func attach_npc_lod(spawner: Object, players: Callable = Callable()) -> DotGameN
 
 
 ## One authoritative tick, after the bridge has been driven.
-##
 ## The game's simulation runs inside the netcode's tick, so this cannot come first. Drive clocks from this tick, not the frame, so a stalled server loses no map time.
 func _game_tick(_tick: int, _delta: float) -> void:
 	pass
 
 
 ## Builds the game, in the one order that works.
-##
 ## The netcode is fatal and everything after it is not: no netcode accepts players into nothing, but an unreadable punishment file must not take the whole server down.
 func _module_load() -> DotResult:
 	var service := _game_service()
@@ -398,7 +394,6 @@ func _build_roster() -> void:
 
 
 ## Puts this module's handler for [constant DotGameRoster.COVER_KIND] on the server's envelope.
-##
 ## A kind on the existing envelope, because the RPC set is frozen and each game's bridge is its own. Duck-typed and optional: a client that predates it is released by the timeout.
 func _handle_cover_reports() -> void:
 	if server == null or not ("envelope" in server):
@@ -432,7 +427,6 @@ func _on_loading_changed(seat: int, loading: bool) -> void:
 
 
 ## Whether [param seat]'s client is still behind its loading cover (joined, or a map change began, until it says the cover lifted), at most [member load_timeout_sec]. False for bots and anybody not in the game.
-##
 ## What a hazard asks before it hurts somebody and round counting before it counts somebody out.
 func is_loading(seat: int) -> bool:
 	return roster != null and roster.is_loading(seat)
