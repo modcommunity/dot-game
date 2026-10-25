@@ -12,6 +12,7 @@
 # NC_SOLID=1 keeps mp_solidplayers on (the default is 0 here) and is held to the same limits, plus
 # a contact count: a game whose bumps only stop the mover collides at the mover's view tick on
 # both ends (dot-net docs/prediction.md), so bumping costs no corrections.
+# NC_FIRE=0 keeps the clients from shooting, to count what bumping alone costs.
 #
 # Exit 1 when any assertion of any profile fails. docs/testing.md "Network chaos" says what it
 # proves and why impairing only the game's ip:port is safe on a WiFi box.
@@ -202,7 +203,7 @@ for prof in ${PROFILES//,/ }; do
 		n="R$i"
 		NAMES+=("$n:$b")
 		s_box=$(python3 -c "print(round($START + ${BOXOFF[$b]}, 3))")
-		rssh "$b" "flock -s -w 300 ~/gpu/.lock timeout $((LEAD + ACTIVE + SETTLE + 90)) ~/gpu/bin/godot --headless --path ~/gpu/godot/$GAME res://tools/netchaos_client.tscn -- --server ${BOXSRV[$b]}:$PORT --name $n --start-at $s_box --active $ACTIVE --settle $SETTLE --out /tmp/netchaos/$prof-$n.json" \
+		rssh "$b" "flock -s -w 300 ~/gpu/.lock timeout $((LEAD + ACTIVE + SETTLE + 90)) ~/gpu/bin/godot --headless --path ~/gpu/godot/$GAME res://tools/netchaos_client.tscn -- --server ${BOXSRV[$b]}:$PORT --name $n --start-at $s_box --active $ACTIVE --settle $SETTLE --fire ${NC_FIRE:-1} --out /tmp/netchaos/$prof-$n.json" \
 			>"$RUN/client-$n.log" 2>&1 &
 		CLIENT_PIDS+=($!)
 	done
@@ -210,7 +211,7 @@ for prof in ${PROFILES//,/ }; do
 		n="L$i"
 		NAMES+=("$n:local")
 		timeout $((LEAD + ACTIVE + SETTLE + 90)) "$GODOT" --headless --path "$ROOT" res://tools/netchaos_client.tscn -- \
-			--server "127.0.0.1:$PORT" --name "$n" --start-at "$START" --active "$ACTIVE" --settle "$SETTLE" --out "$RUN/client-$n.json" \
+			--server "127.0.0.1:$PORT" --name "$n" --start-at "$START" --active "$ACTIVE" --settle "$SETTLE" --fire "${NC_FIRE:-1}" --out "$RUN/client-$n.json" \
 			>"$RUN/client-$n.log" 2>&1 &
 		CLIENT_PIDS+=($!)
 	done
