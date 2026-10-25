@@ -335,6 +335,36 @@ func _test_workbench_thread_cvars() -> void:
 	_done()
 
 
+func _test_relevance_cvars() -> void:
+	_section("the relevance settings are server cvars that drive the default interest strategy")
+	var Rel: GDScript = load("res://addons/dot_game/net/dot_game_relevance.gd")
+	var console := DotConsole.new()
+	add_child(console)
+	var net := DotNetManager.new()
+	var distance := DotNetInterestDistance.new()
+	distance.radius = 100.0
+	distance.far_every = 2
+	distance.far_distance = 30.0
+	net.interest = distance
+	_check(Rel.bind(console, net, {"interest_radius": 80.0}), "binds to the default strategy")
+	_check(console.find_cvar("net_far_every") != null and console.find_cvar("net_far_distance") != null, "the far pair are cvars")
+	_check(is_equal_approx(distance.radius, 80.0) and distance.far_every == 2, "the operator file seeds the radius as a ceiling; 0 keeps the game's far values")
+	console.set_cvar("net_far_every", "4")
+	console.set_cvar("net_far_distance", "50")
+	_check(distance.far_every == 4 and is_equal_approx(distance.far_distance, 50.0), "the far pair replaces the game's, live")
+	console.set_cvar("net_interest_radius", "150")
+	_check(is_equal_approx(distance.radius, 100.0), "the radius never raises the game's own")
+	console.set_cvar("net_far_every", "0")
+	_check(distance.far_every == 2, "0 gives the game's value back")
+	var other := DotNetManager.new()
+	other.interest = DotNetInterestGrid.new()
+	_check(not Rel.bind(console, other), "a game's own strategy is left alone")
+	console.queue_free()
+	net.free()
+	other.free()
+	_done()
+
+
 class VisLocal extends RefCounted:
 	var vars := {}
 	var taken: Array = []

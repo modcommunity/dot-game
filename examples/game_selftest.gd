@@ -91,6 +91,7 @@ func _run() -> void:
 		_test_workbench_thread_cvars()
 		_test_thread_defaults_off()
 		_test_client_vis_mode()
+		_test_relevance_cvars()
 		await _test_avatar_actions()
 		await _test_avatar_loadouts()
 		await _test_avatar_loadout_client()

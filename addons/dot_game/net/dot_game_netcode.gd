@@ -42,6 +42,8 @@ extends Object
 
 const CHANNEL := "game.netcode"
 
+const _Relevance := preload("res://addons/dot_game/net/dot_game_relevance.gd")
+
 ## The [DotServer] meta an operator tool sets to a [Dictionary] of [DotNetConfig] property
 ## -> number, read by [method DotGameModule._net_ceiling]. Meta on the server, not a
 ## registry entry or a static: a process may hold a server and a client (or two servers),
@@ -167,6 +169,8 @@ static func build(
 
 	# After the bridge, never before: see the class note.
 	net.messages.seal()
+	if server != null:
+		_Relevance.bind(server.console, net, server.get_meta(CEILING_META, {}) if server.has_meta(CEILING_META) else {})
 
 	var running := net.start()
 

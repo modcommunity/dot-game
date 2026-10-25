@@ -50,5 +50,6 @@ extends RefCounted
 #    DotGameClient.avatar_site / avatar_server; the module's avatar hooks now reach the relay.
 # 25: DotGameWorkbench thread_cvars / cvar_set / bind_cvar_set (the Server threads set),
 #    DotGameClient vis_mode / attach_visibility / detach_visibility / set_vis_mode.
-const LEVEL := 25
+# 26: the net_interest_radius / net_far_every / net_far_distance server cvars (DotGameRelevance), DotGameWorkbench.relevance_cvars.
+const LEVEL := 26
 const OLDEST := 1
