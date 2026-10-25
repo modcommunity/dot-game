@@ -43,7 +43,7 @@ extends "selftest/selftest_extra.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 405
+const CHECKS := 408
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -794,6 +794,13 @@ func _test_server_threads_reach_the_netcode() -> void:
 	sc.net_native = false
 	DotGameNetcode.follow_server_threads(nat, sc)
 	_check(not nat.native, "net_native off again turns it off")
+	_check(not nat.native_interest, "net_native_interest off leaves native interest off")
+	sc.net_native_interest = true
+	DotGameNetcode.follow_server_threads(nat, sc)
+	_check(nat.native_interest, "net_native_interest on reaches DotNetConfig.native_interest")
+	sc.net_native_interest = false
+	DotGameNetcode.follow_server_threads(nat, sc)
+	_check(not nat.native_interest, "net_native_interest off again turns it off")
 	var nat_own := DotNetConfig.new()
 	nat_own.native = true
 	DotGameNetcode.follow_server_threads(nat_own, sc)
