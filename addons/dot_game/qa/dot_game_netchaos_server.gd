@@ -140,7 +140,7 @@ func _capture() -> Dictionary:
 	var out := _truth()
 	var net_d: Dictionary = module.net.describe() if module.get("net") != null else {}
 	out["server"] = {"seconds": _clock, "frames": _frames, "worst_frame_ms": _worst_frame,
-		"peers": net_d.get("peers", -1), "stats": net_d.get("stats", {})}
+		"peers": net_d.get("peers", -1), "stats": net_d.get("stats", {}), "solid": solid}
 	return out
 
 

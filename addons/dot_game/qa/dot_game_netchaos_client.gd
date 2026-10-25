@@ -72,6 +72,12 @@ func _prepare(_label: String) -> Variant:
 	return null
 
 
+## Override: sweeps of this client's player another player's hull stopped (replays included), so a
+## solid run can show it bumped at all; -1 when the game does not count them.
+func _contacts() -> int:
+	return -1
+
+
 func _ready() -> void:
 	_configure()
 	var args := OS.get_cmdline_user_args()
@@ -380,6 +386,7 @@ func _report(t0: float) -> void:
 				"decode_failures": cnet.stats.decode_failures, "rtt_p50": cnet.stats.rtt_percentile(0.5),
 				"rtt_p95": cnet.stats.rtt_percentile(0.95)}
 	out["prediction"] = {"corrections": _corrections, "replays": _replays, "worst_error_m": _worst_error}
+	out["contacts"] = _contacts()
 	for who in (_roster() if _client != null else []):
 		var nb = _net_behaviour(who)
 		if nb != null:
