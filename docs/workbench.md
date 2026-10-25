@@ -34,3 +34,7 @@ Export builds need `*.html` in the preset's `include_filter` for the HTTP page. 
 ## The relevance cvars
 
 `DotGameNetcode.build` registers `net_interest_radius`, `net_far_every` and `net_far_distance` on the server console (`DotGameRelevance`, archive flag) and follows them into the manager's default `DotNetInterestDistance`, live; a game that assigns its own interest strategy is left alone. 0 keeps the game's value; the radius is a ceiling (the smaller wins), the far pair replaces. The same names in the operator's `server.yml` seed the defaults. The workbench offers them as a "Relevance" set; Save writes `cfg/server/addon/dot_server/relevance/server.yml`, applied at the next start (the console changes them at once). `DotGameWorkbench.relevance_cvars = false` hides the set.
+
+## NPC level of detail
+
+`DotGameModule.attach_npc_lod(spawner)` (a game calls it once, from its `_follow_npc_threads`) hands the horde spawner to `DotGameNpcLod`, which each tick copies `sv_threads_npc` into `sense_workers`, applies `npc_sense_quiet` to the spawner limits and, when `npc_lod` is 1, advances dot-npc-ai's scheduler. All cvars default off and appear in the workbench as "NPC level of detail". Requires dot-npc and dot-npc-ai in the game.

@@ -51,10 +51,14 @@ var thread_cvars: bool = true
 ## Offer the relevance cvars (net_interest_radius, net_far_every, net_far_distance) as a set; Save writes `cfg/server/addon/dot_server/relevance/server.yml`, applied at the next start (the console changes them at once).
 var relevance_cvars: bool = true
 
+## Offer the NPC level-of-detail cvars (npc_lod*, npc_sense_quiet) as a set; Save writes `cfg/server/addon/dot_server/npclod/server.yml`, applied at the next start.
+var npc_lod_cvars: bool = true
+
 ## The server's thread cvars and their profile types.
 const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool", "net_native": "bool"}
 const THREADS_KIND := "threads"
 const RELEVANCE_KIND := "relevance"
+const NPC_LOD_KIND := "npclod"
 const _Relevance := preload("res://addons/dot_game/net/dot_game_relevance.gd")
 const THREADS_ADDON := "dot_server"
 ## The one profile id a cvar set has.
@@ -108,6 +112,12 @@ func start(runtime: Object = null) -> DotResult:
 			if rel != null:
 				bind_cvar_set(rel, api.get("runtime"), server.console)
 				add_set(rel, "Relevance (saved values apply at next start)")
+		if npc_lod_cvars:
+			DotGameNpcLod.ensure_cvars(server.console)
+			var lod := cvar_set(server.console, DotGameNpcLod.TYPES, NPC_LOD_KIND, THREADS_ADDON)
+			if lod != null:
+				bind_cvar_set(lod, api.get("runtime"), server.console)
+				add_set(lod, "NPC level of detail")
 	for s in _sets:
 		api.call("add_set", s)
 	var editor := OS.has_feature("editor")

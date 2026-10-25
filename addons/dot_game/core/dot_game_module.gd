@@ -48,6 +48,9 @@ var net: DotNetManager = null
 ## The game's own bridge between itself and [member net]. Duck-typed.
 var bridge: Node = null
 
+## The NPC level-of-detail and sense-thread cvars, once the game called [method attach_npc_lod].
+var npc_lod: DotGameNpcLod = null
+
 ## The identity layer, when [method _make_identity] returned one.
 var identity: Node = null
 
@@ -150,6 +153,14 @@ func _game_board_fields(_session: Object) -> Dictionary:
 ## Everything else on the board: `"teams"`, a `"header"`, `"rows"` for non-session players. Optional.
 func _game_board_extra() -> Dictionary:
 	return {}
+
+
+## Wires a DotNpcSpawner to `sv_threads_npc` and the `npc_lod*` / `npc_sense_quiet` cvars (all off by default; see [DotGameNpcLod]). Call it once the spawner is in the tree; [param players] returns the positions NPCs measure distance from (default: the spawner's candidates).
+func attach_npc_lod(spawner: Object, players: Callable = Callable()) -> DotGameNpcLod:
+	if npc_lod != null:
+		npc_lod.release()
+	npc_lod = DotGameNpcLod.attach(self, console, spawner, server.config if server != null else null, players)
+	return npc_lod
 
 
 ## One authoritative tick, after the bridge has been driven.
@@ -496,6 +507,9 @@ func _physics_process(delta: float) -> void:
 	# The cvars are live: a config this addon filled in follows them; the game's own does not.
 	if net != null and server != null and net.config != null:
 		DotGameNetcode.follow_server_threads(net.config, server.config)
+
+	if npc_lod != null:
+		npc_lod.follow(delta)
 
 	if bridge != null and bridge.has_method("server_tick"):
 		bridge.call("server_tick", tick)
