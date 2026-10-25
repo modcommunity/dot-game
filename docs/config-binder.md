@@ -32,6 +32,10 @@ code defaults, `json_path`, `cfg/game/<game>/config/game.yml`, `cfg/server/game/
 
 `profile_set()` is a `DotProfileSet` of kind `config` whose schema is `schema()`: per field `key`, `type`, `default`, `group` (`@export_group`), `description` (first paragraph of the `##` comment), `min`/`max`/`step` (`@export_range`) and `enum` + `options` (`@export_enum`). `attach(runtime)` adds it to a `DotProfileRuntime`, so `DotWorkbenchApi` lists it, validates edits with those bounds, saves to `cfg/server/game/<game>/config/game.yml`, and the field and cvar follow every edit. Descriptions come from the script source; a build that ships no source reads `res://cfg/game/<game>/config/schema.json`, written by `write_schema(path)`.
 
+## One file per group
+
+`grouped = true` (with `group_files`, an `@export_group` name -> file name map so several groups share a file) splits the profile into one set per file: kind `config_<file>`, id `game`, read from `cfg/game/<game>/config_<file>/game.yml` (operator overrides in `cfg/server/game/...`). Each file may hold only its own keys; a key in the wrong file is refused when strict. `profile_sets()` lists them for `DotGameWorkbench.add_set`, `attach` adds them all, `diff_files()` gives one diff per file, and `template_files()` gives an all-commented template per file (every key at its default, with group, bounds and first doc line) to ship as the game's cfg/ files. Not grouped, everything is the one `config/game.yml`. game-murder-mystery is the model (`MmConfig.make_binder`, `tools/cfg_templates.gd`).
+
 ## Giving edits back as defaults
 
 `diff()` is every field that differs from the code defaults; `diff_yaml()` is the same as a `config` profile; `<prefix>_config_diff save` writes it to `user://config_diff_<game>.yml`. Copy that file to `cfg/game/<game>/config/game.yml` in the game repository and the values are the shipped defaults (then change the code defaults when convenient and delete the file).

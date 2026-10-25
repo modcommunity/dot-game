@@ -30,9 +30,14 @@ var replicate_keys := PackedStringArray()
 var replicate_groups := PackedStringArray()
 ## Config roots for the profile files; empty is the family's default.
 var roots := PackedStringArray()
+## Split the profile into one file per group: `@export_group` name (or its [member group_files] entry) -> a set of kind `config_<file>` and id [member profile_id], read from `cfg/game/<game>/config_<file>/game.yml`. Off keeps the one `config/game.yml`.
+var grouped := false
+## With [member grouped]: `@export_group` name -> file name, so several groups share a file. A group not listed gets its own, named after it.
+var group_files := {}
 
 var _schema: Array = []
 var _set: DotProfileSet = null
+var _sets: Array = []
 var _defaults := {}
 var _base := {}
 var _sources := {}
@@ -40,7 +45,7 @@ var _layer_log: Array = []
 var _cvars := {}
 var _skipped := {}
 var _syncing := false
-var _rt_keys := PackedStringArray()
+var _rt_keys := {}
 var _runtime: DotProfileRuntime = null
 
 
@@ -95,23 +100,53 @@ func schema() -> Array:
 	return _schema
 
 
-## The `config` profile set over [method schema] (id [member profile_id], never needs a file).
+## The `config` profile set over [method schema] (id [member profile_id], never needs a file). Grouped, the first of [method profile_sets].
 func profile_set() -> DotProfileSet:
-	if _set != null:
-		return _set
-	var fields: Array = []
+	return profile_sets()[0]
+
+
+## Every profile set: one over the whole schema, or with [member grouped] one per file (kind `config_<file>`), each over its groups' fields.
+func profile_sets() -> Array:
+	if not _sets.is_empty():
+		return _sets
+	var files := {}
 	for e: Dictionary in schema():
-		var opts := {}
-		for k in ["min", "max", "enum", "group", "description", "options", "step"]:
-			if e.has(k) and (k != "description" or e[k] != ""):
-				opts[k] = e[k]
-		fields.append(DotProfileSet.field(e["key"], e["type"], e["default"], opts))
-	_set = DotProfileSet.create("", game_id, profile_kind, fields)
-	_set.implicit_ids = PackedStringArray([profile_id])
-	_set.strict = strict
-	if not roots.is_empty():
-		_set.roots = roots
-	return _set
+		var file := file_of(e["group"]) if grouped else ""
+		if not files.has(file):
+			files[file] = []
+		files[file].append(e)
+	for file: String in files:
+		var fields: Array = []
+		for e: Dictionary in files[file]:
+			var opts := {}
+			for k in ["min", "max", "enum", "group", "description", "options", "step"]:
+				if e.has(k) and (k != "description" or e[k] != ""):
+					opts[k] = e[k]
+			fields.append(DotProfileSet.field(e["key"], e["type"], e["default"], opts))
+		var kind := profile_kind if file == "" else "%s_%s" % [profile_kind, file]
+		var made := DotProfileSet.create("", game_id, kind, fields)
+		made.implicit_ids = PackedStringArray([profile_id])
+		made.strict = strict
+		if not roots.is_empty():
+			made.roots = roots
+		_sets.append(made)
+	if _sets.is_empty():
+		_sets.append(DotProfileSet.create("", game_id, profile_kind, []))
+	_set = _sets[0]
+	return _sets
+
+
+## The file a group's fields live in when [member grouped]: its [member group_files] entry, else the group's name as a word-safe slug (`general` for no group).
+func file_of(group: String) -> String:
+	if group_files.has(group):
+		return String(group_files[group])
+	var slug := ""
+	for c in group.to_lower():
+		slug += c if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") else "_"
+	slug = slug.strip_edges().trim_prefix("_").trim_suffix("_")
+	while slug.contains("__"):
+		slug = slug.replace("__", "_")
+	return slug if slug != "" else "general"
 
 
 ## Runs every layer and validates. Value: self. See the class doc for the order.
@@ -126,13 +161,13 @@ func load_layers() -> DotResult:
 			_note("json", res.value, json_path)
 		else:
 			problems.append(res.error.message)
-	var set := profile_set()
-	if _file_present(set):
-		var p := set.load_profile(profile_id)
-		if p.ok:
-			_apply_profile(p.value as DotProfile, problems)
-		else:
-			problems.append(p.error.message)
+	for set: DotProfileSet in profile_sets():
+		if _file_present(set):
+			var p := set.load_profile(profile_id)
+			if p.ok:
+				_apply_profile(p.value as DotProfile, problems, set)
+			else:
+				problems.append(p.error.message)
 	_note("env", config.apply_env(), "")
 	_note("argv", config.apply_cli(), "")
 	for k in config.unknown_keys:
@@ -152,20 +187,20 @@ func load_layers() -> DotResult:
 
 
 func _file_present(set: DotProfileSet) -> bool:
-	return not set._files_for(profile_id).is_empty() or _has_override()
+	return not set._files_for(profile_id).is_empty() or _has_override(set.rel_path)
 
 
-func _has_override() -> bool:
+func _has_override(kind: String) -> bool:
 	for a in OS.get_cmdline_user_args() + OS.get_cmdline_args():
-		if a.begins_with("--profile.%s/%s." % [profile_kind, profile_id]):
+		if a.begins_with("--profile.%s/%s." % [kind, profile_id]):
 			return true
 	return false
 
 
-func _apply_profile(p: DotProfile, problems: PackedStringArray) -> void:
+func _apply_profile(p: DotProfile, problems: PackedStringArray, set: DotProfileSet) -> void:
 	var names := {}
-	for e: Dictionary in schema():
-		names[e["key"]] = true
+	for f: Dictionary in set.schema:
+		names[f["name"]] = true
 	var file := {}
 	for path in p.file_keys:
 		var top := String(path).split(".")[0]
@@ -293,14 +328,20 @@ func _on_cvar(_old: String, text: String, key: String) -> void:
 ## Adds the `config` kind to [param runtime]; an edit there writes the field and its cvar.
 func attach(runtime: DotProfileRuntime) -> void:
 	_runtime = runtime
-	runtime.add_set(profile_set())
+	for set: DotProfileSet in profile_sets():
+		runtime.add_set(set)
 	runtime.profile_changed.connect(_on_profile)
 
 
 func _on_profile(kind: String, id: String, _rev: int) -> void:
-	if kind != profile_kind or id != profile_id:
+	if id != profile_id:
 		return
-	var set := profile_set()
+	var set: DotProfileSet = null
+	for s: DotProfileSet in profile_sets():
+		if s.rel_path == kind:
+			set = s
+	if set == null:
+		return
 	var paths := set.runtime_paths(profile_id)
 	var now := PackedStringArray()
 	for p in paths:
@@ -309,13 +350,13 @@ func _on_profile(kind: String, id: String, _rev: int) -> void:
 	if not loaded.ok:
 		return
 	var p: DotProfile = loaded.value
-	for k in _rt_keys:
+	for k in _rt_keys.get(kind, PackedStringArray()):
 		if not now.has(k):
 			_assign(k, _base.get(k), "workbench")
 	for k in now:
 		if p.values.has(k):
 			_assign(k, p.values[k], "workbench")
-	_rt_keys = now
+	_rt_keys[kind] = now
 
 
 func _assign(key: String, v: Variant, source: String) -> void:
@@ -354,7 +395,57 @@ static func _same(a: Variant, b: Variant) -> bool:
 ## [method diff] as the yml of a `config` profile: save it as `cfg/game/<game>/config/game.yml`
 ## and the values become the shipped defaults.
 func diff_yaml() -> String:
+	if grouped:
+		var out := ""
+		var files := diff_files()
+		for path: String in files:
+			out += "# --- %s\n%s\n" % [path, files[path]]
+		return out
+	return _diff_text(diff())
+
+
+## With [member grouped]: path (`cfg/game/<game>/config_<file>/game.yml`) -> yml, for every file that has a change.
+func diff_files() -> Dictionary:
+	var out := {}
 	var d := diff()
+	for set: DotProfileSet in profile_sets():
+		var part := {}
+		for f: Dictionary in set.schema:
+			if d.has(f["name"]):
+				part[f["name"]] = d[f["name"]]
+		if not part.is_empty():
+			out["cfg/game/%s/%s/%s.yml" % [game_id, set.rel_path, profile_id]] = _diff_text(part)
+	return out
+
+
+## Path (`cfg/game/<game>/<kind>/<id>.yml`) -> a template for every profile set: each key commented out at its code default, with its group, bounds and first doc line. Nothing changes until a line is uncommented; ship them as the game's cfg/ files.
+func template_files() -> Dictionary:
+	var out := {}
+	for set: DotProfileSet in profile_sets():
+		var text := "# %s: every key of this file at its code default, commented out. Uncomment a line to change it;\n" % game_id
+		text += "# an operator overrides in cfg/server/game/%s/%s/%s.yml. Layers: defaults < this < env < argv.\n" % [game_id, set.rel_path, profile_id]
+		var group := ""
+		for f: Dictionary in set.schema:
+			if f.get("group", "") != group:
+				group = f.get("group", "")
+				text += "\n# --- %s\n" % group
+			var desc := String(f.get("description", "")).split("\n")[0].strip_edges()
+			if desc.length() > 110:
+				desc = desc.substr(0, 107) + "..."
+			var bounds := ""
+			if f.has("min") and f.has("max"):
+				bounds = " [%s..%s]" % [f["min"], f["max"]]
+			elif f.has("min"):
+				bounds = " [%s..]" % f["min"]
+			if desc != "" or bounds != "":
+				text += "# %s%s\n" % [desc, bounds]
+			var v: Variant = f["default"]
+			text += "# %s: %s\n" % [f["name"], _yaml(v)]
+		out["cfg/game/%s/%s/%s.yml" % [game_id, set.rel_path, profile_id]] = text
+	return out
+
+
+func _diff_text(d: Dictionary) -> String:
 	var text := "# %s: values that differ from the code defaults, as of the running config.\n" % game_id
 	var keys := d.keys()
 	keys.sort()
