@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs ON a box (piped through ssh by netchaos.sh, or directly on dev02). Impairs only UDP traffic
 # to given ip:port pairs, never the interface: a prio qdisc sends everything to band 1 (plain),
-# and a u32 filter sends the matches to band 3, which carries netem. Every apply arms a detached
+# and u32 filters send dport matches to band 3 and sport matches to band 2, each with its own netem,
+# so on lo (both directions on one device) a rate or a queue limit is still per direction. Every apply arms a detached
 # watchdog that removes the qdisc after MAXSEC even if the controller and its ssh are gone.
 #
 #   netchaos_tc.sh check DEV
@@ -12,6 +13,7 @@ set -u
 TC=(sudo -n tc)
 MAJOR=7e57
 MINOR=7e58
+MINOR_SPORT=7e59
 action=${1:?action}
 dev=${2:?device}
 pidfile=/tmp/netchaos_wd_$dev.pid
@@ -41,14 +43,16 @@ apply)
 	"${TC[@]}" qdisc add dev "$dev" root handle $MAJOR: prio bands 3 priomap 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 || exit 3
 	# shellcheck disable=SC2086
 	"${TC[@]}" qdisc add dev "$dev" parent $MAJOR:3 handle $MINOR: netem $netem || { "${TC[@]}" qdisc del dev "$dev" root; exit 3; }
+	# shellcheck disable=SC2086
+	"${TC[@]}" qdisc add dev "$dev" parent $MAJOR:2 handle $MINOR_SPORT: netem $netem || { "${TC[@]}" qdisc del dev "$dev" root; exit 3; }
 	for spec in "$@"; do
 		ip=${spec#ip=}; ip=${ip%%,*}
 		port=${spec##*,}
-		match="dport"
-		[[ $port == sport=* ]] && match="sport"
+		match="dport" band=3
+		[[ $port == sport=* ]] && match="sport" band=2
 		port=${port#*=}
 		if ! "${TC[@]}" filter add dev "$dev" protocol ip parent $MAJOR: prio 1 u32 \
-			match ip protocol 17 0xff match ip dst "$ip/32" match ip "$match" "$port" 0xffff flowid $MAJOR:3; then
+			match ip protocol 17 0xff match ip dst "$ip/32" match ip "$match" "$port" 0xffff flowid $MAJOR:$band; then
 			"${TC[@]}" qdisc del dev "$dev" root
 			exit 3
 		fi
@@ -61,6 +65,8 @@ apply)
 netem)
 	# shellcheck disable=SC2086
 	ours && "${TC[@]}" qdisc change dev "$dev" parent $MAJOR:3 handle $MINOR: netem $3
+	# shellcheck disable=SC2086
+	ours && "${TC[@]}" qdisc change dev "$dev" parent $MAJOR:2 handle $MINOR_SPORT: netem $3
 	;;
 clear)
 	if [[ -f $pidfile ]]; then

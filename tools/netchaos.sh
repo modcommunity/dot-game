@@ -72,7 +72,7 @@ selftest() {
 	tc_box "$b" apply "$dev" 40 "delay 1ms" "ip=$srv,dport=27999" || die "apply failed"
 	ping -c6 -q "$ip" | tail -1
 	t0=$(date +%s%N); rssh "$b" true; t1=$(date +%s%N); say "ssh round trip while armed: $(((t1 - t0) / 1000000)) ms"
-	rssh "$b" 'for p in 27999 27998 22000; do echo x > /dev/udp/'"$srv"'/$p; done; sleep 0.3; sudo -n tc -s qdisc show dev '"$dev"' | grep -A1 netem | tail -1'
+	rssh "$b" 'for p in 27999 27998 22000; do echo x > /dev/udp/'"$srv"'/$p; done; sleep 0.3; sudo -n tc -s qdisc show dev '"$dev"' | grep -A1 "netem 7e58:" | tail -1'
 	say "(1 pkt expected on netem: only port 27999 matches)"
 	tc_box "$b" clear "$dev" || die "NOT CLEAN after clear"
 	say "selftest ok"
@@ -249,7 +249,7 @@ for prof in ${PROFILES//,/ }; do
 		[[ $b == local ]] || rssh "$b" "cat /tmp/netchaos/$prof-$n.json" >"$RUN/client-$n.json" 2>/dev/null
 	done
 
-	python3 -I "$SHARED/netchaos_eval.py" "$RUN" "$prof" "${NAMES[@]}" || overall=1
+	NC_BLACKOUT_AT=$((ACTIVE / 2)) NC_BLACKOUT_S=$BLACKOUT python3 -I "$SHARED/netchaos_eval.py" "$RUN" "$prof" "${NAMES[@]}" || overall=1
 	[[ -n $NETEM ]] && cat "$RUN/netem.txt" | tr '\n' ' ' | sed 's/Sent/\nSent/g' | grep -o "Sent [0-9]* bytes [0-9]* pkt (dropped [0-9]*" | tr '\n' ';' && echo
 done
 
