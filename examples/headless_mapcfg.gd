@@ -1,12 +1,7 @@
 extends Node
 
-## Per-map settings through dot-game: a game declares keys, report_map and map_changed apply them, the next map restores them.
-##
-## [codeblock]
-## godot --headless --path . res://examples/headless_mapcfg.tscn
-## [/codeblock]
-##
-## The cvars start away from the files' values, so "got them" cannot be a default showing through.
+## Per-map settings through dot-game: report_map and map_changed apply declared keys, the next map restores them.
+## The cvars start away from the files' values, so a default cannot show through.
 
 const CHECKS := 16
 const FIXTURE_CFG := "res://examples/fixtures/mapcfg"

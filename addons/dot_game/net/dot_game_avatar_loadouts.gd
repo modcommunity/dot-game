@@ -1,15 +1,9 @@
 class_name DotGameAvatarLoadouts
 extends Node
 
-## The server's copy of every player's equipped emotes, poses and gestures, read from the
-## backbone's avatar read with the server's own credential, checked, and told to every client.
-##
-## A client cannot read another player's loadout (that needs the server's token) and must never
-## be believed about its own, so the server reads it once per join ([method add_peer]), keeps the
-## ids for [DotGameAvatarActionRelay] to check requests against, and sends
-## [DotGameAvatarLoadoutMessage] to everybody; a late joiner gets everyone already in. Without a
-## credential, a site-issued key or an answer, a player has no loadout and plays the starter set.
-## Built by [method DotGameAvatarActionRelay.serve]; the roster follows it.
+## The server's copy of every player's equipped emotes, poses and gestures, read from the backbone
+## with its own credential and told to every client; a client is never believed about its own.
+## Read once per join ([method add_peer]); without an answer a player has the starter set.
 
 const CHANNEL := "game.avatar_loadout"
 
@@ -196,10 +190,9 @@ func wearables_of(peer_id: int) -> PackedStringArray:
 	return _wearing.get(peer_id, PackedStringArray())
 
 
-## The backbone's `actions` (`{EMOTE: [...], POSE: [...], GESTURE: [...]}`) as wire entries:
-## built-ins by known id, uploads by a well-formed `action/<id>/<version>` and a clip name,
-## at most [constant MAX_PER_KIND] per kind, duplicates dropped. A kind left empty gets that
-## kind's built-ins, as the site does. Null for anything that is not an object.
+## The backbone's `actions` as wire entries: built-ins by known id, uploads by a well-formed
+## `action/<id>/<version>` and a clip name, at most [constant MAX_PER_KIND] per kind. An empty kind
+## gets its built-ins, as the site does. Null for anything that is not an object.
 static func parse(actions: Variant) -> Variant:
 	if not actions is Dictionary:
 		return null

@@ -1,20 +1,9 @@
 class_name DotGameWorkbench
 extends Node
 
-## Hosts dot-workbench in a game: the in-game panel (F9, or the console command `workbench`) and,
-## when asked for, the loopback HTTP page.
-##
-## The panel is on by default in the editor, in debug builds and for a listen host, and off in a
-## production build; HTTP is off everywhere until `workbench.enabled: true` in cfg/server.yml.
-## dot-workbench, dot-menu and dot-ui are reached by path, so a game without them just has no workbench.
-##
-## [codeblock]
-## var wb := DotGameWorkbench.new()
-## wb.add_set(npc_set, "NPCs")           # a game's DotProfileSets (or the binder's)
-## add_child(wb)
-## wb.start(profile_runtime)             # the game's DotProfileRuntime, so edits replicate
-## client.add_workbench(wb)              # optional: menu overlay and console command
-## [/codeblock]
+## Hosts dot-workbench in a game: the in-game panel (F9, or console `workbench`) and, when asked for,
+## the loopback HTTP page. The panel is on in the editor, debug builds and listen hosts; HTTP needs
+## `workbench.enabled: true` in cfg/server.yml. Everything is reached by path. Use: `add_set`, `add_child`, `start`.
 
 const CHANNEL := "game.workbench"
 const API_SCRIPT := "res://addons/dot_workbench/dot_workbench_api.gd"
@@ -249,3 +238,19 @@ func describe_lines() -> PackedStringArray:
 	return PackedStringArray([
 		"workbench   panel %s, http %s" % ["ready" if overlay != null else "off", "on" if running_http else "off"],
 	])
+
+
+## Hosts [param wb] on [param c]: its window is a menu overlay and the console gets `workbench`.
+static func host_on(c: DotGameClient, wb: Node) -> void:
+	if wb.get_parent() == null:
+		c.add_child(wb)
+	var panel: Variant = wb.get(&"overlay")
+	if panel is Control and c.menu != null and c.menu.has_method(&"add_overlay"):
+		c.menu.call(&"add_overlay", panel)
+		wb.connect(&"open_changed", func(open: bool) -> void:
+			if open and c.menu != null and is_instance_valid(c.menu) and c.menu.has_method(&"overlay_opened"):
+				c.menu.call(&"overlay_opened"))
+	if c.console != null and is_instance_valid(c.console) and ResourceLoader.exists(DotGameClient.LOCAL_SCRIPT):
+		var local: Object = (load(DotGameClient.LOCAL_SCRIPT) as GDScript).new()
+		local.call(&"add_command", &"workbench", "Tuning panel: workbench [open|close|toggle|export|http]", Callable(wb, &"console_command"))
+		c.console.call(&"add_source", local)

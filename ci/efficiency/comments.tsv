@@ -2,18 +2,15 @@
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
 addons/dot_game/core/dot_game_content.gd::history	1
 addons/dot_game/core/dot_game_content.gd::long_block	1
-addons/dot_game/core/dot_game_module.gd::banner	4
-addons/dot_game/core/dot_game_module.gd::history	1
-addons/dot_game/core/dot_game_module.gd::long_block	27
+addons/dot_game/core/dot_game_module.gd::long_block	1
 addons/dot_game/dot_game_api.gd::long_block	2
 addons/dot_game/dot_game_plugin.gd::long_block	1
 addons/dot_game/net/dot_game_link.gd::long_block	5
 addons/dot_game/net/dot_game_netcode.gd::long_block	9
 addons/dot_game/runtime/dot_game_chat_client.gd::history	2
 addons/dot_game/runtime/dot_game_chat_client.gd::long_block	5
-addons/dot_game/runtime/dot_game_client.gd::banner	4
 addons/dot_game/runtime/dot_game_client.gd::history	1
-addons/dot_game/runtime/dot_game_client.gd::long_block	9
+addons/dot_game/runtime/dot_game_client.gd::long_block	1
 addons/dot_game/runtime/dot_game_roster.gd::banner	2
 addons/dot_game/runtime/dot_game_roster.gd::long_block	11
 addons/dot_game/runtime/dot_game_services.gd::banner	7

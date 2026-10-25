@@ -1,10 +1,6 @@
 extends Node
 
 ## DotGameConfigBinder: schema, layered load with provenance, cvar round trip, strict failure, diff, workbench edits.
-##
-## [codeblock]
-## godot --headless --path . res://examples/headless_config.tscn
-## [/codeblock]
 
 const TestConfig := preload("fixtures/test_config.gd")
 const ROOT := "res://examples/fixtures/config/"

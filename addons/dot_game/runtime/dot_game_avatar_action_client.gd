@@ -2,12 +2,8 @@ class_name DotGameAvatarActionClient
 extends Node
 
 ## The client half of avatar actions: a key press plays on the local figure at once and is sent
-## to the server; what the server relays plays on that peer's figure, started at the right
-## moment by its tick. Built by [method DotGameClient.add_avatar_actions].
-##
-## The server also tells it every player's equipped loadout ([DotGameAvatarLoadoutMessage]); an
-## uploaded clip in one is fetched once through [member content_fn] and handed to the figure
-## (`add_action_scene`, dot-player-char) the first time that player plays it.
+## to the server; what the server relays plays on that peer's figure. An uploaded clip in a
+## told loadout is fetched once through [member content_fn]. Built by [method DotGameClient.add_avatar_actions].
 
 const CHANNEL := "game.avatar_action"
 
@@ -55,11 +51,10 @@ var worn: Dictionary = {}
 var _wearers: Dictionary = {}
 var _worn_on: Dictionary = {}
 var _wear_wait := 0.0
-var _wear_cache: RefCounted = null
 ## Wearable ids already fetched once, so a failed download is not retried every second.
 var _wear_tried: Dictionary = {}
 ## Whether the keys were last built with a placeholder url, to rebuild them once the library names the real one.
-var _placeholder_urls := false
+var _flags: Dictionary = {}
 
 
 ## [param p_net] is null offline: the action plays locally and goes nowhere.
@@ -156,39 +151,20 @@ func _on_loadout(message: DotNetMessage) -> void:
 			fetch_clip(e)
 
 
-## Makes the local keys play what the server says is equipped (the same list that decides what
-## it relays), keeping the rows [member input] already has for an id so their names and urls
-## survive. Without it the keys play whatever the client read for itself, which a re-equip
-## mid-game, or a failed read, leaves different from what the server accepts.
+## Makes the local keys play what the server says is equipped, keeping the rows [member input] has
+## for an id so their names and urls survive; otherwise a re-equip or a failed read leaves the keys
+## different from what the server accepts.
 func apply_to_input(entries: Array) -> bool:
 	if input == null or not input.get(&"actions") is Object:
 		return false
 	var current: Object = input.get(&"actions")
-	_placeholder_urls = false
-	var rows := {}
-	for e: Dictionary in entries:
-		var kind := String(DotGameAvatarLoadoutMessage.KINDS[clampi(int(e["kind"]), 0, DotGameAvatarLoadoutMessage.KINDS.size() - 1)]).to_upper()
-		if not rows.has(kind):
-			rows[kind] = []
-		if String(e.get("clip", "")) == "":
-			(rows[kind] as Array).append({"builtin": e["id"]})
-			continue
-		var url := ""
-		if current.has_method(&"equipped"):
-			for kept: Dictionary in current.call(&"equipped", StringName(kind.to_lower())):
-				if kept.get("id") == e["id"]:
-					url = String(kept.get("url", ""))
-		if (url == "" or url == "/") and url_fn.is_valid():
-			url = String(url_fn.call(String(e["id"])))
-		if url == "":
-			url = "/"
-			_placeholder_urls = true
-		(rows[kind] as Array).append({"contentId": e["id"], "clip": e["clip"], "loop": e["loop"], "fileUrl": url})
+	_flags.clear()
+	var rows := DotGameAvatarActionSupport.input_rows(entries, current, url_fn, _flags)
 	var read: Variant = null
 	if actions_fn.is_valid():
 		read = actions_fn.call(rows)
 	else:
-		var script := load("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") as GDScript if ResourceLoader.exists("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") else null
+		var script := DotGameAvatarActionSupport.script("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd")
 		read = script.call(&"from_backbone", rows) if script != null else null
 	if read is DotResult and (read as DotResult).ok:
 		input.set(&"actions", (read as DotResult).value)
@@ -214,7 +190,7 @@ func _fetch_clip(entry: Dictionary) -> void:
 	var id := String(entry["id"])
 	var res: Variant = await content_fn.call(entry)
 	var _f := _fetching.erase(id)
-	if _placeholder_urls and net != null and loadouts.has(net.local_peer_id):
+	if _flags.has("placeholder") and net != null and loadouts.has(net.local_peer_id):
 		var _a := apply_to_input(loadouts[net.local_peer_id])
 	if res is DotResult and (res as DotResult).ok and (res as DotResult).value is Node3D:
 		if id.begins_with("wearable/"):
@@ -262,10 +238,9 @@ func _play(peer_id: int, id: String, loop: bool, elapsed: float) -> void:
 			"why": (added as DotResult).error.message if added is DotResult else "?"})
 
 
-## Hangs [param peer_id]'s wearables on their figure's skeleton ([code]DotAvatarWearables[/code], loaded by
-## path), once per figure: a figure that is not drawn yet, or a library not yet read, is tried again
-## later. Each item is fetched through [member content_fn] by id, which fills the file cache and the
-## library row [member wearable_row_fn] reads. True when something is hung, or nothing is to be.
+## Hangs [param peer_id]'s wearables on their figure's skeleton once per figure; a figure not drawn
+## yet or a library not yet read is tried again later. Items are fetched through [member content_fn].
+## True when something is hung, or nothing is to be.
 func wear(peer_id: int) -> bool:
 	var ids: PackedStringArray = worn.get(peer_id, PackedStringArray())
 	var figure: Object = figure_fn.call(peer_id) if figure_fn.is_valid() else null
@@ -282,23 +257,13 @@ func wear(peer_id: int) -> bool:
 			wearer.call(&"clear")
 		_worn_on[peer_id] = [figure.get_instance_id(), ids]
 		return true
-	var rows := []
-	for id in ids:
-		var row: Dictionary = wearable_row_fn.call(id) if wearable_row_fn.is_valid() else {}
-		if row.is_empty():
-			if not _wear_tried.has(id):
-				_wear_tried[id] = true
-				var _f := fetch_clip({"id": id})
-			return false
-		rows.append(row)
-	var script_path := "res://addons/dot_user_avatar/wearables/dot_avatar_wearables.gd"
-	if not ResourceLoader.exists(script_path):
+	var rows := DotGameAvatarActionSupport.wear_rows(ids, wearable_row_fn, _wear_tried, fetch_clip)
+	if rows.size() < ids.size():
 		return false
 	if wearer == null:
-		wearer = (load(script_path) as GDScript).new()
-		if _wear_cache == null:
-			_wear_cache = (load("res://addons/dot_user_avatar/actions/dot_avatar_content_cache.gd") as GDScript).new()
-		wearer.set(&"cache", _wear_cache)
+		wearer = DotGameAvatarActionSupport.new_wearer()
+		if wearer == null:
+			return false
 		_wearers[peer_id] = wearer
 	var res: DotResult = wearer.call(&"apply", skeleton, rows)
 	if not res.ok:

@@ -1,13 +1,9 @@
 class_name DotGameNoblock
 extends RefCounted
 
-## Teammates pass through each other, enemies stop: dot-team's block rules wired once for every
-## game. dot-team is loaded by path (not every game links it), so this names none of its classes.
-##
-## Server: [DotGameModule] builds one when the game has a `body_rules` (dot-player-controller's
-## `DotPlayerBodyRules`), feeds its `pair_fn`, binds `mp_teamblock` & co (REPLICATED) and `!block` /
-## `!noblock`. Client: `DotGameClient.add_noblock(rules)`. Config reaches cfg/ and the workbench as
-## the `noblock` kind, over dot-team's `DotTeamBlockConfig`.
+## Teammates pass through each other, enemies stop: dot-team's block rules wired once for every game
+## (loaded by path). The server builds one from the game's `body_rules` and binds `mp_teamblock` & co;
+## a client uses `DotGameClient.add_noblock`. Config is the `noblock` kind.
 
 const CHANNEL := "game.noblock"
 const RULES_SCRIPT := "res://addons/dot_team/core/dot_team_block_rules.gd"
@@ -90,3 +86,20 @@ func _on_field(key: String, _value: Variant, source: String) -> void:
 	if cv != null:
 		var held: Variant = (rules.get(&"config") as Object).get(key)
 		cv.force_set(("1" if held else "0") if held is bool else str(held))
+
+
+## Follows the server's block rules from a client: see [method DotGameClient.add_noblock].
+static func add_to_client(c: DotGameClient, game: Object, side_fn: Callable) -> DotResult:
+	if game == null or not ("body_rules" in game) or game.get("body_rules") == null:
+		return DotResult.fail(DotError.CODE_INVALID, "add_noblock needs a game with body_rules.")
+	var made := DotGameNoblock.create(c.map_config_game if c.map_config_game != "" else "game", side_fn)
+	if not made.ok:
+		return made
+	var rules: DotGameNoblock = made.value
+	c.noblock = rules
+	rules.feed(game.get("body_rules"))
+	if "block_rules" in game:
+		game.set("block_rules", rules.rules)
+	if c.link == null or not rules.follow(c.link):
+		return DotResult.fail(DotError.CODE_STATE, "The game link cannot replicate cvars: noblock would not follow the server.")
+	return DotResult.success(rules)

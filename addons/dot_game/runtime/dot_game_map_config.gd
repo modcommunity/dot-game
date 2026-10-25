@@ -1,15 +1,9 @@
 class_name DotGameMapConfig
 extends RefCounted
 
-## A game's per-map settings: the whitelist and defaults a game declares, applied through dot-map's [code]DotMapConfig[/code] on every map change and put back on the next.
-##
-## dot-map is never named (it is found by path), so a build without it applies nothing and says so once. [DotGameModule.report_map] and [DotGameClient.map_changed] drive one of these; a game that is not on [DotGameModule] builds one with [method for_console] and calls [method apply] itself. Files and their order: dot-map's docs/map-config.md.
-##
-## [codeblock]
-## map_config = DotGameMapConfig.for_console("game-arena", console, {"sv_airaccelerate": {"type": "float", "min": 0.0}})
-## map_config.apply(String(map.id))    # every map load
-## map_config.restore()                # on unload
-## [/codeblock]
+## A game's per-map settings: the whitelist and defaults a game declares, applied through dot-map's
+## [code]DotMapConfig[/code] (looked up by path; absent applies nothing) on every map change and put back on the next.
+## [method for_console] builds one for a game not on [DotGameModule]; then call [method apply] and [method restore].
 
 const CHANNEL := "game.map_config"
 const SCRIPT_PATH := "res://addons/dot_map/config/dot_map_config.gd"

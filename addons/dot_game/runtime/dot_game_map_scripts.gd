@@ -1,16 +1,9 @@
 class_name DotGameMapScripts
 extends RefCounted
 
-## Handles the events a dot-map [code]DotMapScript[/code] (a translated lua_run) replays: [code]script.set_player_speed[/code], [code]script.kill_players[/code], [code]script.cleanup_map[/code].
-##
-## Assign [method handle] (or [member event_fn]) as, or call it from, the world's [code]event_fn[/code]. Every operation is re-validated here against dot-map's own table, so a forged event gains nothing; with dot-map absent everything is refused. Each operation has a hook: assign a Callable or override the virtual. A per-map yml turns operations off through [method config_keys].
-##
-## [codeblock]
-## scripts = DotGameMapScripts.new()
-## scripts.console = console
-## scripts.kill_fn = func() -> int: return round.kill_all_players()
-## world_hooks["event_fn"] = scripts.event_fn()   # or call scripts.handle(kind, data) from your own
-## [/codeblock]
+## Handles the events a dot-map [code]DotMapScript[/code] replays: `script.set_player_speed`,
+## `script.kill_players`, `script.cleanup_map`. Every operation is re-validated against dot-map's table, so
+## a forged event gains nothing. Assign [method handle] as the world's `event_fn`; each operation has a hook Callable.
 
 const CHANNEL := "game.map_scripts"
 const SCRIPT_PATH := "res://addons/dot_map/io/dot_map_script.gd"

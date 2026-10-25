@@ -1,18 +1,8 @@
 extends Node
 
-## Avatar loadouts over a real ENet link, one process per role: the server reads each joiner's
-## loadout from a backbone over HTTP (tools/avatar_two_peer.sh serves a fake one), and two clients
-## check what they are told and what plays. Run through the script, not by hand:
-##
-## [codeblock]
-## tools/avatar_two_peer.sh
-## [/codeblock]
-##
-## Client `a` joins first with one emote equipped; client `b` joins later with an
-## upload equipped and its gestures replaced. `b` must hear `a`'s loadout (the late joiner), and
-## `a` must see `b`'s upload play, and never `b`'s unequipped upload or replaced starter. `b` wires its
-## avatar actions two seconds after it connects, as a game that builds them late does, so `a`'s
-## loadout told at the join reaches no handler and only `b`'s ask brings it back.
+## Avatar loadouts over a real ENet link, one process per role (run tools/avatar_two_peer.sh): the
+## server reads loadouts from a fake backbone; client `a` joins first, `b` later with an upload.
+## `b` must hear `a`'s loadout and `a` must see `b`'s upload play and nothing unequipped.
 
 const CHECKS_A := 6
 const CHECKS_B := 4
@@ -225,7 +215,7 @@ func _process(_delta: float) -> void:
 		var pkt: PackedByteArray = _peer.call(&"get_packet")
 		var got := _net.receive(pkt, from)
 		if not got.ok:
-			print("two-peer %s: refused a packet from %d: %s" % [_role, from, got.error.message])
+			print("two-peer ", _role, ": refused a packet from ", from, ": ", got.error.message)
 
 
 func _send(peer_id: int, payload: PackedByteArray, delivery: int) -> void:

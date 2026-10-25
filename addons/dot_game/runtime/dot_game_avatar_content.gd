@@ -1,11 +1,8 @@
 class_name DotGameAvatarContent
 extends RefCounted
 
-## The avatar and action files a server requires, advertised as one notify cvar and fetched
-## by the client before it connects.
-##
-## The cvar rides the server's query rules, so a browser row already carries it as
-## [code]entry.rules[CVAR][/code]; nothing else on the handshake changes.
+## The avatar and action files a server requires, advertised as one notify cvar (in the query
+## rules, [code]entry.rules[CVAR][/code]) and fetched by the client before it connects.
 
 const CHANNEL := "game.avatar_content"
 
@@ -97,11 +94,9 @@ static func prepare(host: Node, ids: Array, base_url: String, server_id: int, ga
 	return res
 
 
-## One uploaded action's clip, fetched mid-game for [DotGameAvatarActionClient]: the site's library
-## (cached in [param library], `{"rows": Dictionary, "at": ms}`, read again at most once a minute
-## when an id is missing) gives url, size and sha256, so the server only ever names an id and never
-## a url. Downloaded into dot-user-avatar's cache without the load gate; success is a Node3D the
-## caller owns.
+## One uploaded action's clip, fetched mid-game for [DotGameAvatarActionClient] from the site's
+## library (cached in [param library], read again at most once a minute); the server only names an id.
+## Success is a Node3D the caller owns.
 static func fetch_clip(host: Node, http: DotHttp, base_url: String, server_id: int, entry: Dictionary, library: Dictionary) -> DotResult:
 	var id := String(entry.get("id", ""))
 	if not available():

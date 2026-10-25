@@ -2,57 +2,23 @@ class_name DotGameClient
 extends Node
 
 ## The client's half of [DotGameModule]: the platform layer every game client wires, once.
-##
 ## [codeblock]
 ## # First thing in the client root's _ready():
 ## platform = DotGameClient.new()
 ## platform.spawned_fn = func() -> bool: return player != null
 ## add_child(platform)                 # the cover is up; link and offline are known
 ## # ... build the world, the HUD, the audio ...
-## platform.settings = MySettings.new()   # a DotMenuSettings subclass; null is the stock one
 ## platform.hud = hud_root
 ## platform.chat = chat                   # DotGameChatClient, a DotChatWindow, or null
-## platform.board_snapshot_fn = board_snapshot
 ## platform.setup()                    # settings, menu, console, theme, Tab, M, pointer
 ## platform.input_blocked_changed.connect(_suspend_input)
 ## [/codeblock]
 ##
-## [b]Why it exists.[/b] Thirteen game clients each wrote the same platform wiring by hand,
-## and each missed different parts of it: six had no loading cover, nine no console, eight no
-## chat box, nine no settings. What a player could rely on depended on which game they were
-## in. Everything here is something every client wrote the same way with only its class names
-## changed; what a game draws, its keys and its rules stay in the game.
+## A child the client root adds, never a base class: roots are Node, Node2D and Node3D. [method _ready] puts the cover up before the game builds anything; [method setup] builds the settings and menu after the game made what they bind to.
 ##
-## [b]A node the client root adds, not a base class to extend.[/b] Client roots are [Node],
-## [Node2D] and [Node3D], and GDScript has one base: a base class would force every game's
-## scene onto one type. So this is a child, and each piece is a property or an overridable
-## method on it, the shape [DotGameChatClient] already has.
+## dot-menu and dot-console are found by path and driven by `call` and `set`, so a build without either still parses. Each piece switches off ([member use_gate], [member use_settings], [member use_console], [member capture_pointer], [member sync_on_exit], an empty [member scoreboard_action]); override [method _make_settings] or [method _make_gate] to build one differently.
 ##
-## [b]Two steps, on purpose.[/b] [method _ready] puts the cover up and finds the link before
-## the game has built anything, because the cover has to be first on screen; [method setup]
-## builds the settings and the menu after the game has made what they bind to.
-##
-## [b]Nothing optional is named.[/b] dot-menu (the Escape menu, the settings, the Tab board,
-## the map menu) and dot-console are found by path and driven by [code]call[/code] and
-## [code]set[/code], like everything [DotGameServices] drives, so a build without either still
-## parses and gets the rest. The load gate is dot-core's and is named.
-##
-## [b]Each piece switches off:[/b] [member use_gate], [member use_settings],
-## [member use_console], [member capture_pointer], [member sync_on_exit], and an empty
-## [member scoreboard_action]. Subclass and override [method _make_settings] or
-## [method _make_gate] to build a piece differently, or assign [member cover_scene] /
-## [member cover] to change only the gate's cover.
-##
-## [b]A HUD or chat built after [method setup][/b] goes through [method set_hud] and
-## [method set_chat]; [member pointer_fn] decides when the pointer may be taken back; and
-## [method refresh_blocked] updates the input block in the frame something opens.
-##
-## [b]A game with its own menu[/b] ([member menu] assigned before [method setup], or
-## [method adopt_menu] after) gets the same input block, [signal menu_state_changed], Tab board
-## and HUD theme without settings from here; [method add_console] builds the console later,
-## around a menu or manager the game made. [member gate_only] takes the gate, the link, the
-## input block and the web flush and nothing else. [member escape_releases_pointer] makes the
-## first Escape free the pointer and the second open the menu.
+## A HUD or chat built after setup goes through [method set_hud] and [method set_chat]; a game with its own menu assigns [member menu] or calls [method adopt_menu]; [member gate_only] takes only the gate, link, input block and web flush.
 
 const CHANNEL := "game.client"
 
@@ -61,9 +27,6 @@ const LINK_SERVICE := &"dot_client_link"
 ## dot-menu's settings node, made when a game assigns none. Never named: dot-menu is optional.
 const SETTINGS_SCRIPT := "res://addons/dot_menu/runtime/dot_menu_settings.gd"
 ## dot-console's one-call console. Never named, for the same reason.
-const EDITOR_SCRIPT := "res://addons/dot_menu/ui/dot_addon_config_editor_screen.gd"
-const ROW_SCRIPT := "res://addons/dot_menu/core/dot_menu_row.gd"
-const USER_CFG_PAGE := &"advanced"
 const LOCAL_SCRIPT := "res://addons/dot_console/core/dot_console_local.gd"
 const CONSOLE_KIT_SCRIPT := "res://addons/dot_console/runtime/dot_console_kit.gd"
 ## The Tab action made when the game's own key table has none.
@@ -73,17 +36,13 @@ const BINDINGS_SCRIPT := "res://addons/dot_menu/core/dot_menu_bindings.gd"
 ## The gate's requirement for the local player.
 const REASON_SPAWNED := &"spawned"
 
-## Whether the player's input should be off now: the cover is up, a menu or the console is
-## open, the chat line or [member busy_fn] has the keyboard. What a client suspends its input
-## samplers on.
+## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
 signal input_blocked_changed(blocked: bool)
 ## A menu (or the console) opened, or the last one closed.
 signal menu_state_changed(any_open: bool)
 
-# --- Set before add_child ---------------------------------------------------------
 
-## The client root: the gate goes under it, so its camera check and [method DotLoadGate.of]
-## see the game. The parent when unset.
+## The client root: the gate goes under it so its camera check and [method DotLoadGate.of] see the game. The parent when unset.
 @export var host_ref: DotNodeRef = null
 
 ## Play offline even with a link (a suite, [code]--offline[/code]).
@@ -93,31 +52,22 @@ signal menu_state_changed(any_open: bool)
 @export var use_gate: bool = true
 ## Hold the cover until a current camera exists in the game. Off for a game with none.
 @export var require_camera: bool = true
-## Compile what the first frame draws under the cover before lifting it. Never headless: a
-## headless run draws nothing, so the warm-up would only wait out its timeout and every
-## suite that boots a client would wait with it.
+## Compile what the first frame draws under the cover before lifting it. Never headless, where the warm-up would only wait out its timeout.
 @export var warm_up: bool = true
-## A scene instanced as the gate's cover instead of [DotLoadingCover] (see
-## [member DotLoadGate.cover_scene]). Null keeps the stock cover.
+## A scene instanced as the gate's cover instead of [DotLoadingCover]. Null keeps the stock cover.
 @export var cover_scene: PackedScene = null
-## A cover node of your own, assigned before add_child (see [member DotLoadGate.cover]); wins
-## over [member cover_scene]. Null keeps the stock cover.
+## A cover node of your own, assigned before add_child; wins over [member cover_scene].
 var cover: Node = null
 ## The status line while [member spawned_fn] is false.
 @export var spawned_text: String = "Joining"
-## Tell the server when the cover lifts and when it comes back, so a server on
-## [DotGameModule] does not hurt or count out a player who cannot see yet
-## ([method DotGameModule.is_loading]). Connected only; offline there is nobody to tell.
+## Tell the server when the cover lifts and returns, so [DotGameModule.is_loading] can spare a player who cannot see yet. Connected only.
 @export var report_loading: bool = true
 
-## [code]func() -> bool[/code]: true once the local player exists and can be shown. Held
-## under [constant REASON_SPAWNED] until then. Unset holds nothing for it.
+## [code]func() -> bool[/code]: true once the local player exists. Held under [constant REASON_SPAWNED] until then; unset holds nothing.
 var spawned_fn: Callable = Callable()
 
-# --- Set before setup -------------------------------------------------------------
 
-## Look at a player and press a key to gag (stop hearing) or mute them, on every game with a
-## voice chat. Off disables it; the keys are rows in the game's table unless it already has them.
+## Look at a player and press a key to gag or mute them, on every game with a voice chat. The keys are rows in the game's table unless it has them.
 @export var use_look_mute: bool = true
 ## The look-mute script, by path (dot-voice's); a suite points it at a stand-in.
 var look_mute_script: String = LOOK_MUTE_SCRIPT
@@ -130,19 +80,13 @@ var look_mute_script: String = LOOK_MUTE_SCRIPT
 @export var look_max_angle_deg: float = 6.0
 ## [code]func() -> int[/code]: the peer under the crosshair, 0 for nobody. Wins over the next.
 var look_target_fn: Callable = Callable()
-## [code]func() -> Dictionary[/code] of peer id to head position (the other players); the key picks
-## the nearest to the view axis. Unset, the chat's [code]voice_position_fn[/code] answers for speakers.
+## [code]func() -> Dictionary[/code] of peer id to head position; the key picks the nearest to the view axis. Unset, the chat's `voice_position_fn` answers for speakers.
 var look_positions_fn: Callable = Callable()
-## [code]func(row: Dictionary) -> Variant[/code]: a head position (Vector3, or null for "not here")
-## for a roster row [code]{id, name, key, peer, bot}[/code] of the chat's block list, which is how a
-## client learns who is whose voice. The one hook a game needs; [member look_positions_fn] wins.
+## [code]func(row: Dictionary) -> Variant[/code]: a head position (Vector3, or null) for a roster row `{id, name, key, peer, bot}` of the chat's block list. The one hook a game needs; [member look_positions_fn] wins.
 var look_position_fn: Callable = Callable()
-## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, the chat's block
-## list (the one `!sm` uses) mutes the roster row with that peer.
+## [code]func(peer: int, muted: bool)[/code]: also drop that player's chat. Unset, the chat's block list (the one `!sm` uses) is used.
 var look_chat_mute_fn: Callable = Callable()
-## For a client whose voice manager or chat is not [member chat]'s (its box predates
-## DotGameChatClient): the manager the keys act on, and the node holding the block list
-## (`self_mute`). Then call [method build_look_mute] once both exist.
+## For a client whose voice manager or chat is not [member chat]'s: the manager the keys act on and the node holding `self_mute`. Then call [method build_look_mute].
 var look_voice: Node = null
 var look_chat: Node = null
 ## The dot-voice look-mute node, once built; null without dot-voice or a voice chat.
@@ -150,14 +94,11 @@ var look_mute: Node = null
 ## Keys held by another action at the time of the check: [code]{action, key, other}[/code].
 var look_conflicts: Array[Dictionary] = []
 
-## Turns on dot-core's player cfg tier (and the menu entry that edits it) when this process is
-## solo or the listen host. Off keeps the tier off everywhere.
+## Turns on dot-core's player cfg tier (and its menu entry) when this process is solo or the listen host.
 @export var user_cfg: bool = true
-## [code]func() -> bool[/code]: this client also hosts the server it is connected to (a listen
-## server). Unset means a connected client is somebody else's guest and gets no tier.
+## [code]func() -> bool[/code]: this client also hosts the server it is connected to. Unset means a connected client is a guest and gets no tier.
 var listen_host_fn: Callable = Callable()
-## Files the player may edit, each [code]{addon, file, schema, label}[/code] ([code]schema[/code] is
-## [code]DotProfileSet.field[/code]s); addons and games append before [method setup]. Empty hides the entry.
+## Files the player may edit, each `{addon, file, schema, label}`; append before [method setup]. Empty hides the entry.
 var user_cfg_files: Array[Dictionary] = []
 
 ## Build the settings and the Escape menu (dot-menu).
@@ -168,52 +109,34 @@ var user_cfg_files: Array[Dictionary] = []
 @export var app_namespace: StringName = &"game"
 ## Build the console (dot-console) on the key under Escape.
 @export var use_console: bool = true
-## The script whose static [code]build(host, settings, menu)[/code] makes the console;
-## dot-console's kit unless replaced (the suite points it at a fixture).
+## The script whose static `build(host, settings, menu)` makes the console; dot-console's kit unless replaced.
 var console_kit_path: String = CONSOLE_KIT_SCRIPT
-## Hold Tab for the board: the menu's [code]scoreboard_action[/code]. The default action is
-## made on Tab when nothing defines it; a game with a key-table row names that row's action.
-## Empty is no key.
+## Hold Tab for the board: the menu's `scoreboard_action`, made on Tab when nothing defines it. Empty is no key.
 @export var scoreboard_action: StringName = SCOREBOARD_ACTION
-## Capture the pointer at the start on a desktop, free it while a menu is open, take it back
-## on close (on a desktop) or on a click (in a browser, which refuses a capture without one).
-## Off for a game that keeps its pointer.
+## Capture the pointer on a desktop, free it while a menu is open, take it back on close (or on a click in a browser). Off for a game that keeps its pointer.
 @export var capture_pointer: bool = true
-## [code]func() -> bool[/code]: whether the pointer should be captured now. The rule for the
-## places this node would take the pointer back (a click, a menu closing); false leaves it
-## free. Unset keeps the default (capture whenever nothing blocks input). For a game whose
-## own screens or modes free the pointer. Needs [member capture_pointer].
+## [code]func() -> bool[/code]: whether the pointer should be captured now; unset captures whenever nothing blocks input. Needs [member capture_pointer].
 var pointer_fn: Callable = Callable()
-## Escape on a captured pointer frees it and does nothing else; the next Escape opens the menu
-## as usual. For a game whose Escape would otherwise open a menu over a pointer the player
-## was still using for the game (a screen stack of its own). Needs [member capture_pointer].
+## Escape on a captured pointer only frees it; the next Escape opens the menu. Needs [member capture_pointer].
 @export var escape_releases_pointer: bool = false
-## Gate-only mode: [method setup] wires the chat's keyboard and the input block and builds
-## nothing else (no settings, menu, console, board, Tab, M or pointer capture). For a game
-## that owns those itself and wants the cover, the link, the web flush and the block.
+## Gate-only mode: [method setup] wires only the chat's keyboard and the input block, for a game that owns the rest.
 @export var gate_only: bool = false
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
 
-## The game's settings node (a [code]DotMenuSettings[/code] subclass), assigned before
-## [method setup]; null makes the stock one ([method _make_settings]).
+## The game's settings node (a `DotMenuSettings` subclass), assigned before [method setup]; null makes the stock one.
 var settings: Node = null
 ## The HUD's root Control: it follows the menu's theme and HUD size.
 var hud: Control = null
 ## The game's accent over the theme (dot-menu's [code]follow_hud[/code]); null for none.
 var hud_accent: Theme = null
-## The chat box: a [DotGameChatClient], a dot-ui chat window, or anything with
-## [code]is_typing()[/code] or [code]is_open()[/code]. Typing blocks input and keeps Escape
-## off the menu. Added under this node if it is not in the tree yet.
+## The chat box: a [DotGameChatClient], a dot-ui window, or anything with `is_typing()` or `is_open()`. Typing blocks input and keeps Escape off the menu.
 var chat: Node = null
-## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command
-## line). Blocks input, keeps the menu's keys away, keeps the pointer free.
+## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command line). Blocks input and frees the pointer.
 var busy_fn: Callable = Callable()
-## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape).
-## Connected, the board is fed from the link's roster instead, when the link has one.
+## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape); connected, the link's roster feeds it.
 var board_snapshot_fn: Callable = Callable()
-## The map menu on M: [code]func() -> Array[/code] of rows and [code]func(id) -> DotResult
-## [/code] to change. Both unset leave M doing nothing.
+## The map menu on M: `func() -> Array` of rows and `func(id) -> DotResult` to change. Both unset leave M doing nothing.
 var maps_rows_fn: Callable = Callable()
 var maps_change_fn: Callable = Callable()
 ## The map menu's title and plural noun ("Change house", "houses"); empty keeps dot-menu's.
@@ -232,7 +155,6 @@ var map_config_set_fn: Callable = Callable()
 ## The built applier, after the first [method map_changed].
 var map_config: DotGameMapConfig = null
 
-# --- Built ------------------------------------------------------------------------
 
 ## The client root this serves.
 var host: Node = null
@@ -244,8 +166,7 @@ var avatar_actions: DotGameAvatarActionClient = null
 ## The content fetcher of the last [method prepare_avatar_content], whose cache holds the files.
 var avatar_fetcher: RefCounted = null
 
-## The site and its id for this server, where other players' uploaded clips are fetched from. Left
-## empty, [method avatar_site] and [method avatar_server] find them when a clip is fetched.
+## The site and its id for this server, where other players' clips are fetched; empty, [method avatar_site] and [method avatar_server] find them.
 var avatar_site_url: String = ""
 var avatar_server_id: int = 0
 var _avatar_library := {}
@@ -253,30 +174,25 @@ var _avatar_library := {}
 var offline: bool = true
 ## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
 var user_tier_on: bool = false
-var user_cfg_overlay: UserCfgOverlay = null
+var user_cfg_overlay: DotGameUserCfg.Overlay = null
 ## dot-core's load gate, under [member host]. Hold more on it: [code]gate.hold(&"map")[/code].
 var gate: DotLoadGate = null
 ## Set by [method add_noblock].
 var noblock: DotGameNoblock = null
-## The settings' menu (dot-menu's [code]DotMenu[/code]), its board and its map menu.
-## A game that built its own menu assigns [member menu] before [method setup] (or calls
-## [method adopt_menu]): no settings are built over it. Assigned [member board] is kept
-## instead of the menu's own.
+## The settings' menu (dot-menu's `DotMenu`), its board and its map menu. A game with its own menu assigns [member menu] before [method setup] (or calls [method adopt_menu]); an assigned [member board] is kept.
 var menu: Object = null
 var board: Object = null:
 	set(value):
 		board = value
 		_board_auto = false
-## [code]func(board)[/code]: the game's own preparation of the board, run before it is fed
-## from the link or the snapshot (columns, teams, a header). Unset does nothing.
+## [code]func(board)[/code]: the game's own preparation of the board (columns, teams, a header), run before it is fed. Unset does nothing.
 var board_prepare_fn: Callable = Callable()
 var maps: Object = null
 ## dot-console's controller.
 var console: Node = null
 
 var _set_up: bool = false
-# True while board came from the menu's own scoreboard, not from the caller: adopting another
-# menu then takes that menu's board instead of keeping the old one.
+# True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
 var _board_auto: bool = false
 # Boards already given to board_prepare_fn: each is prepared once, however often it is wired.
 var _prepared_boards: Array[int] = []
@@ -286,42 +202,10 @@ var _wired_signal: StringName = &""
 var _blocked: bool = false
 var _menu_open: bool = false
 
-## Test seam: when valid, the page-guard JavaScript goes here instead of the browser, and the
-## client behaves as if on the web. Unset in every real build.
+## Test seam: when valid, the page-guard JavaScript goes here and the client acts as if on the web.
 var web_eval_fn: Callable = Callable()
 var _guard_armed: bool = false
 var _guard_installed: bool = false
-
-# Runs once per page. [code]window.__dotTabGuard[/code] is the idempotence flag, so a second
-# client or a reconnect adds no listeners. The keyboard lock lives here, not in the menu,
-# because only some games build the menu's applier, and a page can enter fullscreen by other
-# routes (F11 aside, a game's own button). Ctrl+W, Ctrl+T/N and Ctrl+Tab are the browser's and
-# a page cannot cancel them; the lock (fullscreen only, where the API exists) hands them to the
-# game, and the beforeunload prompt is the net for everything the lock cannot cover.
-# Wrapped in a function because a global-scope eval would leave `g` on the game's window.
-const _GUARD_JS := """
-(function () {
-if (!window.__dotTabGuard) {
-	var g = window.__dotTabGuard = { armed: false };
-	window.addEventListener('beforeunload', function (e) {
-		if (!g.armed) { return; }
-		e.preventDefault();
-		e.returnValue = '';
-		return '';
-	});
-	document.addEventListener('fullscreenchange', function () {
-		var k = navigator.keyboard;
-		if (!k) { return; }
-		try {
-			if (document.fullscreenElement) {
-				if (k.lock) { var p = k.lock(); if (p && p.catch) { p.catch(function () {}); } }
-			} else if (k.unlock) { k.unlock(); }
-		} catch (err) {}
-	});
-}
-})();
-"""
-
 
 func _ready() -> void:
 	host = _resolve_host()
@@ -341,7 +225,7 @@ func _ready() -> void:
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
 	_blocked = is_input_blocked()
-	_install_page_guard()
+	DotGamePageGuard.install(self)
 
 
 ## Whether the player's cfg tier may be on: solo or listen host, never a dedicated server or a guest.
@@ -360,11 +244,7 @@ func _on_gate_cover(covered: bool) -> void:
 		report_cover(link, covered)
 
 
-## Tells the server this client's loading cover went up ([param covered] true) or lifted.
-## [DotGameClient] calls it from its gate; a client that is not on it calls this from its own
-## cover's equivalents, with the shell's link ([code]DotRegistry.get_service(&"dot_client_link")
-## [/code]). False when nothing was sent: no link, not connected, or a server that does not
-## know the kind (an older one), which then releases the seat by its timeout.
+## Tells the server this client's loading cover went up ([param covered] true) or lifted. False when nothing was sent (no link, or an older server that releases the seat by timeout).
 static func report_cover(to_link: Object, covered: bool) -> bool:
 	if to_link == null or not is_instance_valid(to_link) or not to_link.has_method(&"send_kind"):
 		return false
@@ -390,9 +270,7 @@ func _make_gate() -> DotLoadGate:
 		made.cover_scene = cover_scene
 	if spawned_fn.is_valid():
 		made.require(REASON_SPAWNED, spawned_fn, spawned_text)
-	# Under the host, not under this node: the gate marks its parent for DotLoadGate.of, looks
-	# for the camera under it, and gives it the ready_to_show signal an older shell watches.
-	# A host still readying its scene's children refuses a new one, so that case waits a frame.
+				# Under the host: the gate marks its parent for DotLoadGate.of. A host still readying refuses a child, so wait a frame.
 	if host.is_node_ready():
 		host.add_child(made)
 	else:
@@ -400,9 +278,7 @@ func _make_gate() -> DotLoadGate:
 	return made
 
 
-## The settings, the menu, the console, the theme, Tab, M, the chat's keyboard and the
-## pointer. Call once, after the HUD, the chat box and what the settings bind to are built.
-## Nothing here is fatal: a piece that cannot be built is logged and the rest go on.
+## The settings, menu, console, theme, Tab, M, the chat's keyboard and the pointer. Call once, after the HUD and chat exist. A piece that cannot be built is logged and the rest go on.
 func setup() -> DotResult:
 	if _set_up:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
@@ -417,7 +293,7 @@ func setup() -> DotResult:
 	if use_console:
 		add_console()
 	_wire_menu()
-	_build_look_mute()
+	DotGameClientLook.build(self)
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -426,9 +302,7 @@ func setup() -> DotResult:
 	return DotResult.success(self)
 
 
-## Hands over a HUD built after [method setup]: it follows the menu's theme and HUD size from
-## now on. [param root] is its root Control; a CanvasLayer HUD passes the Control it holds.
-## Safe before setup() too (it is then wired by setup()). Replaces a HUD given earlier.
+## Hands over a HUD built after [method setup]: it follows the menu's theme and HUD size. Safe before setup() too; replaces an earlier HUD.
 func set_hud(root: Control, accent: Theme = null) -> void:
 	if _set_up and hud != null and hud != root and is_instance_valid(hud) \
 			and menu != null and menu.has_method(&"unfollow_hud"):
@@ -445,8 +319,7 @@ func _follow_hud() -> void:
 		menu.call(&"follow_hud", hud, hud_accent)
 
 
-## Hands over a chat box built after [method setup] (or before it: then setup() wires it).
-## Typing in it blocks input from now on; the previous chat is let go.
+## Hands over a chat box built after [method setup] (before it, setup() wires it). Typing in it blocks input; the previous chat is let go.
 func set_chat(box: Node) -> void:
 	if chat == box:
 		return
@@ -500,7 +373,7 @@ func _build_settings() -> void:
 		DotLog.warn(CHANNEL, "the settings node has no setup(); it is left alone", {"node": str(settings)})
 		return
 
-	_add_look_rows()
+	DotGameClientLook.add_rows(self)
 	var built: Variant = settings.call(&"setup")
 	if built is DotResult and not (built as DotResult).ok:
 		DotLog.warn(CHANNEL, "no settings; everything is at its default", {"why": (built as DotResult).error.message})
@@ -513,95 +386,16 @@ func _build_settings() -> void:
 	_add_user_cfg_entry()
 
 
-# The "Your mods" row on the Advanced page: a dot-menu row and editor loaded by path, so a build
-# without dot-menu's newer editor just has no entry.
 func _add_user_cfg_entry() -> void:
-	if not user_tier_on or user_cfg_files.is_empty() or menu == null or not menu.has_method(&"page"):
-		return
-	if not ResourceLoader.exists(ROW_SCRIPT) or not ResourceLoader.exists(EDITOR_SCRIPT):
-		DotLog.info(CHANNEL, "dot-menu has no cfg editor: no mods entry")
-		return
-	var page: Variant = menu.call(&"page", USER_CFG_PAGE)
-	var row_script: Variant = load(ROW_SCRIPT)
-	if page == null or not (row_script is GDScript):
-		return
-	var row: Variant = (row_script as GDScript).call(&"button", "Your mods",
-			"Tune the game's own settings files for this device.", "Edit", open_user_cfg)
-	var sec: Variant = (page as Object).call(&"section", "Mods", &"user_cfg")
-	(sec as Object).call(&"add", row)
+	DotGameUserCfg.add_entry(self)
 
 
 ## Opens the cfg editor over the menu. False without the tier, files, menu or editor.
 func open_user_cfg() -> bool:
-	if not user_tier_on or user_cfg_files.is_empty() or menu == null:
-		return false
-	if not ResourceLoader.exists(EDITOR_SCRIPT):
-		return false
-	if user_cfg_overlay != null and is_instance_valid(user_cfg_overlay):
-		user_cfg_overlay.open()
-		return true
-	# A CanvasLayer above the menu's own, or the editor draws underneath it.
-	var layer := CanvasLayer.new()
-	layer.layer = 200
-	add_child(layer)
-	user_cfg_overlay = UserCfgOverlay.new()
-	layer.add_child(user_cfg_overlay)
-	var ed: Control = (load(EDITOR_SCRIPT) as GDScript).new()
-	user_cfg_overlay.host_editor(ed)
-	for f in user_cfg_files:
-		ed.call(&"add_file", f.get("addon", ""), f.get("file", ""), f.get("schema", []), f.get("label", ""))
-	var first: Dictionary = user_cfg_files[0]
-	var _opened: Variant = ed.call(&"open", first.get("addon", ""), first.get("file", ""))
-	if menu.has_method(&"add_overlay"):
-		menu.call(&"add_overlay", user_cfg_overlay)
-	user_cfg_overlay.open()
-	if menu.has_method(&"overlay_opened"):
-		menu.call(&"overlay_opened")
-	return true
+	return DotGameUserCfg.open(self)
 
 
-## The editor, full screen, with a Close button; the shape dot-menu's add_overlay wants.
-class UserCfgOverlay extends Control:
-	signal closed()
-	var _editor: Control = null
-
-	func _init() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
-		visible = false
-
-	func host_editor(ed: Control) -> void:
-		_editor = ed
-		ed.set_anchors_preset(Control.PRESET_FULL_RECT)
-		ed.offset_bottom = -48
-		var back := ColorRect.new()
-		back.color = Color(0.05, 0.06, 0.08, 1.0)
-		back.set_anchors_preset(Control.PRESET_FULL_RECT)
-		add_child(back)
-		add_child(ed)
-		var b := Button.new()
-		b.text = "Close"
-		b.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-		b.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-		b.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		b.pressed.connect(close)
-		add_child(b)
-
-	func open() -> void:
-		visible = true
-
-	func close() -> void:
-		if visible:
-			visible = false
-			closed.emit()
-
-	func is_open() -> bool:
-		return visible
-
-
-## Hands over a menu the game built itself (dot-menu's [code]DotMenu[/code] or anything with
-## [code]is_open()[/code]), with its own board if it has one other than the menu's. Before
-## [method setup] it is the same as assigning [member menu]; after, it is wired at once: the
-## input block, [signal menu_state_changed], the HUD theme, Tab and the board.
+## Hands over a menu the game built itself, with its own board if any. Before [method setup] it is the same as assigning [member menu]; after, it is wired at once.
 func adopt_menu(adopted: Object, adopted_board: Object = null) -> void:
 	if _set_up:
 		_unwire_menu()
@@ -636,10 +430,7 @@ func map_changed(map_id: String) -> void:
 	map_config.apply(map_id)
 
 
-## Builds the console (dot-console) now, over [param manager] (the settings manager) and the
-## menu. [method setup] calls it with the settings' own manager; a game that builds its menu
-## first and its console later turns [member use_console] off and calls this itself. A second
-## call replaces nothing: the first console stays.
+## Builds the console now, over [param manager] and the menu. [method setup] calls it; a game that builds its menu first turns [member use_console] off and calls this. The first console stays.
 func add_console(manager: Object = null) -> Node:
 	if console != null and is_instance_valid(console):
 		return console
@@ -658,11 +449,7 @@ func add_console(manager: Object = null) -> Node:
 	return console
 
 
-## Relays the menu's open and close as [signal menu_state_changed], once, from the settings
-## node when there is one, else from the menu itself. An adopted menu that is not the
-## settings' own (adopt_menu after setup with settings present) is relayed from its own
-## [code]overlays_changed[/code] as well, and is_menu_open() asks it too: refusing would leave
-## a game that built its own menu with no way to have it block input.
+## Relays the menu's open and close as [signal menu_state_changed], from the settings node else the menu (an adopted menu also via `overlays_changed`).
 func _connect_menu_state() -> void:
 	if settings != null and settings.has_signal(&"menu_state_changed") \
 			and not settings.is_connected(&"menu_state_changed", _on_menu_state):
@@ -684,8 +471,7 @@ func _settings_menu() -> Object:
 	return got if got is Object else null
 
 
-## Undoes _wire_menu for the menu being replaced: its signal, its busy callable and the HUD
-## follow, so a menu no longer adopted cannot keep reporting or reacting.
+## Undoes _wire_menu for the menu being replaced: its signal, busy callable and HUD follow.
 func _unwire_menu() -> void:
 	var old: Object = menu
 	if old == null or not is_instance_valid(old):
@@ -749,199 +535,32 @@ func _ensure_scoreboard_action() -> void:
 	InputMap.action_add_event(scoreboard_action, tab)
 
 
-func _look_voice() -> Node:
-	if look_voice != null:
-		return look_voice
-	return chat.get(&"voice") as Node if chat != null and chat.get(&"voice") is Node else null
+func _look_chat_mute(peer: int, muted: bool) -> void:
+	DotGameClientLook.chat_mute(self, peer, muted)
 
 
-func _look_chat() -> Node:
-	return look_chat if look_chat != null else chat
-
-
-func _look_wanted() -> bool:
-	return use_look_mute and _look_voice() != null
-
-
-# Rows in the game's key table (so the Controls page and help list them), unless it has its own.
-func _add_look_rows() -> void:
-	if not _look_wanted() or not ("bindings" in settings):
-		return
-	var table: Object = settings.get(&"bindings")
-	if table == null:
-		if not ResourceLoader.exists(BINDINGS_SCRIPT):
-			return
-		var script: Variant = load(BINDINGS_SCRIPT)
-		if not (script is GDScript):
-			return
-		table = (script as GDScript).new()
-		settings.set(&"bindings", table)
-	if not table.has_method(&"row_for_action") or not table.has_method(&"add"):
-		return
-	if table.call(&"row_for_action", look_gag_action).is_empty():
-		var gag_label := "Look at a player: stop (or resume) hearing them"
-		if not look_separate_keys:
-			gag_label = "Look at a player: tap to gag, double-tap to mute"
-		var _g: Variant = table.call(&"add", look_gag_action, &"bind_voice_gag", gag_label,
-			free_look_key(["G", "Y", "U"], table), "Communication")
-	if look_separate_keys and table.call(&"row_for_action", look_mute_action).is_empty():
-		var _m: Variant = table.call(&"add", look_mute_action, &"bind_voice_mute",
-			"Look at a player: mute (or unmute) their voice and chat",
-			free_look_key(["K", "J", "N", "L"], table), "Communication")
+func _look_target() -> int:
+	return DotGameClientLook.target(self)
 
 
 ## The first of [param candidates] no action holds and no row of [param table] defaults to.
 func free_look_key(candidates: Array, table: Object = null) -> String:
-	for c in candidates:
-		var code := OS.find_keycode_from_string(str(c))
-		if code == KEY_NONE or not key_holders(code).is_empty():
-			continue
-		if table != null and table.has_method(&"row_for_action") and _table_default_taken(table, str(c)):
-			continue
-		return str(c)
-	return str(candidates.back()) if not candidates.is_empty() else ""
-
-
-func _table_default_taken(table: Object, key: String) -> bool:
-	for row: Variant in table.get(&"rows"):
-		if str((row as Dictionary).get("default", "")).to_upper() == key.to_upper():
-			return true
-	return false
+	return DotGameClientLook.free_key(self, candidates, table)
 
 
 ## Actions other than the look-mute pair that hold [param keycode] (physical or logical).
 func key_holders(keycode: int) -> PackedStringArray:
-	var out := PackedStringArray()
-	for action: StringName in InputMap.get_actions():
-		if action == look_gag_action or action == look_mute_action or str(action).begins_with("ui_") \
-				or action == &"voice_gag" or action == &"voice_mute":
-			continue
-		for e in InputMap.action_get_events(action):
-			if e is InputEventKey and ((e as InputEventKey).physical_keycode == keycode \
-					or (e as InputEventKey).keycode == keycode):
-				out.append(String(action))
-				break
-	return out
-
-
-# Without a menu table the actions are made here, on a key nobody holds.
-func _ensure_look_actions() -> void:
-	var pairs: Array = [[look_gag_action, ["G", "Y", "U"]]]
-	if look_separate_keys:
-		pairs.append([look_mute_action, ["K", "J", "N", "L"]])
-	for pair: Array in pairs:
-		if InputMap.has_action(pair[0]):
-			continue
-		InputMap.add_action(pair[0])
-		var key := InputEventKey.new()
-		key.physical_keycode = OS.find_keycode_from_string(free_look_key(pair[1]))
-		InputMap.action_add_event(pair[0], key)
+	return DotGameClientLook.holders(self, keycode)
 
 
 ## Builds the look keys now; [method setup] does it, so call this only when the voice came later.
 func build_look_mute() -> void:
-	_build_look_mute()
-
-
-func _build_look_mute() -> void:
-	if not _look_wanted() or look_mute != null:
-		return
-	if not ResourceLoader.exists(look_mute_script):
-		DotLog.info(CHANNEL, "dot-voice is not in this build: no look-to-gag keys")
-		return
-	var script: Variant = load(look_mute_script)
-	if not (script is GDScript):
-		DotLog.warn(CHANNEL, "dot-voice's look-mute would not load", {"path": look_mute_script})
-		return
-	_ensure_look_actions()
-	look_mute = (script as GDScript).new() as Node
-	look_mute.name = "LookMute"
-	look_mute.set(&"manager", _look_voice())
-	look_mute.set(&"separate_keys", look_separate_keys)
-	look_mute.set(&"gag_action", look_gag_action)
-	look_mute.set(&"mute_action", look_mute_action)
-	look_mute.set(&"target_fn", look_target_fn if look_target_fn.is_valid() else _look_target)
-	look_mute.set(&"chat_mute_fn", look_chat_mute_fn if look_chat_mute_fn.is_valid() else _look_chat_mute)
-	add_child(look_mute)
-	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
-	if source != null and look_mute.has_method(&"follow_cvars"):
-		var _f: Variant = look_mute.call(&"follow_cvars", source)
-	look_conflicts = find_look_conflicts()
-	for c in look_conflicts:
-		DotLog.warn(CHANNEL, "a look-to-gag key is also another action's key; rebind one",
-			{"action": c["action"], "key": c["key"], "other": c["other"]})
+	DotGameClientLook.build(self)
 
 
 ## The look-mute actions whose key another action also holds, as [code]{action, key, other}[/code].
 func find_look_conflicts() -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	var actions: Array = [look_gag_action]
-	if look_separate_keys:
-		actions.append(look_mute_action)
-	for action: StringName in actions:
-		if not InputMap.has_action(action):
-			continue
-		for e in InputMap.action_get_events(action):
-			if not (e is InputEventKey):
-				continue
-			var code := (e as InputEventKey).physical_keycode
-			if code == KEY_NONE:
-				code = (e as InputEventKey).keycode
-			for other in key_holders(code):
-				out.append({"action": String(action), "key": OS.get_keycode_string(code), "other": other})
-	return out
-
-
-func _look_roster() -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	var holder := _look_chat()
-	var list: Object = holder.get(&"self_mute") if holder != null else null
-	if list == null or not (list.get(&"roster") is Array):
-		return out
-	var you := int(list.get(&"you"))
-	for row: Dictionary in list.get(&"roster"):
-		if not bool(row.get("bot", false)) and int(row.get("peer", 0)) > 0 and (you == 0 or int(row["id"]) != you):
-			out.append(row)
-	return out
-
-
-func _look_chat_mute(peer: int, muted: bool) -> void:
-	var holder := _look_chat()
-	var list: Object = holder.get(&"self_mute") if holder != null else null
-	if list == null or not list.has_method(&"set_muted"):
-		return
-	for row: Dictionary in _look_roster():
-		if int(row["peer"]) == peer:
-			list.call(&"set_muted", {"key": row["key"], "name": row["name"]}, muted)
-
-
-# The default target: the other player nearest the view axis, from the game's positions or the
-# chat's speaker positions.
-func _look_target() -> int:
-	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
-	if cam == null:
-		return 0
-	var positions: Dictionary = {}
-	if look_positions_fn.is_valid():
-		positions = look_positions_fn.call()
-	elif look_position_fn.is_valid():
-		for row: Dictionary in _look_roster():
-			var at: Variant = look_position_fn.call(row)
-			if at is Vector3 and int(row["peer"]) > 0:
-				positions[int(row["peer"])] = at
-	elif chat != null and chat.get(&"voice_position_fn") is Callable \
-			and (chat.get(&"voice_position_fn") as Callable).is_valid():
-		var voice: Object = _look_voice()
-		var at: Callable = chat.get(&"voice_position_fn")
-		if voice != null and voice.has_method(&"active_speakers"):
-			for peer in voice.call(&"active_speakers"):
-				var pos: Variant = at.call(int(peer))
-				if pos is Vector3:
-					positions[int(peer)] = pos
-	if positions.is_empty() or look_mute == null:
-		return 0
-	return int(look_mute.get_script().call(&"pick_by_angle", cam.global_transform, positions,
-		look_max_distance, look_max_angle_deg))
+	return DotGameClientLook.conflicts(self)
 
 
 func _on_menu_state(any_open: bool) -> void:
@@ -950,8 +569,7 @@ func _on_menu_state(any_open: bool) -> void:
 		if any_open:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		elif not DotPlatform.is_web() and not _busy() and _pointer_wanted():
-			# A browser refuses a capture that is not a click; the click that follows is
-			# taken in _unhandled_input.
+						# A browser refuses a capture that is not a click; _unhandled_input takes it.
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	menu_state_changed.emit(any_open)
 	_refresh_blocked()
@@ -963,9 +581,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Whether [param event] was an Escape that only freed the captured pointer (see
-## [member escape_releases_pointer]). Nothing is freed while a menu, the chat or the game's
-## own keyboard owner has the keys: Escape is theirs then.
+## Whether [param event] was an Escape that only freed the captured pointer; nothing is freed while a menu, the chat or the game's keyboard owner has the keys.
 func _release_pointer_on_escape(event: InputEvent) -> bool:
 	if not escape_releases_pointer or not capture_pointer or not _set_up or gate_only:
 		return false
@@ -1008,26 +624,7 @@ func _process(_delta: float) -> void:
 	_refresh_page_guard()
 
 
-func _guard_web() -> bool:
-	return web_eval_fn.is_valid() or DotPlatform.is_web()
-
-
-func _guard_eval(code: String) -> void:
-	if web_eval_fn.is_valid():
-		web_eval_fn.call(code)
-	else:
-		DotWeb.eval(code, true)
-
-
-func _install_page_guard() -> void:
-	if _guard_installed or not _guard_web():
-		return
-	_guard_installed = true
-	_guard_eval(_GUARD_JS)
-
-
-## True while this client is in a live game: online and the link connected to the server. The
-## main menu, a normal leave and a dropped link are all false, so none of them prompts.
+## True while this client is online with the link connected; the main menu, a normal leave and a dropped link are false.
 func is_in_live_game() -> bool:
 	if offline or link == null or not is_instance_valid(link):
 		return false
@@ -1035,31 +632,15 @@ func is_in_live_game() -> bool:
 
 
 func _refresh_page_guard() -> void:
-	if not _guard_installed:
-		return
-	# Offline is a solo game in the tab (the shell starts the game scene with no link), and a
-	# solo round lost to Ctrl+W is lost all the same; this client only exists while a game runs.
-	var want := offline or is_in_live_game()
-	if want == _guard_armed:
-		return
-	_guard_armed = want
-	_guard_eval("window.__dotTabGuard.armed = %s;" % ("true" if want else "false"))
-	DotLog.debug(CHANNEL, "leave-site prompt %s" % ("armed" if want else "disarmed"))
+	DotGamePageGuard.refresh(self)
 
 
-## Drops the leave-site prompt now. Code that deliberately navigates the page (a reload to
-## apply an update, a return to the site) calls this first, or the player is asked to confirm
-## something the game itself chose to do. The next frame re-arms it if the link is still live,
-## so call it in the same frame as the navigation.
+## Drops the leave-site prompt now, for code that deliberately navigates the page. The next frame re-arms it if the link is live, so call it in the same frame.
 func clear_leave_guard() -> void:
-	if _guard_installed and _guard_armed:
-		_guard_armed = false
-		_guard_eval("window.__dotTabGuard.armed = false;")
-		DotLog.debug(CHANNEL, "leave-site prompt cleared for a deliberate navigation")
+	DotGamePageGuard.clear(self)
 
 
-## Re-reads whether input is blocked now and emits [signal input_blocked_changed] if it
-## changed. Polled once a frame anyway; call it the same frame a chat or an overlay opens.
+## Re-reads whether input is blocked and emits [signal input_blocked_changed] on a change. Polled each frame; call it the frame a chat or overlay opens.
 func refresh_blocked() -> void:
 	_refresh_blocked()
 
@@ -1071,48 +652,20 @@ func _refresh_blocked(_unused: Variant = null) -> void:
 		input_blocked_changed.emit(now)
 
 
-# --- Asked ------------------------------------------------------------------------
 
 ## True while the player's input should be off: covered, a menu open, typing, or busy.
 func is_input_blocked() -> bool:
 	return not is_shown() or is_menu_open() or _chat_typing() or _busy()
 
 
-## Follows the server's `mp_teamblock` family so this client predicts against the same pairs.
-## [param game] is the game object; its `block_rules` (set by the server module, or built here by
-## [DotGameNoblock]) feeds `body_rules.pair_fn`. Call once the link exists (after [method setup]).
-## Fails loudly when dot-team is absent or the link cannot replicate cvars.
+## Follows the server's `mp_teamblock` family so this client predicts against the same pairs: the game's `block_rules` feeds `body_rules.pair_fn`. Call after [method setup]; fails when dot-team is absent or the link cannot replicate cvars.
 func add_noblock(game: Object, side_fn: Callable) -> DotResult:
-	if game == null or not ("body_rules" in game) or game.get("body_rules") == null:
-		return DotResult.fail(DotError.CODE_INVALID, "add_noblock needs a game with body_rules.")
-	var made := DotGameNoblock.create(map_config_game if map_config_game != "" else "game", side_fn)
-	if not made.ok:
-		return made
-	noblock = made.value
-	noblock.feed(game.get("body_rules"))
-	if "block_rules" in game:
-		game.set("block_rules", noblock.rules)
-	if link == null or not noblock.follow(link):
-		return DotResult.fail(DotError.CODE_STATE, "The game link cannot replicate cvars: noblock would not follow the server.")
-	return DotResult.success(noblock)
+	return DotGameNoblock.add_to_client(self, game, side_fn)
 
 
-## Downloads what a server advertises ([constant DotGameAvatarContent.CVAR] in its query rules, e.g.
-## `entry.rules`) before the client connects, holding [member gate] with the progress. On failure the gate
-## stays held showing why and the caller must not connect. [param server_id] is the site's id for the server.
+## Downloads what a server advertises ([constant DotGameAvatarContent.CVAR]) before connecting, holding [member gate]; on failure the gate stays held and the caller must not connect.
 func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
-	var ids := DotGameAvatarContent.ids_from_rules(rules)
-	if server_id <= 0:
-		server_id = DotGameAvatarContent.server_id_from_rules(rules)
-	avatar_site_url = base_url
-	avatar_server_id = server_id
-	var kept := []
-	var res: DotResult = await DotGameAvatarContent.prepare(self, ids, base_url, server_id, gate, http, kept)
-	if not kept.is_empty():
-		avatar_fetcher = kept[0]
-	if not res.ok:
-		DotLog.warn(CHANNEL, "avatar content not ready; not connecting", {"why": res.error.message})
-	return res
+	return await DotGameClientAvatars.prepare_content(self, rules, base_url, server_id, http)
 
 
 ## [member avatar_site_url], else the site this client signs in against.
@@ -1129,8 +682,7 @@ func avatar_server() -> int:
 	return DotGameAvatarContent.server_id_from_rules(cvars) if cvars is Dictionary else 0
 
 
-## The signed-in member's equipped actions from the backbone's avatar read, ready for
-## [method add_avatar_actions]'s third argument. Null (the starter set) when there is none.
+## The signed-in member's equipped actions from the avatar read, for [method add_avatar_actions]. Null (starters) when none.
 func read_avatar_actions(http: DotHttp, user_key: String, headers: Dictionary = {}) -> DotResult:
 	var path := "res://addons/dot_user_avatar/net/dot_avatar_sync.gd"
 	if http == null or not ResourceLoader.exists(path):
@@ -1138,59 +690,14 @@ func read_avatar_actions(http: DotHttp, user_key: String, headers: Dictionary = 
 	return await (load(path) as GDScript).call(&"fetch_actions", http, user_key, headers)
 
 
-## Wires the avatar actions (emote `,`, pose `.`, gesture `/`; dot-user-avatar's
-## [code]DotAvatarActionInput[/code], loaded by path) to the figures: a press plays on
-## [param figure_fn] (peer id -> a figure with `play_action`) and is relayed through
-## [param net] (null offline). [param backbone_actions] is the avatar read's `actions`; without it
-## the starter set. Register [DotGameAvatarActionMessage] on the client's manager before it
-## is sealed, or the actions stay local. Call after [method setup].
+## Wires the avatar actions (emote `,`, pose `.`, gesture `/`) to the figures: a press plays on [param figure_fn] (peer id -> figure) and is relayed through [param net] (null offline). Register [DotGameAvatarActionMessage] before the manager is sealed. Call after [method setup].
 func add_avatar_actions(net: DotNetManager, figure_fn: Callable, backbone_actions: Variant = null) -> DotResult:
-	var path := "res://addons/dot_user_avatar/actions/dot_avatar_action_input.gd"
-	if not ResourceLoader.exists(path):
-		return DotResult.fail(DotError.CODE_UNSUPPORTED, "dot-user-avatar is not in this build.")
-	var script := load(path) as GDScript
-	script.call(&"ensure_actions")
-	var input: Node = script.new()
-	if backbone_actions != null:
-		var read: DotResult = (load("res://addons/dot_user_avatar/actions/dot_avatar_actions.gd") as GDScript).call(&"from_backbone", backbone_actions)
-		if read.ok:
-			input.set(&"actions", read.value)
-		else:
-			DotLog.warn(CHANNEL, "avatar actions unreadable; starter set", {"why": read.error.message})
-	add_child(input)
-	avatar_actions = DotGameAvatarActionClient.new()
-	avatar_actions.blocked_fn = is_input_blocked
-	avatar_actions.content_fn = func(entry: Dictionary) -> DotResult:
-		return await DotGameAvatarContent.fetch_clip(self, null, avatar_site(), avatar_server(), entry, _avatar_library)
-	avatar_actions.url_fn = func(id: String) -> String:
-		return String((_avatar_library.get("rows", {}) as Dictionary).get(id, {}).get("url", ""))
-	avatar_actions.wearable_row_fn = func(id: String) -> Dictionary:
-		return (_avatar_library.get("rows", {}) as Dictionary).get(id, {})
-	add_child(avatar_actions)
-	avatar_actions.attach(net, input, figure_fn)
-	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):
-		var local: Object = (load(LOCAL_SCRIPT) as GDScript).new()
-		input.call(&"register_console", local)
-		console.call(&"add_source", local)
-	return DotResult.success(avatar_actions)
+	return DotGameClientAvatars.add_actions(self, net, figure_fn, backbone_actions)
 
 
-## Hosts a [DotGameWorkbench] on this client: its window counts as a menu overlay (pointer freed, input
-## blocked, Escape closes it) and the console gets `workbench`. Call after [method setup] and after the
-## workbench's `start()` (which wants `listen_host_fn = client.listen_host_fn` set first). A workbench with no panel (production, or no dot-menu) only gets the command.
+## Hosts a [DotGameWorkbench] on this client: its window counts as a menu overlay and the console gets `workbench`. Call after [method setup] and the workbench's `start()`.
 func add_workbench(wb: Node) -> void:
-	if wb.get_parent() == null:
-		add_child(wb)
-	var panel: Variant = wb.get(&"overlay")
-	if panel is Control and menu != null and menu.has_method(&"add_overlay"):
-		menu.call(&"add_overlay", panel)
-		wb.connect(&"open_changed", func(open: bool) -> void:
-			if open and menu != null and is_instance_valid(menu) and menu.has_method(&"overlay_opened"):
-				menu.call(&"overlay_opened"))
-	if console != null and is_instance_valid(console) and ResourceLoader.exists(LOCAL_SCRIPT):
-		var local: Object = (load(LOCAL_SCRIPT) as GDScript).new()
-		local.call(&"add_command", &"workbench", "Tuning panel: workbench [open|close|toggle|export|http]", Callable(wb, &"console_command"))
-		console.call(&"add_source", local)
+	DotGameWorkbench.host_on(self, wb)
 
 
 ## True once the gate has lifted (or when there is none).
@@ -1239,9 +746,8 @@ func _notification(what: int) -> void:
 		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
 		user_tier_on = false
 		DotAddonConfig.set_user_tier(false)
-	if what == NOTIFICATION_EXIT_TREE and _guard_armed:
-		_guard_armed = false
-		_guard_eval("window.__dotTabGuard.armed = false;")
+	if what == NOTIFICATION_EXIT_TREE:
+		DotGamePageGuard.clear(self, false)
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \

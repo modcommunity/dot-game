@@ -1,11 +1,8 @@
 class_name DotGamePrejoin
 extends RefCounted
 
-## Fetches the avatar files a server advertises before a shell connects to it, so every game
-## gets it at the one place a connection starts, not in each game.
-##
-## A dead CDN must never keep a player out, so this never blocks past [member timeout_sec] and
-## a failure is a warning: the caller joins anyway and the figures fall back to the stock avatar.
+## Fetches the avatar files a server advertises before a shell connects to it. Never blocks past
+## [member timeout_sec]; a failure is a warning and the figures fall back to the stock avatar.
 
 const CHANNEL := "game.prejoin"
 

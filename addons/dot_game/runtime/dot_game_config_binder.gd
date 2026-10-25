@@ -1,22 +1,9 @@
 class_name DotGameConfigBinder
 extends RefCounted
 
-## Makes a game's [DotConfig] (its tunables) operator-reachable: one layered load with the
-## layer each value came from, a cvar per field, a profile kind `config` the workbench edits,
-## and the yml diff against the code defaults.
-##
-## [codeblock]
-## var binder := DotGameConfigBinder.create(config, "mygame", "mg", "user://cfg/mygame.json")
-## var res := binder.load_layers()             # strict on a dedicated server: failure = exit
-## if not res.ok: DotGameConfigBinder.fail_boot(get_tree(), res)
-## binder.bind_cvars(add_cvar)                 # in the module, after the console exists
-## binder.attach(profile_runtime)              # optional: live edits from dot-workbench
-## [/codeblock]
-##
-## Layers, weakest first: code defaults, [member json_path], the `config` profile
-## (`cfg/game/<game>/config/game.yml`, then `cfg/server/game/<game>/config/game.yml`, then
-## `PROFILE_CONFIG_GAME_<KEY>` / `--profile.config/game.<key>=`), the config's own env and argv,
-## then cvars and the workbench at runtime. Docs: dot-game `docs/config-binder.md`.
+## Makes a game's [DotConfig] operator-reachable: one layered load with the layer each value came
+## from, a cvar per field, a `config` profile kind the workbench edits, and the yml diff.
+## Layers, weakest first: code defaults, [member json_path], the `config` profile, env and argv, then cvars.
 
 const CHANNEL := "game.config"
 const PROFILE_KIND := "config"
@@ -231,8 +218,6 @@ func source_of(key: String) -> String:
 	return String(_sources.get(key, "default")).split(" ")[0]
 
 
-# --- cvars -----------------------------------------------------------------
-
 ## Registers `<prefix>_<field>` for every exposed field not already a cvar. [param add_cvar] is
 ## the module's (name, default, description, flags) -> DotConVar; [param exists] (name) -> bool
 ## skips a name the game already binds by hand. Returns the made cvars.
@@ -305,8 +290,6 @@ func _on_cvar(_old: String, text: String, key: String) -> void:
 	field_changed.emit(key, config.get(key), "cvar")
 
 
-# --- the workbench ---------------------------------------------------------
-
 ## Adds the `config` kind to [param runtime]; an edit there writes the field and its cvar.
 func attach(runtime: DotProfileRuntime) -> void:
 	_runtime = runtime
@@ -347,8 +330,6 @@ func _assign(key: String, v: Variant, source: String) -> void:
 		_syncing = false
 	field_changed.emit(key, config.get(key), source)
 
-
-# --- the diff --------------------------------------------------------------
 
 ## field -> effective value, for every exposed field that differs from the code defaults.
 func diff() -> Dictionary:
@@ -428,8 +409,6 @@ func _cmd_diff(ctx: DotCmdContext) -> void:
 func _cmd_dump(ctx: DotCmdContext) -> void:
 	ctx.reply_lines(report_lines())
 
-
-# --- shipped docs ----------------------------------------------------------
 
 ## Writes name -> description JSON beside the game, for a build whose scripts carry no source.
 func write_schema(path: String) -> DotResult:

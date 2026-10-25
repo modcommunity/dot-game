@@ -1,10 +1,6 @@
 extends Node
 
 ## DotGameNoblock: cfg layers, cvars, the pair answer a body's pair_fn gets, strict refusal, workbench edit.
-##
-## [codeblock]
-## godot --headless --path . res://examples/headless_noblock.tscn
-## [/codeblock]
 
 const ROOT := "res://examples/fixtures/noblock/"
 const CHECKS := 20

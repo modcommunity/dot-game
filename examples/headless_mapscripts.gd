@@ -1,10 +1,6 @@
 extends Node
 
 ## DotGameMapScripts: the script.* events of a dot-map world handled, refused when forged, restored on a map change.
-##
-## [codeblock]
-## godot --headless --path . res://examples/headless_mapscripts.tscn
-## [/codeblock]
 
 const CHECKS := 21
 const FIXTURE_CFG := "res://examples/fixtures/mapcfg"

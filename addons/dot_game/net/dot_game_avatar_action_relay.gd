@@ -2,10 +2,8 @@ class_name DotGameAvatarActionRelay
 extends RefCounted
 
 ## The server half of avatar actions: checks a client's request and tells every peer.
-##
-## Refused when the id is not one the peer has equipped (what [member equipped_fn] says, else what
-## [member loadouts] read from the backbone, else the starter set), when the peer asked less than
-## [member min_interval_sec] ago, or when [member veto_fn] says no (a dead player, a round in play).
+## Refused when the id is not one the peer has equipped, when it asked less than
+## [member min_interval_sec] ago, or when [member veto_fn] says no.
 
 const CHANNEL := "game.avatar_action"
 
@@ -33,11 +31,9 @@ var _net: DotNetManager = null
 var _last: Dictionary = {}
 
 
-## Registers the type on [param net], answers requests and stores itself as the manager's
-## [constant NET_META]. [param game] may define `_avatar_actions_equipped(peer)` and
-## `_avatar_action_veto(peer, id)`. A game not on [DotGameModule] passes its dot-server as
-## [param server] (the session's key) and its [DotGameRoster] as [param roster], which then
-## tells the loadouts who joins and leaves.
+## Registers the type on [param net], answers requests and stores itself as [constant NET_META].
+## [param game] may define `_avatar_actions_equipped(peer)` and `_avatar_action_veto(peer, id)`;
+## a game not on [DotGameModule] passes its dot-server as [param server] and its [DotGameRoster] as [param roster].
 static func serve(net: DotNetManager, game: Object = null, server: Object = null,
 		roster: Object = null) -> DotResult:
 	var made := DotGameAvatarActionMessage.register(net)

@@ -23,11 +23,12 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses), `DotGameContent` |
+| `addons/dot_game/core/` | `DotGameModule` (the `DotModule` a game subclasses; `DotGameModuleWiring` holds its static wiring helpers), `DotGameContent` |
 | `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer`; `DotGameLink`, a game's RPC link attached under the server node and freed with its bridge |
 | `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer), `DotGameWorkbench` (F9 tuning window and optional HTTP), `DotGameMapConfig` (per-map settings) |
+| `addons/dot_game/runtime/` helpers | `DotGameClient` delegates to static helpers taking the client: `DotGameClientLook` (look and mute), `DotGameUserCfg` (the user cfg tier), `DotGameClientAvatars`, `DotGamePageGuard` (browser leave guard); `DotGameAvatarActionSupport` holds the action client's row building and optional-script cache |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
-| `examples/game_selftest.tscn` | the suite; `examples/fixtures/` the module, bridge, identity and services it loads |
+| `examples/game_selftest.tscn` | the suite (sections inherit through `examples/selftest/selftest_{base,avatar,extra}.gd`); `examples/fixtures/` the module, bridge, identity and services it loads |
 
 ## Running and testing
 
