@@ -17,6 +17,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/avatar-actions.md](docs/avatar-actions.md) | emotes, poses and gestures: the checked message and relay, `DotGameClient.add_avatar_actions`, the module's `_avatar_actions_equipped` and `_avatar_action_veto` hooks, the server-read loadouts (`DotGameAvatarLoadouts`) and uploaded clips on other players |
 | [docs/noblock.md](docs/noblock.md) | teammates passing through each other: `DotGameNoblock`, the module's `_noblock_*` hooks, `DotGameClient.add_noblock`, the `noblock` cfg kind |
 | [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench`, dot-auth accounts (`DotGameWorkbenchAuth`) |
+| [docs/qa.md](docs/qa.md) | `tools/perf_budget.sh`, `visual_check.sh`, `netchaos.sh` and the `DotGameNetchaos*` classes: what a game supplies (`tools/qa.conf`, the two netchaos scripts) |
 | [docs/history.md](docs/history.md) | the bugs, and how each looked |
 
 ## Layout
@@ -27,6 +28,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer`; `DotGameLink`, a game's RPC link attached under the server node and freed with its bridge |
 | `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer), `DotGameWorkbench` (F9 tuning window and optional HTTP), `DotGameMapConfig` (per-map settings) |
 | `addons/dot_game/runtime/` helpers | `DotGameClient` delegates to static helpers taking the client: `DotGameClientLook` (look and mute), `DotGameUserCfg` (the user cfg tier), `DotGameClientAvatars`, `DotGamePageGuard` (browser leave guard); `DotGameAvatarActionSupport` holds the action client's row building and optional-script cache |
+| `addons/dot_game/qa/`, `tools/` | `DotGameNetchaosServer` and `DotGameNetchaosClient` (tool-only: a pack never calls them, so no API level) and the shared perf, visual and netchaos scripts. [qa](docs/qa.md) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
 | `examples/game_selftest.tscn` | the suite (sections inherit through `examples/selftest/selftest_{base,avatar,extra}.gd`); `examples/fixtures/` the module, bridge, identity and services it loads |
 
