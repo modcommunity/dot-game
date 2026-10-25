@@ -45,6 +45,16 @@ var overlay: Control = null
 var exporter: RefCounted = null
 var running_http := false
 
+## Offer the DotServer's [constant THREAD_CVARS] as a set; Save writes `cfg/server/addons/dot_server/threads/server.yml`, applied at the next start.
+var thread_cvars: bool = true
+
+## The server's thread cvars and their profile types.
+const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool"}
+const THREADS_KIND := "threads"
+const THREADS_ADDON := "dot_server"
+## The one profile id a cvar set has.
+const CVAR_SET_ID := "server"
+
 var _sets: Array = []
 var _labels: Dictionary = {}
 var _canvas: CanvasLayer = null
@@ -80,6 +90,13 @@ func start(runtime: Object = null) -> DotResult:
 		config = http_script.call("read_config")
 	var api_script: GDScript = load(API_SCRIPT)
 	api = api_script.new(runtime)
+	if thread_cvars:
+		var server := DotRegistry.get_node_service(DotServer.SERVICE) as DotServer
+		if server != null and server.console != null:
+			var made := cvar_set(server.console, THREAD_CVARS, THREADS_KIND, THREADS_ADDON)
+			if made != null:
+				bind_cvar_set(made, api.get("runtime"), server.console)
+				add_set(made, "Server threads")
 	for s in _sets:
 		api.call("add_set", s)
 	var editor := OS.has_feature("editor")
@@ -104,6 +121,77 @@ func start(runtime: Object = null) -> DotResult:
 	if not res.ok:
 		return res
 	return DotResult.success(overlay != null or running_http)
+
+
+## A profile set over [param types] ({cvar name: "int" | "bool" | "float" | "string"}) of [param console]'s cvars, one implicit id [constant CVAR_SET_ID]; names that are not cvars are left out. Null when none is.
+static func cvar_set(console: DotConsole, types: Dictionary, kind: String, addon: String = "") -> DotProfileSet:
+	var fields: Array = []
+	for name: String in types:
+		var c := console.find_cvar(name)
+		if c == null:
+			continue
+		var opts := {"description": c.description}
+		if c.has_min:
+			opts["min"] = c.min_value
+		if c.has_max:
+			opts["max"] = c.max_value
+		fields.append(DotProfileSet.field(name, types[name], _cvar_value(c, types[name]), opts))
+	if fields.is_empty():
+		return null
+	var made := DotProfileSet.create(addon, "", kind, fields)
+	made.implicit_ids = PackedStringArray([CVAR_SET_ID])
+	return made
+
+
+## Applies a saved file of [param set] to the cvars, then follows [param runtime]'s edits of it into them. Value: the cvars the file set.
+static func bind_cvar_set(set: DotProfileSet, runtime: DotProfileRuntime, console: DotConsole) -> int:
+	var pushed := {}
+	for f: Dictionary in set.schema:
+		pushed[f["name"]] = f["default"]
+	var applied := 0
+	var loaded := set.load_profile(CVAR_SET_ID)
+	if loaded.ok:
+		var p: DotProfile = loaded.value
+		for path in p.file_keys:
+			var name := String(path).split(".")[0]
+			if pushed.has(name) and _push_cvar(console, name, p.values[name]):
+				pushed[name] = p.values[name]
+				applied += 1
+	if applied > 0:
+		DotLog.info(CHANNEL, "saved cvars applied", {"kind": set.rel_path, "cvars": applied})
+	if runtime != null:
+		runtime.profile_changed.connect(func(kind: String, id: String, _rev: int) -> void:
+			if kind != set.rel_path or id != CVAR_SET_ID:
+				return
+			var now := set.load_profile(CVAR_SET_ID)
+			if not now.ok:
+				return
+			var values: Dictionary = (now.value as DotProfile).values
+			# Only what this edit moved: a cvar changed at the console since is left alone.
+			for name: String in pushed:
+				if values.has(name) and str(values[name]) != str(pushed[name]):
+					pushed[name] = values[name]
+					_push_cvar(console, name, values[name]))
+	return applied
+
+
+static func _cvar_value(c: DotConVar, type: String) -> Variant:
+	match type:
+		"int":
+			return c.get_int()
+		"bool":
+			return c.get_bool()
+		"float":
+			return c.get_float()
+	return c.get_string()
+
+
+static func _push_cvar(console: DotConsole, name: String, value: Variant) -> bool:
+	var text := ("1" if value else "0") if value is bool else str(value)
+	var res := console.set_cvar(name, text)
+	if not res.ok:
+		DotLog.warn(CHANNEL, "cvar refused the workbench value", {"cvar": name, "value": text, "error": res.error.message})
+	return res.ok
 
 
 func _attach_accounts() -> void:

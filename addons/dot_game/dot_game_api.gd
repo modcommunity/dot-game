@@ -48,5 +48,7 @@ extends RefCounted
 # 24: DotGameAvatarLoadoutAsk (a client asks for the loadouts it missed; DotGameAvatarLoadouts.answer),
 #    DotGameAvatarContent.SERVER_CVAR (sv_site_server) / default_site_url, DotGameModule._site_server_id,
 #    DotGameClient.avatar_site / avatar_server; the module's avatar hooks now reach the relay.
-const LEVEL := 24
+# 25: DotGameWorkbench thread_cvars / cvar_set / bind_cvar_set (the Server threads set),
+#    DotGameClient vis_mode / attach_visibility / detach_visibility / set_vis_mode.
+const LEVEL := 25
 const OLDEST := 1

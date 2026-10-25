@@ -86,6 +86,7 @@ Each is additive; leaving it alone keeps the old behaviour.
 - **`platform.add_console(manager)`.** Builds the console now, for a game whose console must come after its menu (turn `use_console` off, call this later). A second call keeps the first.
 - **`platform.gate_only = true`.** `setup()` wires only the chat's keyboard and the input block: no settings, menu, console, board, Tab, M or pointer capture. The gate, the link, the web flush and the block stay.
 - **`platform.escape_releases_pointer = true`.** The first Escape on a captured pointer frees it and is consumed; the next opens the menu. Not while a menu, the chat or `busy_fn` has the keys.
+- **Map culling, opt in: `platform.attach_visibility(world, drawn)` on every map load (`detach_visibility()` on unload).** It builds dot-map's `DotMapVisibility` (by path) over a converted map's `DotMapBspMesh` and its drawn tree, by `vis_mode`: `off` (the default: nothing is built and the map draws whole), `pvs`, `occluders` or `both`. Every game's client console gets a `vis_mode` variable (left alone when the game binds its own), and `--vis_mode=` on the command line sets it; `set_vis_mode(mode)` is the same from code. A map with no visibility data stays drawn whole, with one line. A dedicated server draws nothing, so it never pays for this.
 
 ## Gotchas
 

@@ -279,3 +279,86 @@ func _test_workbench_hosting() -> void:
 	fake_auth.free()
 	wb.queue_free()
 	_done()
+
+
+func _test_workbench_thread_cvars() -> void:
+	_section("the workbench edits and saves the server's thread cvars")
+	var console := DotConsole.new()
+	add_child(console)
+	console.cvar("sv_worker_threads", "0", "Workers.", DotConVar.FLAG_ARCHIVE).with_range(-1, 64)
+	console.cvar("sv_threads_net", "0", "Net threads.", DotConVar.FLAG_ARCHIVE)
+	var types := DotGameWorkbench.THREAD_CVARS.duplicate()
+	types["sv_no_such_cvar"] = "int"
+	var set := DotGameWorkbench.cvar_set(console, types, "threads", "dot_server")
+	var root := "user://wb_thread_cvars_%d" % OS.get_process_id()
+	set.roots = PackedStringArray([root])
+	var names: Array = set.schema.map(func(f: Dictionary) -> String: return f["name"])
+	_check(names == ["sv_worker_threads", "sv_threads_net"], "only cvars that exist become fields", str(names))
+	_check(set.schema[0].get("max") == 64.0, "a cvar's range is the field's")
+	var runtime := DotProfileRuntime.new()
+	runtime.save_root = root
+	runtime.permit = func(_a: Variant, _f: String) -> bool: return true
+	runtime.add_set(set)
+	_check(DotGameWorkbench.bind_cvar_set(set, runtime, console) == 0, "no saved file applies nothing")
+	console.set_cvar("sv_threads_net", "1")
+	var r := runtime.handle_request("t", DotProfileRuntime.make_request("set", "threads", "server", "sv_worker_threads", 4))
+	_check(r.ok and console.get_int("sv_worker_threads") == 4, "an edit sets the cvar", str(r.error.message if not r.ok else ""))
+	_check(console.get_bool("sv_threads_net"), "a cvar changed at the console is not reverted by an edit of another")
+	var saved := runtime.handle_request("t", DotProfileRuntime.make_request("save", "threads", "server"))
+	_check(saved.ok and str(saved.value.get("saved", "")).ends_with("server/addons/dot_server/threads/server.yml"), "save writes the server tier", str(saved.value if saved.ok else saved.error.message))
+	var fresh := DotConsole.new()
+	add_child(fresh)
+	fresh.cvar("sv_worker_threads", "0", "Workers.", DotConVar.FLAG_ARCHIVE).with_range(-1, 64)
+	fresh.cvar("sv_threads_net", "0", "Net threads.", DotConVar.FLAG_ARCHIVE)
+	var again := DotGameWorkbench.cvar_set(fresh, DotGameWorkbench.THREAD_CVARS, "threads", "dot_server")
+	again.roots = PackedStringArray([root])
+	_check(DotGameWorkbench.bind_cvar_set(again, null, fresh) == 1 and fresh.get_int("sv_worker_threads") == 4, "the saved file is applied at the next start")
+	var file := root.path_join("server/addons/dot_server/threads/server.yml")
+	DirAccess.remove_absolute(file)
+	console.queue_free()
+	fresh.queue_free()
+	_done()
+
+
+class VisLocal extends RefCounted:
+	var vars := {}
+	var taken: Array = []
+	func add_var(n: StringName, _h: String, g: Callable, st: Callable) -> void:
+		vars[n] = [g, st]
+	func claims(n: String) -> bool:
+		return taken.has(n)
+
+
+class VisConsole extends Node:
+	var list: Array = []
+	func sources() -> Array:
+		return list
+
+
+func _test_client_vis_mode() -> void:
+	_section("map culling is opt-in, and the console's vis_mode drives it")
+	var c := DotGameClient.new()
+	c.use_gate = false
+	add_child(c)
+	_check(c.vis_mode == "off", "off by default")
+	var drawn := Node3D.new()
+	add_child(drawn)
+	var mesh := DotMapBspMesh.new()
+	_check(c.attach_visibility(mesh, drawn) == null and drawn.get_child_count() == 0, "off builds nothing")
+	_check(not c.set_vis_mode("bogus") and c.vis_mode == "off", "an unknown mode is refused")
+	_check(c.set_vis_mode(" PVS ") and c.vis_mode == "pvs" and c.visibility == null, "a map with no visibility data stays drawn whole")
+	var local := VisLocal.new()
+	var con := VisConsole.new()
+	con.list = [local]
+	c.console = con
+	_check(DotGameClient._Vis.add_console_var(c) and local.vars.has(&"vis_mode"), "the client console gets vis_mode")
+	var r: Variant = (local.vars[&"vis_mode"][1] as Callable).call("both")
+	_check(r is DotResult and (r as DotResult).ok and c.vis_mode == "both", "setting it at the console sets the mode")
+	local.taken = ["vis_mode"]
+	_check(not DotGameClient._Vis.add_console_var(c), "a game's own vis_mode is left alone")
+	c.detach_visibility()
+	c.console = null
+	con.free()
+	drawn.queue_free()
+	c.queue_free()
+	_done()

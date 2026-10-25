@@ -35,6 +35,7 @@ const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd
 const BINDINGS_SCRIPT := "res://addons/dot_menu/core/dot_menu_bindings.gd"
 ## The gate's requirement for the local player.
 const REASON_SPAWNED := &"spawned"
+const _Vis := preload("res://addons/dot_game/runtime/dot_game_client_vis.gd")
 
 ## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
 signal input_blocked_changed(blocked: bool)
@@ -190,6 +191,13 @@ var board_prepare_fn: Callable = Callable()
 var maps: Object = null
 ## dot-console's controller.
 var console: Node = null
+## Map culling for a converted map ([method attach_visibility]): `off` (the default, nothing is built), `pvs`, `occluders` or `both`. The console's `vis_mode` and `--vis_mode=` on the command line set it.
+@export_enum("off", "pvs", "occluders", "both") var vis_mode: String = "off"
+## dot-map's DotMapVisibility while one is attached and on, else null.
+var visibility: Node = null
+var _vis_world: RefCounted = null
+var _vis_drawn: WeakRef = null
+var _vis_parent: WeakRef = null
 
 var _set_up: bool = false
 # True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
@@ -224,6 +232,9 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--vis_mode="):
+			var _v := set_vis_mode(a.get_slice("=", 1))
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
 
@@ -446,7 +457,23 @@ func add_console(manager: Object = null) -> Node:
 		manager = got if got is Object else null
 	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
 	console = built if built is Node else null
+	var _v := _Vis.add_console_var(self)
 	return console
+
+
+## Culls [param world] (a dot-map DotMapBspMesh) drawn as [param drawn] by [member vis_mode], under [param parent] (default [param drawn]); call on every map load. Null while off, without dot-map, or for a map with no visibility data.
+func attach_visibility(world: RefCounted, drawn: Node3D, parent: Node = null) -> Node:
+	return _Vis.attach(self, world, drawn, parent)
+
+
+## Drops the culling of the last map: call when it is unloaded.
+func detach_visibility() -> void:
+	_Vis.detach(self)
+
+
+## Sets [member vis_mode] and applies it to the attached map. False for an unknown name.
+func set_vis_mode(mode: String) -> bool:
+	return _Vis.set_mode(self, mode)
 
 
 ## Relays the menu's open and close as [signal menu_state_changed], from the settings node else the menu (an adopted menu also via `overlays_changed`).
