@@ -35,6 +35,7 @@ const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd
 const BINDINGS_SCRIPT := "res://addons/dot_menu/core/dot_menu_bindings.gd"
 ## The gate's requirement for the local player.
 const REASON_SPAWNED := &"spawned"
+const _Settings := preload("res://addons/dot_game/runtime/dot_game_client_settings.gd")
 const _Vis := preload("res://addons/dot_game/runtime/dot_game_client_vis.gd")
 
 ## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
@@ -232,9 +233,7 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--vis_mode="):
-			var _v := set_vis_mode(a.get_slice("=", 1))
+	_Vis.apply_cmdline(self)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
 
@@ -372,33 +371,7 @@ func _make_settings() -> Node:
 
 
 func _build_settings() -> void:
-	if settings == null:
-		settings = _make_settings()
-	if settings == null:
-		return
-	if settings.name == &"":
-		settings.name = "Settings"
-	if not settings.is_inside_tree():
-		add_child(settings)
-	if not settings.has_method(&"setup"):
-		DotLog.warn(CHANNEL, "the settings node has no setup(); it is left alone", {"node": str(settings)})
-		return
-
-	DotGameClientLook.add_rows(self)
-	var built: Variant = settings.call(&"setup")
-	if built is DotResult and not (built as DotResult).ok:
-		DotLog.warn(CHANNEL, "no settings; everything is at its default", {"why": (built as DotResult).error.message})
-		settings.queue_free()
-		settings = null
-		return
-
-	var got: Variant = settings.get(&"menu")
-	menu = got if got is Object else null
-	_add_user_cfg_entry()
-
-
-func _add_user_cfg_entry() -> void:
-	DotGameUserCfg.add_entry(self)
+	_Settings.build(self)
 
 
 ## Opens the cfg editor over the menu. False without the tier, files, menu or editor.

@@ -281,6 +281,21 @@ func _test_workbench_hosting() -> void:
 	_done()
 
 
+func _test_thread_defaults_off() -> void:
+	_section("threads are off by default and turn on only through their own switch")
+	var sc := DotServerConfig.new()
+	_check(not sc.threads_net and not sc.threads_npc, "both opt-ins default off")
+	_check(sc.net_snapshot_workers() == 0 and sc.npc_workers() == 0, "no workers asked for while off")
+	sc.threads_net = true
+	sc.worker_threads = 3
+	_check(sc.net_snapshot_workers() == 3 and sc.npc_workers() == 0, "one switch enables only its own subsystem")
+	_check(DotParallel.resolve_workers(0) == 0, "0 workers is the main thread")
+	_check(DotParallel.resolve_workers(3) == (3 if DotParallel.available() else 0), "workers only where DotParallel.available() (never web)")
+	sc.worker_threads = 0
+	_check(sc.net_snapshot_workers() == 0, "sv_worker_threads 0 rules every subsystem out")
+	_done()
+
+
 func _test_workbench_thread_cvars() -> void:
 	_section("the workbench edits and saves the server's thread cvars")
 	var console := DotConsole.new()
@@ -305,7 +320,7 @@ func _test_workbench_thread_cvars() -> void:
 	_check(r.ok and console.get_int("sv_worker_threads") == 4, "an edit sets the cvar", str(r.error.message if not r.ok else ""))
 	_check(console.get_bool("sv_threads_net"), "a cvar changed at the console is not reverted by an edit of another")
 	var saved := runtime.handle_request("t", DotProfileRuntime.make_request("save", "threads", "server"))
-	_check(saved.ok and str(saved.value.get("saved", "")).ends_with("server/addons/dot_server/threads/server.yml"), "save writes the server tier", str(saved.value if saved.ok else saved.error.message))
+	_check(saved.ok and str(saved.value.get("saved", "")).ends_with("server/addon/dot_server/threads/server.yml"), "save writes the server tier", str(saved.value if saved.ok else saved.error.message))
 	var fresh := DotConsole.new()
 	add_child(fresh)
 	fresh.cvar("sv_worker_threads", "0", "Workers.", DotConVar.FLAG_ARCHIVE).with_range(-1, 64)
@@ -313,7 +328,7 @@ func _test_workbench_thread_cvars() -> void:
 	var again := DotGameWorkbench.cvar_set(fresh, DotGameWorkbench.THREAD_CVARS, "threads", "dot_server")
 	again.roots = PackedStringArray([root])
 	_check(DotGameWorkbench.bind_cvar_set(again, null, fresh) == 1 and fresh.get_int("sv_worker_threads") == 4, "the saved file is applied at the next start")
-	var file := root.path_join("server/addons/dot_server/threads/server.yml")
+	var file := root.path_join("server/addon/dot_server/threads/server.yml")
 	DirAccess.remove_absolute(file)
 	console.queue_free()
 	fresh.queue_free()

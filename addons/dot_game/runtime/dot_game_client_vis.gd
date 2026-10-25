@@ -82,3 +82,10 @@ static func add_console_var(c: DotGameClient) -> bool:
 				return DotResult.success(c.vis_mode)
 			return DotResult.fail(DotError.CODE_INVALID, "vis_mode is one of %s" % ", ".join(MODES)))
 	return true
+
+
+## Applies a [code]--vis_mode=[/code] user argument.
+static func apply_cmdline(c: DotGameClient) -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--vis_mode="):
+			var _v := set_mode(c, a.get_slice("=", 1))
