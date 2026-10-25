@@ -73,6 +73,7 @@ func _run() -> void:
 		_test_operator_net_ceiling()
 		await _test_operator_ceiling_reaches_the_netcode()
 		await _test_server_threads_reach_the_netcode()
+		_test_npc_lod_cvars()
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()
@@ -804,6 +805,54 @@ func _test_server_threads_reach_the_netcode() -> void:
 		_unload_module()
 	_server.config.threads_net = false
 	_server.config.worker_threads = -1
+	_done()
+
+
+class FakeNpcLimits:
+	extends RefCounted
+	var sense_quiet_mult := 1
+
+
+class FakeNpcSpawner:
+	extends Node
+	var sense_workers := 0
+	var limits := FakeNpcLimits.new()
+
+
+func _test_npc_lod_cvars() -> void:
+	_section("DotGameNpcLod: the cvars exist, default off, and reach the spawner")
+
+	var console := DotConsole.new()
+	add_child(console)
+	DotGameNpcLod.ensure_cvars(console)
+	DotGameNpcLod.ensure_cvars(console)
+	var all := true
+	for name: String in DotGameNpcLod.CVARS:
+		all = all and console.find_cvar(name) != null
+	_check(all, "every cvar is registered, twice over without harm")
+	_check(console.get_int("npc_lod") == 0 and console.get_int("npc_sense_quiet") == 1, "and each defaults to off")
+
+	var spawner := FakeNpcSpawner.new()
+	add_child(spawner)
+	var sc := DotServerConfig.new()
+	sc.threads_npc = true
+	sc.worker_threads = 3
+	var lod := DotGameNpcLod.attach(self, console, spawner, sc)
+	_check(lod != null and spawner.sense_workers == sc.npc_workers(), "attach hands the sense workers sv_threads_npc gives (%d)" % spawner.sense_workers)
+	_check(spawner.limits.sense_quiet_mult == 1 and lod.scheduler == null, "with the cvars at rest nothing changes and no scheduler is built")
+
+	console.set_cvar("npc_sense_quiet", "3")
+	lod.follow(0.016)
+	_check(spawner.limits.sense_quiet_mult == 3, "npc_sense_quiet is followed live")
+
+	console.set_cvar("npc_lod", "1")
+	lod.follow(0.016)
+	var have_ai := ResourceLoader.exists(DotGameNpcLod.SCHEDULER_SCRIPT)
+	_check((lod.scheduler != null) == have_ai, "npc_lod builds the scheduler when dot-npc-ai is present (%s)" % str(have_ai))
+	_check(not have_ai or lod.scheduler.config.enabled, "and enables it")
+	lod.release()
+	spawner.queue_free()
+	console.queue_free()
 	_done()
 
 
