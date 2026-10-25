@@ -210,7 +210,7 @@ static func follow_server_threads(config: DotNetConfig, server_config: Object) -
 	return true
 
 
-## ORs the server's [code]net_native[/code] cvar into [member DotNetConfig.native]: the game's own
+## ORs the server's [code]net_native[/code] and [code]net_native_interest[/code] cvars into [member DotNetConfig.native] and [member DotNetConfig.native_interest]: the game's own
 ## true (its config, DOT_NET_NATIVE, --net-native) stays on whatever the operator says.
 static func _follow_server_native(config: DotNetConfig, server_config: Object) -> void:
 	if server_config == null or not ("net_native" in server_config):
@@ -218,10 +218,16 @@ static func _follow_server_native(config: DotNetConfig, server_config: Object) -
 	if not config.has_meta(NATIVE_OWN_META):
 		config.set_meta(NATIVE_OWN_META, config.native)
 	config.native = bool(config.get_meta(NATIVE_OWN_META)) or bool(server_config.get("net_native"))
+	if "net_native_interest" in server_config:
+		if not config.has_meta(NATIVE_INTEREST_OWN_META):
+			config.set_meta(NATIVE_INTEREST_OWN_META, config.native_interest)
+		config.native_interest = bool(config.get_meta(NATIVE_INTEREST_OWN_META)) \
+			or bool(server_config.get("net_native_interest"))
 
 
 ## What [member DotNetConfig.native] was before this addon first followed the server.
 const NATIVE_OWN_META := &"dot_game_native_own"
+const NATIVE_INTEREST_OWN_META := &"dot_game_native_interest_own"
 
 
 ## Marks a [DotNetConfig] whose snapshot_workers this addon wrote, so a later call knows the
