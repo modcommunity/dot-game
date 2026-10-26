@@ -1,0 +1,6 @@
+{
+    "require_signed_manifests": true,
+    "trusted_keys": {
+        "default": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAyP2p6OBCnSTJgZ0Q6qmh\nxyw1cu2fFa9jPJZautlJBMfEVyX8xzA73GTwAQL9b5T3oY3FzTu2P3VWzYAoRTuP\nEgKwZKSBkU2ovbTem/Z+D2UQHDVXzB8vBpp2HbRxo4e0G1EkW7bZQ+H6nJNFqTco\n8cxkrmS/f2rueMzvHsb/CkRz8pIGOanfeybfoddAdopdavX6TY2rZ+QQ4epck4b1\n0/pUJGl/8JKr0nn0u8KApHTVFVoNk69lqHYWvvdPXyN/g/fuLbEhCS5+9Jq1FsPm\nRDkeoJ5RPLmIfxppEOdRvGkRTOd/e3YopeWpktR/eh6qc5mn2dEakUh4nScBfqjd\nAS02MGyT7f0pYElz1dCMKVcrMlrwJ1wc2gOpNLRvJQyLFf6tndO/9zfoWiHKZ74M\nAjpIP41jgePj62ZdiEb07tsabA/mI61BBzFyn95kc8ylRdznI9WEXQWsIkLTYNrh\nKx8y0D8rXdR2z2XSekzWF+oH6EWbcuw6BPjL0Kh5nDfBAgMBAAE=\n-----END PUBLIC KEY-----"
+    }
+}

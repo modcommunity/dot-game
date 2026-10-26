@@ -50,6 +50,8 @@ signal menu_state_changed(any_open: bool)
 ## Play offline even with a link (a suite, [code]--offline[/code]).
 @export var force_offline: bool = false
 
+## Fetch the world's art slices when played offline from the project (no shell, so no content client). `--standalone_content=0` turns it off.
+@export var use_standalone_content: bool = true
 ## Build the load gate and its cover. Off for a client whose shell covers it some other way.
 @export var use_gate: bool = true
 ## Hold the cover until a current camera exists in the game. Off for a game with none.
@@ -234,6 +236,8 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
+	if offline and use_standalone_content:
+		DotGameStandaloneContent.install(self, gate)
 	_Vis.apply_cmdline(self)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
