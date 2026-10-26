@@ -9,6 +9,8 @@ const CONTENT_CONFIG := "res://client/content.json"
 const FALLBACK_CONFIG := "res://addons/dot_game/data/content.json"
 const DEFAULT_URL := "https://dotgames.org/content"
 const REASON := &"content"
+## What dot-map's `DotMapStore` sets on the gate: bytes the chosen map's slices still need.
+const META_DOWNLOAD_BYTES := &"download_bytes"
 ## Signed manifests kept for the next offline start, laid out as `{id}/{version}/manifest.json` so dot-cloud reads them as a local source.
 const MANIFEST_DIR := "user://dot_standalone_manifests"
 ## Seconds the load gate waits for slices; `--standalone_content_wait=` overrides.
@@ -80,7 +82,7 @@ static func install(parent: Node, gate: DotLoadGate = null) -> Node:
 		DotLog.warn(CHANNEL, "no client/content.json: no trusted key, so no slice can be mounted", {"looked_for": CONTENT_CONFIG})
 	var saved := {}
 	cloud.connect(&"phase_changed", _on_phase.bind(gate, cloud, saved))
-	cloud.connect(&"progress_changed", _on_progress.bind(gate))
+	cloud.connect(&"progress_changed", _on_progress.bind(gate, {"done": 0, "last": 0}))
 	parent.add_child(cloud)
 	DotLog.info(CHANNEL, "standalone play fetches art slices itself", {"from": ", ".join(s["urls"]), "cache": "user://dot_cloud"})
 	return cloud
@@ -97,10 +99,20 @@ static func _phases(cloud: Object) -> Dictionary:
 	return (cloud.get_script() as GDScript).get_script_constant_map().get("Phase", {}) if cloud != null else {}
 
 
-static func _on_progress(p: Dictionary, gate: DotLoadGate) -> void:
-	if gate != null and is_instance_valid(gate) and not gate.is_open() and gate.is_holding(REASON):
-		var f := float(p.get("fraction", 0.0))
+static func _on_progress(p: Dictionary, gate: DotLoadGate, state: Dictionary) -> void:
+	if gate == null or not is_instance_valid(gate) or gate.is_open() or not gate.is_holding(REASON):
+		return
+	var f := float(p.get("fraction", 0.0))
+	var total := int(gate.get_meta(META_DOWNLOAD_BYTES, 0))
+	if total <= 0:
 		gate.set_progress(gate.progress(), "Downloading map art: %d%%" % int(f * 100.0))
+		return
+	# Each slice reports its own bytes from zero; a drop means the next slice began.
+	var now := int(p.get("done_bytes", 0))
+	state["done"] = int(state["done"]) + (now - int(state["last"]) if now >= int(state["last"]) else now)
+	state["last"] = now
+	var done := mini(int(state["done"]), total)
+	gate.set_progress(float(done) / float(total), "Downloading map art: %d of %d MB" % [done >> 20, total >> 20])
 
 
 ## Holds the gate (for up to [method max_wait_sec]) while the client works, keeps manifests when it is done, and says so when it cannot reach the origin.
@@ -140,7 +152,7 @@ static func keep_manifests(cloud: Node, saved: Dictionary) -> void:
 		if FileAccess.file_exists(path):
 			continue
 		for url: String in cloud.call("manifest_urls_for", StringName(id), version):
-			if not url.contains("://") or url.begins_with("file://"):
+			if not (url.begins_with("http://") or url.begins_with("https://")):
 				continue
 			var got: DotResult = await http.get_bytes(url)
 			if got.ok:
