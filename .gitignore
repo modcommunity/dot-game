@@ -8,6 +8,7 @@
 #   ln -s ../../dot-net/addons/dot_net       addons/dot_net
 # Consumers copy what they need into their own project.
 /addons/dot_core
+/addons/dot_profile
 /addons/dot_server
 /addons/dot_net
 /addons/dot_map
