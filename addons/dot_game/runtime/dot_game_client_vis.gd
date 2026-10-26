@@ -6,6 +6,7 @@ const CHANNEL := "game.client.vis"
 const VIS_SCRIPT := "res://addons/dot_map/bsp/dot_map_visibility.gd"
 const MODES := ["off", "pvs", "occluders", "both"]
 const VAR_NAME := &"vis_mode"
+const _Threads := preload("res://addons/dot_game/runtime/dot_game_map_threads.gd")
 
 
 ## Remembers [param world] and [param drawn] and builds the culling when the mode is not off. Null when off, without dot-map, or when the map has no visibility data.
@@ -63,16 +64,25 @@ static func _build(c: DotGameClient) -> void:
 	DotLog.debug(CHANNEL, "map culling on", {"mode": c.vis_mode})
 
 
-## Adds `vis_mode` to the client console's own variables unless the game already has one there. True when added.
-static func add_console_var(c: DotGameClient) -> bool:
+## The client console's own variable source that does not already claim [param name], or null.
+static func local_source(c: DotGameClient, name: StringName) -> Object:
 	if c.console == null or not c.console.has_method(&"sources"):
-		return false
+		return null
 	var local: Object = null
 	for s: Object in c.console.call(&"sources"):
 		if s.has_method(&"add_var"):
-			if s.has_method(&"claims") and bool(s.call(&"claims", String(VAR_NAME))):
-				return false
+			if s.has_method(&"claims") and bool(s.call(&"claims", String(name))):
+				return null
 			local = s
+	return local
+
+
+## Adds `vis_mode` and `map_load_threads` to the client console's own variables unless the game already has one there. True when `vis_mode` was added.
+static func add_console_var(c: DotGameClient) -> bool:
+	var threads := local_source(c, StringName(_Threads.CVAR))
+	if threads != null:
+		_Threads.add_client_var(threads)
+	var local := local_source(c, VAR_NAME)
 	if local == null:
 		return false
 	local.call(&"add_var", VAR_NAME, "Map culling: off (default), pvs, occluders or both",
@@ -86,6 +96,7 @@ static func add_console_var(c: DotGameClient) -> bool:
 
 ## Applies a [code]--vis_mode=[/code] user argument.
 static func apply_cmdline(c: DotGameClient) -> void:
+	_Threads.apply_cmdline()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--vis_mode="):
 			var _v := set_mode(c, a.get_slice("=", 1))

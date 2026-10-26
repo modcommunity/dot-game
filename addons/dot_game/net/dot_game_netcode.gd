@@ -230,6 +230,18 @@ const NATIVE_OWN_META := &"dot_game_native_own"
 const NATIVE_INTEREST_OWN_META := &"dot_game_native_interest_own"
 
 
+const _MapThreads := preload("res://addons/dot_game/runtime/dot_game_map_threads.gd")
+
+
+## Registers `map_load_threads` on [param console] when it is missing, then copies its value into dot-map's default worker count; call it before the first world loads and every tick after. A no-op without a console or dot-map.
+static func follow_map_threads(console: DotConsole) -> void:
+	if console == null:
+		return
+	if console.find_cvar(_MapThreads.CVAR) == null:
+		var _cv := _MapThreads.ensure_cvar(console)
+	_MapThreads.follow(console)
+
+
 ## Marks a [DotNetConfig] whose snapshot_workers this addon wrote, so a later call knows the
 ## value is its own and not the game's.
 const THREADS_FOLLOW_META := &"dot_game_follows_server_threads"

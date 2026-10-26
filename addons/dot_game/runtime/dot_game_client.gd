@@ -638,7 +638,6 @@ func _refresh_blocked(_unused: Variant = null) -> void:
 		input_blocked_changed.emit(now)
 
 
-
 ## True while the player's input should be off: covered, a menu open, typing, or busy.
 func is_input_blocked() -> bool:
 	return not is_shown() or is_menu_open() or _chat_typing() or _busy()
@@ -689,7 +688,6 @@ func is_menu_open() -> bool:
 	if settings != null and is_instance_valid(settings) and settings.has_method(&"is_open"):
 		if bool(settings.call(&"is_open")):
 			return true
-		# An adopted menu beside the settings (see _connect_menu_state) counts too.
 		var own: Object = _settings_menu()
 		if menu != null and menu != own and is_instance_valid(menu):
 			for method: StringName in [&"any_open", &"is_open"]:

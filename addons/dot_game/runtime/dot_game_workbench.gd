@@ -55,7 +55,7 @@ var relevance_cvars: bool = true
 var npc_lod_cvars: bool = true
 
 ## The server's thread cvars and their profile types.
-const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool", "net_native": "bool", "net_native_interest": "bool"}
+const THREAD_CVARS := {"sv_worker_threads": "int", "sv_threads_net": "bool", "sv_threads_npc": "bool", "net_native": "bool", "net_native_interest": "bool", "map_load_threads": "int"}
 const THREADS_KIND := "threads"
 const RELEVANCE_KIND := "relevance"
 const NPC_LOD_KIND := "npclod"

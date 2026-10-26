@@ -296,6 +296,45 @@ func _test_thread_defaults_off() -> void:
 	_done()
 
 
+class _FakeVarSource extends RefCounted:
+	var vars := {}
+
+	func add_var(name: StringName, _help: String, getter: Callable, setter: Callable) -> void:
+		vars[name] = [getter, setter]
+
+
+func _test_map_load_threads() -> void:
+	_section("map_load_threads reaches dot-map's default worker count, on the server and the client")
+	var threads := load("res://addons/dot_game/runtime/dot_game_map_threads.gd")
+	var have_map := ResourceLoader.exists(threads.BUILD_SCRIPT)
+	var console := DotConsole.new()
+	add_child(console)
+	DotGameNetcode.follow_map_threads(console)
+	var cv := console.find_cvar("map_load_threads")
+	_check(cv != null, "the server cvar is registered")
+	_check(cv != null and cv.get_int() == 0, "and defaults to 0 (inline)")
+	_check(threads.current() == 0, "so dot-map starts with no workers (dot-map: %s)" % str(have_map))
+	var _r := console.set_cvar("map_load_threads", "3")
+	DotGameNetcode.follow_map_threads(console)
+	_check(threads.current() == (3 if have_map else 0), "setting it reaches DotMapParallelBuild.default_workers")
+	_r = console.set_cvar("map_load_threads", "-1")
+	DotGameNetcode.follow_map_threads(console)
+	_check(DotParallel.resolve_workers(threads.current()) == (DotParallel.resolve_workers(-1) if have_map else 0), "-1 resolves through DotParallel (automatic)")
+	_check(DotParallel.available() or DotParallel.resolve_workers(threads.current()) == 0, "where DotParallel.available() is false (web, no threads) the count stays 0 whatever the cvar says")
+	var src := _FakeVarSource.new()
+	threads.add_client_var(src)
+	var setter: Callable = src.vars[&"map_load_threads"][1]
+	var good: DotResult = setter.call("2")
+	var bad: DotResult = setter.call("99")
+	_check(good.ok and (not bad.ok and bad.error.code == DotError.CODE_INVALID) and threads.current() == (2 if have_map else 0), "the client variable sets it and refuses a count over 64")
+	_r = console.set_cvar("map_load_threads", "0")
+	DotGameNetcode.follow_map_threads(console)
+	threads.client_value = 0
+	_check(threads.current() == 0, "back to 0 puts dot-map back inline")
+	console.queue_free()
+	_done()
+
+
 func _test_workbench_thread_cvars() -> void:
 	_section("the workbench edits and saves the server's thread cvars")
 	var console := DotConsole.new()

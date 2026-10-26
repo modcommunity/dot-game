@@ -122,3 +122,9 @@ The suite runs in a project with none of dot-chat, dot-voice, dot-moderation or 
 | A chat line crossing a wire through `DotGameChatClient` | mg-prop-hunt `headless_net` |
 | The schema refusal over a real socket in a delivered game | dot-server-deploy `smash_client` |
 | `game.cover` crossing a real socket, a hazard skipping a loading player | no suite yet; the suite drives the envelope's dispatch and a stand-in link |
+
+## `map_load_threads`: workers for the map load
+
+`DotGameNetcode.follow_map_threads(console)` registers the cvar `map_load_threads` (default `0`, inline; `-1` automatic, processor count less one at most 8; `N` workers; range -1 to 64; archived) and copies it into dot-map's static `DotMapParallelBuild.default_workers`. `DotGameModule` calls it in `_module_load` before the game loads, so the first world already sees the operator's value, and again every physics tick, so a console change reaches the next load. dot-map's docs/load-threads.md says what runs on the workers; the output is identical for every count.
+
+dot-map is reached by path (`dot_game_map_threads.gd`, no class_name) and never named: without it the cvar exists and does nothing. The web, a build without threads and a one-core machine run inline whatever the value, because dot-map resolves it through `DotParallel.available()`. On the client the same name is a variable on the console's own source (set by `--map_load_threads=` on the command line before anything loads, or in the console; it is not a server cvar, so it is not replicated), added next to `vis_mode`. The workbench's Server threads set offers it. The suite section `_test_map_load_threads` checks the cvar, its default, that setting it reaches `default_workers`, that the client variable refuses a count over 64, and that the count is 0 where `DotParallel.available()` is false.

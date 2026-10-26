@@ -194,6 +194,7 @@ func _module_load() -> DotResult:
 			})
 
 		DotGameNetcode.follow_server_threads(config, server.config if server != null else null)
+		DotGameNetcode.follow_map_threads(console)
 
 		var built := DotGameNetcode.build(
 			self, server, game, config, _make_bridge()
@@ -341,7 +342,6 @@ func _build_services() -> DotResult:
 			"bind_cvars", Callable(self, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
 		)
 
-		# The look-to-gag and look-to-mute switches, so every game's server has them.
 		var look_script := load(LOOK_MUTE_SCRIPT) if ResourceLoader.exists(LOOK_MUTE_SCRIPT) else null
 		if look_script is Script and (look_script as Script).has_method("cvar_specs"):
 			for spec in (look_script as Object).call("cvar_specs"):
@@ -498,7 +498,8 @@ func _physics_process(delta: float) -> void:
 
 	tick += 1
 
-	# The cvars are live: a config this addon filled in follows them; the game's own does not.
+	# The cvars are live; the game's own net config is left alone.
+	DotGameNetcode.follow_map_threads(console)
 	if net != null and server != null and net.config != null:
 		DotGameNetcode.follow_server_threads(net.config, server.config)
 
