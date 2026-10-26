@@ -1,0 +1,2 @@
+extends RefCounted
+var side := ""
