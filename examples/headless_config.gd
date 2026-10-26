@@ -217,7 +217,7 @@ func _schemas() -> void:
 	_check(keys == ["speed"], "a kind's schema holds only its file's fields")
 	var other: Array = out.get("config_rules", []).map(func(e: Dictionary) -> String: return e["name"])
 	_check(other == ["friendly_fire"], "other groups get their own file")
-	_check(DotGameConfigSchemas.profile_schemas().is_empty(), "discovery over the registered classes finds no config here")
+	_check(DotGameConfigSchemas.profile_schemas().has("config_move"), "the res:// scan finds only the fixture (the example project has one grouped config)")
 
 
 func _attach_twice() -> void:
