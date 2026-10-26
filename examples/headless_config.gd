@@ -4,7 +4,7 @@ extends Node
 
 const TestConfig := preload("fixtures/test_config.gd")
 const ROOT := "res://examples/fixtures/config/"
-const CHECKS := 52
+const CHECKS := 58
 
 var _passed := 0
 var _failed := 0
@@ -32,6 +32,8 @@ func _run() -> void:
 	_strict()
 	_diff()
 	_workbench()
+	_schemas()
+	_attach_twice()
 	if _passed + _failed != CHECKS:
 		_failed += 1
 		_failures.append("ran %d checks, expected %d" % [_passed + _failed - 1, CHECKS])
@@ -206,3 +208,22 @@ func _workbench() -> void:
 	rt.handle_request("tester", DotProfileRuntime.make_request("reset_key", "config", "game", "speed"))
 	_check(b.config.speed == 4.5 and console.get_float("tg_speed") == 4.5, "reset returns the lower layer's value")
 	console.queue_free()
+
+
+func _schemas() -> void:
+	var out := DotGameConfigSchemas.schemas_for([preload("fixtures/test_grouped_config.gd"), preload("fixtures/test_config.gd")])
+	_check(out.keys().size() == 2 and out.has("config_move") and out.has("config_rules"), "grouped config kinds come from make_binder; a script without one is skipped")
+	var keys: Array = out.get("config_move", []).map(func(e: Dictionary) -> String: return e["name"])
+	_check(keys == ["speed"], "a kind's schema holds only its file's fields")
+	var other: Array = out.get("config_rules", []).map(func(e: Dictionary) -> String: return e["name"])
+	_check(other == ["friendly_fire"], "other groups get their own file")
+	_check(DotGameConfigSchemas.profile_schemas().is_empty(), "discovery over the registered classes finds no config here")
+
+
+func _attach_twice() -> void:
+	var b := _make("cfg")
+	var rt := DotProfileRuntime.new()
+	b.attach(rt)
+	b.attach(rt)
+	_check(rt.profile_changed.get_connections().size() == 1, "attach twice connects profile_changed once")
+	_check(b.profile_sets().size() == 1, "an ungrouped binder attaches one set")

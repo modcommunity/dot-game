@@ -330,7 +330,8 @@ func attach(runtime: DotProfileRuntime) -> void:
 	_runtime = runtime
 	for set: DotProfileSet in profile_sets():
 		runtime.add_set(set)
-	runtime.profile_changed.connect(_on_profile)
+	if not runtime.profile_changed.is_connected(_on_profile):
+		runtime.profile_changed.connect(_on_profile)
 
 
 func _on_profile(kind: String, id: String, _rev: int) -> void:
