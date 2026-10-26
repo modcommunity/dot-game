@@ -136,6 +136,7 @@ var hud_accent: Theme = null
 var chat: Node = null
 ## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command line). Blocks input and frees the pointer.
 var busy_fn: Callable = Callable()
+var _pointer_holds: Dictionary = {}
 ## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape); connected, the link's roster feeds it.
 var board_snapshot_fn: Callable = Callable()
 ## The map menu on M: `func() -> Array` of rows and `func(id) -> DotResult` to change. Both unset leave M doing nothing.
@@ -736,7 +737,25 @@ func _chat_typing() -> bool:
 
 
 func _busy() -> bool:
-	return busy_fn.is_valid() and bool(busy_fn.call())
+	return not _pointer_holds.is_empty() or (busy_fn.is_valid() and bool(busy_fn.call()))
+
+
+## A game's own modal (a shop, a loadout) frees the pointer and blocks input until [method release_pointer] with the same [param key]. Keyed, not counted, so two modals cannot underflow it and a second menu closing cannot recapture under the first.
+func hold_pointer(key: Variant) -> void:
+	_pointer_holds[key] = true
+	if capture_pointer and _set_up and not gate_only:
+		_free_pointer()
+	_refresh_blocked()
+
+
+## Ends [method hold_pointer]; the pointer is taken back once no hold and no menu remains.
+func release_pointer(key: Variant) -> void:
+	if not _pointer_holds.erase(key):
+		return
+	_refresh_blocked()
+	if capture_pointer and _set_up and not gate_only and not DotPlatform.is_web() \
+			and not is_menu_open() and not _chat_typing() and not _busy() and _pointer_wanted():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _notification(what: int) -> void:

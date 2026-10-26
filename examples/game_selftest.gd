@@ -43,7 +43,7 @@ extends "selftest/selftest_extra.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 408
+const CHECKS := 408 + 16
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -1578,6 +1578,35 @@ func _test_client_hooks_menu() -> void:
 	ptr.escape_releases_pointer = false
 	vp.push_input(esc)
 	_check(ptr.captured and esc_menu.open_now, "off by default: Escape is not touched, the menu opens")
+
+	# A game's own modal holds the pointer: a click, a menu closing and a focus event do not recapture.
+	esc_menu.open_now = false
+	var hold := DotGameClient.new()
+	hold.use_gate = false
+	hold.use_settings = false
+	hold.use_console = false
+	hold.menu = esc_menu
+	host.add_child(hold)
+	var _h := hold.setup()
+	hold.hold_pointer(&"shop")
+	hold.hold_pointer(&"loadout")
+	_check(hold.is_input_blocked(), "a held pointer blocks input")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	vp.push_input(click)
+	hold._on_menu_state(false)
+	hold.notification(MainLoop.NOTIFICATION_APPLICATION_FOCUS_IN)
+	await get_tree().process_frame
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
+		"with a modal held, a click, another menu closing and a focus event leave the pointer visible")
+	hold.release_pointer(&"shop")
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and hold.is_input_blocked(),
+		"two holds: releasing one keeps the pointer free")
+	hold.release_pointer(&"shop")
+	hold.release_pointer(&"loadout")
+	_check(not hold.is_input_blocked(), "released holds unblock input, and a spare release does not underflow")
+	hold.queue_free()
 
 	_test_client_hooks_rewire(host)
 
