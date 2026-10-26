@@ -1270,15 +1270,6 @@ func _test_client_platform() -> void:
 	_done()
 
 
-## A client whose pointer is a flag, because a headless display server keeps no captured mode.
-class FakePointerClient extends DotGameClient:
-	var captured: bool = false
-	func _pointer_captured() -> bool:
-		return captured
-	func _free_pointer() -> void:
-		captured = false
-
-
 ## A menu the game built itself, in dot-menu's DotMenu shape (overlays_changed, is_open).
 class OwnMenu extends RefCounted:
 	signal overlays_changed(open: bool)
@@ -1298,20 +1289,6 @@ class OwnMenu extends RefCounted:
 	func use_maps(_rows: Callable, _change: Callable) -> RefCounted:
 		maps_made += 1
 		return RefCounted.new()
-
-
-## A menu that opens on a real Escape press, as dot-menu's does in _unhandled_input.
-class EscMenu extends Node:
-	signal overlays_changed(open: bool)
-	var busy: Callable = Callable()
-	var open_now: bool = false
-	func is_open() -> bool:
-		return open_now
-	func _unhandled_input(event: InputEvent) -> void:
-		var key := event as InputEventKey
-		if key != null and key.pressed and key.physical_keycode == KEY_ESCAPE:
-			open_now = true
-			overlays_changed.emit(true)
 
 
 class GuardLink extends RefCounted:
@@ -1538,91 +1515,7 @@ func _test_client_hooks_menu() -> void:
 	_check(gp.captured, "and a menu state change does not touch the pointer")
 	gp._on_menu_state(false)
 
-	# Release-then-open pointer.
-	var esc := InputEventKey.new()
-	esc.physical_keycode = KEY_ESCAPE
-	esc.pressed = true
-	var esc_menu := EscMenu.new()
-	host.add_child(esc_menu)
-	var ptr := FakePointerClient.new()
-	ptr.use_gate = false
-	ptr.use_settings = false
-	ptr.use_console = false
-	ptr.capture_pointer = false
-	ptr.escape_releases_pointer = true
-	ptr.menu = esc_menu
-	host.add_child(ptr)
-	var _p := ptr.setup()
-	ptr.capture_pointer = true
-	ptr.captured = true
-	var vp := get_viewport()
-	vp.push_input(esc)
-	_check(not ptr.captured and not esc_menu.open_now,
-		"the first real Escape press frees a captured pointer and the menu stays shut")
-	vp.push_input(esc)
-	_check(esc_menu.open_now and ptr.is_menu_open(), "the second opens the menu")
-	esc_menu.open_now = false
-	ptr.captured = true
-	var typing := [true]
-	ptr.busy_fn = func() -> bool: return typing[0]
-	vp.push_input(esc)
-	_check(ptr.captured and esc_menu.open_now,
-		"nothing is freed while the game's own keyboard owner has Escape; the menu gets it")
-	esc_menu.open_now = false
-	typing[0] = false
-	var other := InputEventKey.new()
-	other.physical_keycode = KEY_E
-	other.pressed = true
-	vp.push_input(other)
-	_check(ptr.captured, "only Escape does it")
-	ptr.escape_releases_pointer = false
-	vp.push_input(esc)
-	_check(ptr.captured and esc_menu.open_now, "off by default: Escape is not touched, the menu opens")
-
-	# A game's own modal holds the pointer: a click, a menu closing and a focus event do not recapture.
-	esc_menu.open_now = false
-	var hold := DotGameClient.new()
-	hold.use_gate = false
-	hold.use_settings = false
-	hold.use_console = false
-	hold.menu = esc_menu
-	host.add_child(hold)
-	var _h := hold.setup()
-	hold.hold_pointer(&"shop")
-	hold.hold_pointer(&"loadout")
-	_check(hold.is_input_blocked(), "a held pointer blocks input")
-	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
-	click.pressed = true
-	vp.push_input(click)
-	hold._on_menu_state(false)
-	hold.notification(MainLoop.NOTIFICATION_APPLICATION_FOCUS_IN)
-	await get_tree().process_frame
-	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,
-		"with a modal held, a click, another menu closing and a focus event leave the pointer visible")
-	hold.release_pointer(&"shop")
-	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and hold.is_input_blocked(),
-		"two holds: releasing one keeps the pointer free")
-	hold.release_pointer(&"shop")
-	hold.release_pointer(&"loadout")
-	_check(not hold.is_input_blocked(), "released holds unblock input, and a spare release does not underflow")
-
-	# A node in the pointer-modal group (dot-ui's ballot) holds it through its own signal.
-	var modal := FakePointerModal.new()
-	modal.add_to_group(&"dot_pointer_modal")
-	host.add_child(modal)
-	hold._wire_pointer_modals()
-	modal.set_pointer(true)
-	_check(hold.is_input_blocked(), "a pointer-modal node freeing the mouse holds the pointer")
-	hold._on_menu_state(false)
-	await get_tree().process_frame
-	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and hold.is_input_blocked(), "and another menu closing does not recapture it")
-	modal.set_pointer(false)
-	_check(not hold.is_input_blocked(), "its signal going off releases the hold")
-	modal.set_pointer(true)
-	modal.free()
-	_check(not hold.is_input_blocked(), "and the node leaving the tree releases it too")
-	hold.queue_free()
+	await _test_escape_and_hold(host)
 
 	_test_client_hooks_rewire(host)
 
@@ -1907,15 +1800,3 @@ func _test_link_survives_reload() -> void:
 
 	OS.remove_logger(catcher)
 	_done()
-
-
-class FakePointerModal extends Node:
-	signal pointer_mode_changed(on: bool)
-	var on := false
-
-	func set_pointer(p_on: bool) -> void:
-		on = p_on
-		pointer_mode_changed.emit(p_on)
-
-	func is_pointer_mode() -> bool:
-		return on

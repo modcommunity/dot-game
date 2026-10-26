@@ -504,28 +504,8 @@ func _wire_menu() -> void:
 			var got: Variant = menu.get(&"scoreboard")
 			board = got if got is Object else null
 			_board_auto = board != null
-	if board != null:
-		if board_prepare_fn.is_valid() and not _prepared_boards.has(board.get_instance_id()):
-			_prepared_boards.append(board.get_instance_id())
-			board_prepare_fn.call(board)
-		if not offline and link != null and link.has_signal(&"scoreboard_received") and board.has_method(&"feed_from"):
-			board.call(&"feed_from", link)
-		elif board_snapshot_fn.is_valid():
-			board.set(&"source", board_snapshot_fn)
-
-	var maps_owner: Object = settings if settings != null and settings.has_method(&"use_maps") else menu
-	if maps_rows_fn.is_valid() and maps_change_fn.is_valid() and maps_owner != null \
-			and maps_owner.has_method(&"use_maps"):
-		var made: Variant = maps_owner.call(&"use_maps", maps_rows_fn, maps_change_fn)
-		maps = made if made is Object else null
-		if maps != null:
-			if maps_title != "":
-				maps.set(&"title", maps_title)
-			if maps_noun != "":
-				maps.set(&"noun", maps_noun)
-			# Played offline beside a link (--offline): there is no server to ask.
-			if offline:
-				maps.set(&"link_service", &"")
+	DotGameClientMenu.wire_board(self)
+	DotGameClientMenu.wire_maps(self)
 
 
 func _ensure_scoreboard_action() -> void:
@@ -677,19 +657,12 @@ func avatar_site() -> String:
 
 ## [member avatar_server_id], else the server's replicated [constant DotGameAvatarContent.SERVER_CVAR].
 func avatar_server() -> int:
-	if avatar_server_id > 0:
-		return avatar_server_id
-	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
-	var cvars: Variant = source.get(&"replicated_cvars") if source != null and is_instance_valid(source) else null
-	return DotGameAvatarContent.server_id_from_rules(cvars) if cvars is Dictionary else 0
+	return DotGameClientAvatars.server(self)
 
 
 ## The signed-in member's equipped actions from the avatar read, for [method add_avatar_actions]. Null (starters) when none.
 func read_avatar_actions(http: DotHttp, user_key: String, headers: Dictionary = {}) -> DotResult:
-	var path := "res://addons/dot_user_avatar/net/dot_avatar_sync.gd"
-	if http == null or not ResourceLoader.exists(path):
-		return DotResult.success(null)
-	return await (load(path) as GDScript).call(&"fetch_actions", http, user_key, headers)
+	return await DotGameClientAvatars.read_actions(http, user_key, headers)
 
 
 ## Wires the avatar actions (emote `,`, pose `.`, gesture `/`) to the figures: a press plays on [param figure_fn] (peer id -> figure) and is relayed through [param net] (null offline). Register [DotGameAvatarActionMessage] before the manager is sealed. Call after [method setup].
@@ -749,38 +722,12 @@ func hold_pointer(key: Variant) -> void:
 	_refresh_blocked()
 
 
-## Holds the pointer for every node in the [code]dot_pointer_modal[/code] group (dot-ui's ballot) while its [code]pointer_mode_changed(on)[/code] says it has freed the mouse. Duck-typed by group and signal, so this names nothing in dot-ui.
 func _wire_pointer_modals() -> void:
-	if not is_inside_tree():
-		return
-	var tree := get_tree()
-	if not tree.node_added.is_connected(_on_node_added):
-		tree.node_added.connect(_on_node_added)
-	for node in tree.get_nodes_in_group(&"dot_pointer_modal"):
-		_adopt_pointer_modal(node)
+	DotGameClientPointer.wire(self)
 
 
 func _on_node_added(node: Node) -> void:
-	_adopt_pointer_modal(node)
-
-
-func _adopt_pointer_modal(node: Node) -> void:
-	if not node.is_in_group(&"dot_pointer_modal") or not node.has_signal(&"pointer_mode_changed"):
-		return
-	var on_change := _on_modal_pointer.bind(node)
-	if node.is_connected(&"pointer_mode_changed", on_change):
-		return
-	node.connect(&"pointer_mode_changed", on_change)
-	node.tree_exiting.connect(release_pointer.bind(node))
-	if node.has_method(&"is_pointer_mode") and bool(node.call(&"is_pointer_mode")):
-		hold_pointer(node)
-
-
-func _on_modal_pointer(on: bool, node: Node) -> void:
-	if on:
-		hold_pointer(node)
-	else:
-		release_pointer(node)
+	DotGameClientPointer.adopt(node, self)
 
 
 ## Ends [method hold_pointer]; the pointer is taken back once no hold and no menu remains.

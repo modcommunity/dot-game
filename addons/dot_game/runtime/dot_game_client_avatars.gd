@@ -51,3 +51,18 @@ static func add_actions(c: DotGameClient, net: DotNetManager, figure_fn: Callabl
 		input.call(&"register_console", local)
 		c.console.call(&"add_source", local)
 	return DotResult.success(client)
+
+
+static func server(c: DotGameClient) -> int:
+	if c.avatar_server_id > 0:
+		return c.avatar_server_id
+	var source: Object = c.link if c.link != null else DotRegistry.get_service(DotGameClient.LINK_SERVICE)
+	var cvars: Variant = source.get(&"replicated_cvars") if source != null and is_instance_valid(source) else null
+	return DotGameAvatarContent.server_id_from_rules(cvars) if cvars is Dictionary else 0
+
+
+static func read_actions(http: DotHttp, user_key: String, headers: Dictionary) -> DotResult:
+	var path := "res://addons/dot_user_avatar/net/dot_avatar_sync.gd"
+	if http == null or not ResourceLoader.exists(path):
+		return DotResult.success(null)
+	return await (load(path) as GDScript).call(&"fetch_actions", http, user_key, headers)

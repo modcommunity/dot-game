@@ -1,17 +1,9 @@
 class_name DotGameNetchaosClient
 extends Node
 
-## One real game client of `tools/netchaos.sh` (this addon's tools/): the game's whole client scene
-## over ENet to a remote server, a pilot that runs, strafes, jumps and shoots in the active window,
-## and a JSON report of what it saw. A dropped link is rebuilt (a new session) and counted. A game's
-## `tools/netchaos_client.gd` extends this and sets [member client_scene] in [method _configure];
-## the scene's root exposes `net`, `player`, `game` and `gate` as every DotGameClient game's does.
-##
-## godot --headless --path . res://tools/netchaos_client.tscn -- --server HOST:PORT --name A \
-##     --start-at UNIX --active 30 --settle 6 --out report.json
-##
-## `--start-at` is on this machine's clock: every client waits in the game until then, so the
-## active windows overlap and the settle comes after all of them.
+## One real game client of `tools/netchaos.sh`: the game's client scene over ENet to a remote server, a
+## pilot that runs, strafes, jumps and shoots, and a JSON report. A game extends it in `tools/netchaos_client.gd`
+## and sets [member client_scene]; `--start-at` (UNIX time, this clock) lines every client's active window up.
 
 ## The game's client scene, instanced after the join.
 var client_scene := ""

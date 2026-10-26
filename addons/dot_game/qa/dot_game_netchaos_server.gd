@@ -1,13 +1,9 @@
 class_name DotGameNetchaosServer
 extends Node
 
-## The dedicated server of `tools/netchaos.sh` (this addon's tools/): dual-stack on all interfaces,
-## one `TRUTH` line a second, and on the `stop` file in `--data` it writes `truth.json` (every
-## player's final position, the net totals, the worst frame) and quits. A game's
-## `tools/netchaos_server.gd` extends this: [method _boot_world] builds its world with
-## [method boot_server] and loads its module, [method _players] lists the seated players.
-##
-## godot --headless --path . res://tools/netchaos_server.tscn -- --port 27210 --data /tmp/x [--map ID]
+## The dedicated server of `tools/netchaos.sh`: one `TRUTH` line a second, and `truth.json` (final positions,
+## net totals, worst frame) when the `stop` file appears in `--data`. A game extends it in `tools/netchaos_server.gd`:
+## [method _boot_world] builds the world with [method boot_server], [method _players] lists the seated players.
 
 var port := 27210
 var data_dir := ""

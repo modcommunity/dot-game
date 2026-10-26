@@ -1,10 +1,9 @@
 class_name DotGameNpcLod
 extends RefCounted
 
-## The NPC half of a server's cost, as cvars every NPC game gets from one call: perception on worker threads
-## (`sv_threads_npc`), and the level-of-detail dials of dot-npc-ai's scheduler and dot-npc's senses. Every dial
-## is off or behaviour-preserving until an operator turns it; nothing here names dot-npc or dot-npc-ai, so a
-## game without them parses and attaching is a no-op.
+## The NPC half of a server's cost as cvars, from one call: perception on worker threads (`sv_threads_npc`)
+## and the level-of-detail dials of dot-npc-ai and dot-npc. All off until an operator turns them; names
+## neither addon, so without them it parses and attaching is a no-op.
 
 const CHANNEL := "game.npc_lod"
 const SCHEDULER_SCRIPT := "res://addons/dot_npc_ai/runtime/dot_npc_ai_scheduler.gd"
