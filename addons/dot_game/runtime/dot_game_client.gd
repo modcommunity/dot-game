@@ -296,6 +296,7 @@ func setup() -> DotResult:
 	_set_up = true
 
 	_wire_chat()
+	_wire_pointer_modals()
 	if gate_only:
 		_refresh_blocked()
 		return DotResult.success(self)
@@ -746,6 +747,40 @@ func hold_pointer(key: Variant) -> void:
 	if capture_pointer and _set_up and not gate_only:
 		_free_pointer()
 	_refresh_blocked()
+
+
+## Holds the pointer for every node in the [code]dot_pointer_modal[/code] group (dot-ui's ballot) while its [code]pointer_mode_changed(on)[/code] says it has freed the mouse. Duck-typed by group and signal, so this names nothing in dot-ui.
+func _wire_pointer_modals() -> void:
+	if not is_inside_tree():
+		return
+	var tree := get_tree()
+	if not tree.node_added.is_connected(_on_node_added):
+		tree.node_added.connect(_on_node_added)
+	for node in tree.get_nodes_in_group(&"dot_pointer_modal"):
+		_adopt_pointer_modal(node)
+
+
+func _on_node_added(node: Node) -> void:
+	_adopt_pointer_modal(node)
+
+
+func _adopt_pointer_modal(node: Node) -> void:
+	if not node.is_in_group(&"dot_pointer_modal") or not node.has_signal(&"pointer_mode_changed"):
+		return
+	var on_change := _on_modal_pointer.bind(node)
+	if node.is_connected(&"pointer_mode_changed", on_change):
+		return
+	node.connect(&"pointer_mode_changed", on_change)
+	node.tree_exiting.connect(release_pointer.bind(node))
+	if node.has_method(&"is_pointer_mode") and bool(node.call(&"is_pointer_mode")):
+		hold_pointer(node)
+
+
+func _on_modal_pointer(on: bool, node: Node) -> void:
+	if on:
+		hold_pointer(node)
+	else:
+		release_pointer(node)
 
 
 ## Ends [method hold_pointer]; the pointer is taken back once no hold and no menu remains.

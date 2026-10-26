@@ -43,7 +43,7 @@ extends "selftest/selftest_extra.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 412
+const CHECKS := 416
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -1606,6 +1606,22 @@ func _test_client_hooks_menu() -> void:
 	hold.release_pointer(&"shop")
 	hold.release_pointer(&"loadout")
 	_check(not hold.is_input_blocked(), "released holds unblock input, and a spare release does not underflow")
+
+	# A node in the pointer-modal group (dot-ui's ballot) holds it through its own signal.
+	var modal := FakePointerModal.new()
+	modal.add_to_group(&"dot_pointer_modal")
+	host.add_child(modal)
+	hold._wire_pointer_modals()
+	modal.set_pointer(true)
+	_check(hold.is_input_blocked(), "a pointer-modal node freeing the mouse holds the pointer")
+	hold._on_menu_state(false)
+	await get_tree().process_frame
+	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and hold.is_input_blocked(), "and another menu closing does not recapture it")
+	modal.set_pointer(false)
+	_check(not hold.is_input_blocked(), "its signal going off releases the hold")
+	modal.set_pointer(true)
+	modal.free()
+	_check(not hold.is_input_blocked(), "and the node leaving the tree releases it too")
 	hold.queue_free()
 
 	_test_client_hooks_rewire(host)
@@ -1892,3 +1908,14 @@ func _test_link_survives_reload() -> void:
 	OS.remove_logger(catcher)
 	_done()
 
+
+class FakePointerModal extends Node:
+	signal pointer_mode_changed(on: bool)
+	var on := false
+
+	func set_pointer(p_on: bool) -> void:
+		on = p_on
+		pointer_mode_changed.emit(p_on)
+
+	func is_pointer_mode() -> bool:
+		return on
