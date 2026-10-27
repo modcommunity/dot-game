@@ -186,6 +186,12 @@ var user_cfg_overlay: DotGameUserCfg.Overlay = null
 var gate: DotLoadGate = null
 ## [method DotCloudClient.ensure_locked]'s report once the lock was processed, else null.
 var locked_content: Variant = null
+## Whether `setup()` adds the slide scrape ([DotGameSlideSounds]): the server's `sv_slide_sounds`, the player's `slide_volume`. On by default; it plays only with dot-audio and a `DotAudioManager` in the registry.
+var use_slide_sounds: bool = true
+## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, is found by itself).
+var slide_settings: Object = null
+## The slide node, once `setup()` has added it.
+var slide_sounds: Node = null
 ## Set by [method add_noblock].
 var noblock: DotGameNoblock = null
 ## The settings' menu (dot-menu's `DotMenu`), its board and its map menu. A game with its own menu assigns [member menu] before [method setup] (or calls [method adopt_menu]); an assigned [member board] is kept.
@@ -331,12 +337,35 @@ func setup() -> DotResult:
 		add_console()
 	_wire_menu()
 	DotGameClientLook.build(self)
+	_add_slide_sounds()
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	_refresh_blocked()
 	return DotResult.success(self)
+
+
+## Adds `slide_volume` to a settings schema a game builds itself (a game on dot-menu's node through `setup()` gets it without this).
+static func declare_slide_setting(schema: Object) -> void:
+	preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").declare(schema)
+
+
+func _add_slide_sounds() -> void:
+	if not use_slide_sounds:
+		return
+	var node: Node = preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").new()
+	node.name = "SlideSounds"
+	node.set(&"link_fn", func() -> Object: return link)
+	node.set(&"settings_fn", func() -> Object:
+		if slide_settings != null:
+			return slide_settings
+		return settings.get(&"settings") if settings != null and is_instance_valid(settings) else null)
+	add_child(node)
+	if node.call(&"start"):
+		slide_sounds = node
+	else:
+		node.queue_free()
 
 
 ## Hands over a HUD built after [method setup]: it follows the menu's theme and HUD size. Safe before setup() too; replaces an earlier HUD.

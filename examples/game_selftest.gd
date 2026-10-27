@@ -43,7 +43,7 @@ extends "selftest/selftest_extra.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 428
+const CHECKS := 448
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -96,6 +96,7 @@ func _run() -> void:
 		_test_map_load_threads()
 		_test_client_vis_mode()
 		_test_relevance_cvars()
+		await _test_slide_sounds()
 		await _test_avatar_actions()
 		await _test_avatar_loadouts()
 		await _test_avatar_loadout_client()
@@ -644,6 +645,11 @@ func _test_noblock_wired() -> void:
 		"noblock is built exactly when dot-team is in the build"
 	)
 	_check(body.pair_fn.is_valid() == wired, "and feeds the body's pair_fn")
+	var slide_cvar: DotConVar = module.console.find_cvar("sv_slide_sounds") if module != null else null
+	_check(
+		slide_cvar != null and slide_cvar.get_string() == "1" and slide_cvar.has_flag(DotConVar.FLAG_REPLICATED),
+		"every game's module binds sv_slide_sounds, on and replicated"
+	)
 	_unload_module()
 	_game.set("body_rules", null)
 	_check(module == null or module.noblock == null, "and is gone after the unload")

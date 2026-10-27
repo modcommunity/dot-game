@@ -53,5 +53,6 @@ extends RefCounted
 # 26: the net_interest_radius / net_far_every / net_far_distance server cvars (DotGameRelevance), DotGameWorkbench.relevance_cvars.
 # 27: DotGameCombatFeel (opt-in spread, recoil and spread-crosshair rules and cvars) and DotGameClient.add_combat_feel.
 # 28: DotGameCombatFeel sprint (sv_sprint*, sv_stamina*): sprint, sprint_defaults, track_tunables, the with_sprint argument.
-const LEVEL := 28
+# 29: slide sounds for every first-person game: DotGameClient use_slide_sounds / slide_settings / slide_sounds, the sv_slide_sounds cvar bound by DotGameModule, the slide_volume setting.
+const LEVEL := 29
 const OLDEST := 1

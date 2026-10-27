@@ -59,6 +59,15 @@ static func advertise_content(m: DotGameModule) -> void:
 		DotLog.warn(CHANNEL, "avatar content not advertised: no cvar")
 
 
+## Binds `sv_slide_sounds`, which every client's slide scrape follows.
+static func bind_slide_sounds(m: DotGameModule) -> void:
+	var spec: Dictionary = preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").cvar_spec()
+	var _cv := m.add_cvar(
+		String(spec["name"]), String(spec["value"]), String(spec["description"]),
+		DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+	)
+
+
 ## Builds the block rules when the game has a `body_rules`; null in the result when off.
 static func build_noblock(m: DotGameModule) -> DotResult:
 	if not m._noblock_enabled():

@@ -19,6 +19,8 @@ static func build(c: DotGameClient) -> void:
 		return
 
 	DotGameClientLook.add_rows(c)
+	if c.use_slide_sounds:
+		preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").declare_on(c.settings)
 	var built: Variant = c.settings.call(&"setup")
 	if built is DotResult and not (built as DotResult).ok:
 		DotLog.warn(CHANNEL, "no settings; everything is at its default", {"why": (built as DotResult).error.message})
