@@ -193,6 +193,15 @@ func _module_load() -> DotResult:
 				"module": String(_module_name()), "changes": "; ".join(capped),
 			})
 
+		if console != null and server != null:
+			var auto_cv := console.find_cvar("net_snapshot_auto")
+			if auto_cv == null:
+				auto_cv = console.cvar("net_snapshot_auto", "1", "Lower the snapshot rate on a server of many slots (0 keeps the game's rate).", DotConVar.FLAG_ARCHIVE).with_range(0, 1)
+			if auto_cv.get_int() != 0:
+				var tiered := DotGameNetcode.adapt_snapshot_rate(config, server.config.max_players)
+				if tiered != "":
+					DotLog.info(CHANNEL, "snapshot rate adapted to the server size", {"module": String(_module_name()), "change": tiered})
+
 		DotGameNetcode.follow_server_threads(config, server.config if server != null else null)
 		DotGameNetcode.follow_map_threads(console)
 

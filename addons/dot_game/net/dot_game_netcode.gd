@@ -311,6 +311,34 @@ static func cap(config: DotNetConfig, ceiling: Dictionary) -> PackedStringArray:
 	return changes
 
 
+## Snapshot rate by server size: the most slots up to which a rate is kept, and the rate cap past it. A snapshot costs about peers times entities, so it grows with the square of the team.
+const AUTO_RATE_TIERS: Array[Vector2i] = [Vector2i(32, 0), Vector2i(64, 20), Vector2i(128, 16), Vector2i(4096, 10)]
+
+
+## Lowers [member DotNetConfig.snapshot_rate] for a server of [param slots] (see [constant AUTO_RATE_TIERS]) to a divisor of the tick rate, never raises it. It also staggers the peers over the ticks between snapshots, so the cost is not one spike. Cvar `net_snapshot_auto` 0 turns it off; an operator's own `snapshot_rate` ceiling is applied before this and still wins. Returns the change as a log line, or "".
+static func adapt_snapshot_rate(config: DotNetConfig, slots: int) -> String:
+	if config == null:
+		return ""
+	var limit := 0
+	for tier in AUTO_RATE_TIERS:
+		if slots <= tier.x:
+			limit = tier.y
+			break
+	if limit <= 0 or config.snapshot_rate <= limit:
+		return ""
+	var rate := mini(limit, config.tick_rate)
+	while rate > 1 and config.tick_rate % rate != 0:
+		rate -= 1
+	if rate >= config.snapshot_rate:
+		return ""
+	var line := "snapshot_rate %d -> %d (%d slots, tick %d)" % [config.snapshot_rate, rate, slots, config.tick_rate]
+	config.snapshot_rate = rate
+	if config.ticks_per_snapshot() > 1:
+		config.stagger_snapshots = true
+		line += ", staggered"
+	return line
+
+
 ## Disconnects a peer whose message schema this server cannot play with.
 ##
 ## Public for a game on dot-game that builds its own [DotNetManager]. The four games

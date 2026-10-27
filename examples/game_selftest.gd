@@ -71,6 +71,7 @@ func _run() -> void:
 		await _test_a_refused_game_load_unwinds()
 		await _test_a_refused_attach_unwinds()
 		_test_operator_net_ceiling()
+		_test_snapshot_rate_adapts_to_slots()
 		await _test_operator_ceiling_reaches_the_netcode()
 		await _test_server_threads_reach_the_netcode()
 		_test_npc_lod_cvars()
@@ -758,6 +759,27 @@ func _test_operator_net_ceiling() -> void:
 	_check(c.snapshot_rate == 32, "a snapshot cap of 0 uses the game's rate")
 	c = _caps({"snapshot_rate": 32}, {})
 	_check(c.snapshot_rate == 32 and DotGameNetcode.cap(c, {}).is_empty(), "no ceiling changes nothing, and logs nothing")
+	_done()
+
+
+func _test_snapshot_rate_adapts_to_slots() -> void:
+	_section("the snapshot rate follows the server's size: kept to 32 slots, lower past it, never raised")
+	var c := DotNetConfig.new()
+	c.tick_rate = 64
+	c.snapshot_rate = 30
+	_check(DotGameNetcode.adapt_snapshot_rate(c, 32) == "" and c.snapshot_rate == 30, "32 slots keep the game's rate")
+	_check(DotGameNetcode.adapt_snapshot_rate(c, 64) != "" and c.snapshot_rate == 16, "64 slots: 20 lands on the divisor 16")
+	_check(c.stagger_snapshots, "and the peers are staggered over the ticks between snapshots")
+	c.snapshot_rate = 30
+	_check(DotGameNetcode.adapt_snapshot_rate(c, 100) != "" and c.snapshot_rate == 16, "100 slots: 16")
+	_check(DotGameNetcode.adapt_snapshot_rate(c, 100) == "", "and a second call changes nothing")
+	c.snapshot_rate = 8
+	_check(DotGameNetcode.adapt_snapshot_rate(c, 100) == "" and c.snapshot_rate == 8, "a lower game rate is never raised")
+	c.tick_rate = 60
+	c.snapshot_rate = 30
+	var _l := DotGameNetcode.adapt_snapshot_rate(c, 200)
+	_check(c.snapshot_rate == 10, "200 slots on tick 60: 10")
+	_check(DotGameNetcode.adapt_snapshot_rate(null, 100) == "", "no config is a no-op")
 	_done()
 
 
