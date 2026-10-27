@@ -51,5 +51,6 @@ extends RefCounted
 # 25: DotGameWorkbench thread_cvars / cvar_set / bind_cvar_set (the Server threads set),
 #    DotGameClient vis_mode / attach_visibility / detach_visibility / set_vis_mode.
 # 26: the net_interest_radius / net_far_every / net_far_distance server cvars (DotGameRelevance), DotGameWorkbench.relevance_cvars.
-const LEVEL := 26
+# 27: DotGameCombatFeel (opt-in spread, recoil and spread-crosshair rules and cvars) and DotGameClient.add_combat_feel.
+const LEVEL := 27
 const OLDEST := 1

@@ -204,6 +204,11 @@ var _vis_drawn: WeakRef = null
 var _vis_parent: WeakRef = null
 
 var _set_up: bool = false
+var _feel: DotGameCombatFeel = null
+var _feel_crosshair: Control = null
+var _feel_arsenal_fn: Callable = Callable()
+var _feel_camera_fn: Callable = Callable()
+var _feel_console_bound: bool = false
 # True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
 var _board_auto: bool = false
 # Boards already given to board_prepare_fn: each is prepared once, however often it is wired.
@@ -605,9 +610,32 @@ func _pointer_wanted() -> bool:
 
 
 func _process(_delta: float) -> void:
+	_drive_combat_feel()
 	# Polled as well as signalled: busy_fn is the game's and says nothing when it changes.
 	_refresh_blocked()
 	_refresh_page_guard()
+
+
+## Opts this client into [DotGameCombatFeel]: follows the server's sv_spread_* / sv_recoil_* values, adds cl_crosshair_* to the console once it exists, and opens [param crosshair] with the cone of the arsenal [param arsenal_fn] returns each frame. Call after [method setup]; [param link] defaults to this client's.
+func add_combat_feel(feel: DotGameCombatFeel, crosshair: Control, arsenal_fn: Callable, camera_fn: Callable = Callable()) -> void:
+	_feel = feel
+	_feel_crosshair = crosshair
+	_feel_arsenal_fn = arsenal_fn
+	_feel_camera_fn = camera_fn
+	if link != null:
+		feel.follow_cvars(link)
+	if console != null:
+		var _bound := feel.bind_console(console, crosshair)
+
+
+func _drive_combat_feel() -> void:
+	if _feel == null or not _feel_arsenal_fn.is_valid():
+		return
+	if not _feel_console_bound and console != null:
+		_feel_console_bound = _feel.bind_console(console, _feel_crosshair)
+	var cam: Variant = _feel_camera_fn.call() if _feel_camera_fn.is_valid() else null
+	var fov: float = float((cam as Camera3D).fov) if cam is Camera3D else 75.0
+	_feel.drive(_feel_crosshair, _feel_arsenal_fn.call() as Object, fov)
 
 
 ## True while this client is online with the link connected; the main menu, a normal leave and a dropped link are false.
