@@ -196,6 +196,10 @@ var render_quality: Node = null
 var slide_settings: Object = null
 ## The slide node, once `setup()` has added it.
 var slide_sounds: Node = null
+## Whether `setup()` adds the landing thump and camera-kick strength ([DotGameLanding]: `cl_landing_volume`, `cl_landing_kick`). Plays only with dot-audio and a `DotAudioManager` in the registry; fall damage is separate and server-side.
+var use_landing: bool = true
+## The landing node, once `setup()` has added it.
+var landing: Node = null
 ## Set by [method add_noblock].
 var noblock: DotGameNoblock = null
 ## The settings' menu (dot-menu's `DotMenu`), its board and its map menu. A game with its own menu assigns [member menu] before [method setup] (or calls [method adopt_menu]); an assigned [member board] is kept.
@@ -342,6 +346,7 @@ func setup() -> DotResult:
 	_wire_menu()
 	DotGameClientLook.build(self)
 	_add_slide_sounds()
+	_add_landing()
 	_add_render_quality()
 
 	if capture_pointer and not DotPlatform.is_web():
@@ -363,6 +368,20 @@ func _add_render_quality() -> void:
 	if settings != null and is_instance_valid(settings):
 		store = settings.get(&"settings")
 	render_quality = preload("res://addons/dot_game/runtime/dot_game_client_render.gd").add(self, store)
+
+
+func _add_landing() -> void:
+	if not use_landing:
+		return
+	var node: Node = preload("res://addons/dot_game/runtime/dot_game_landing.gd").new()
+	node.name = "Landing"
+	add_child(node)
+	if node.call(&"start"):
+		landing = node
+		if console != null and is_instance_valid(console):
+			var _bound: Variant = node.call(&"bind_console", console)
+	else:
+		node.queue_free()
 
 
 func _add_slide_sounds() -> void:

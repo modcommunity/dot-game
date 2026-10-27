@@ -765,3 +765,79 @@ func _test_slide_sounds() -> void:
 	link.free()
 	settings.free()
 	_done()
+
+
+class StubLandingRules:
+	extends RefCounted
+	var volume: float = 0.6
+	func volume_for(impact: float) -> float:
+		return 0.0 if impact < 4.0 else volume
+
+
+class StubLandingManager:
+	extends Object
+	var plays: Array = []
+	func play_at(id: StringName, at: Vector3, scale: float) -> int:
+		plays.append([id, at, scale])
+		return 1
+
+
+class StubLandingController:
+	extends Node
+	signal landed(impact: float)
+	var view: Object = null
+
+
+class StubKickView:
+	extends Object
+	var landing_strength: float = 1.0
+
+
+class StubConsoleSource:
+	extends Object
+	var vars: Dictionary = {}
+	func add_var(var_name: StringName, _help: String, get_fn: Callable, set_fn: Callable) -> void:
+		vars[var_name] = [get_fn, set_fn]
+
+
+func _test_landing() -> void:
+	_section("every client thumps a landing and scales the camera kick: no per-game wiring")
+	var Landing: GDScript = load("res://addons/dot_game/runtime/dot_game_landing.gd")
+	var node: Node = Landing.new()
+	var rules := StubLandingRules.new()
+	var mgr := StubLandingManager.new()
+	var view := StubKickView.new()
+	node.rules = rules
+	node.manager_fn = func() -> Object: return mgr
+	node.id_fn = func(impact: float) -> StringName: return &"hard" if impact > 12.0 else &"light"
+	node.controller_fn = func(n: Node) -> bool: return n is StubLandingController
+	add_child(node)
+	_check(node.start(), "it starts with rules supplied")
+	var body := Node3D.new()
+	add_child(body)
+	body.global_position = Vector3(1, 2, 3)
+	var controller := StubLandingController.new()
+	controller.view = view
+	body.add_child(controller)
+	controller.landed.emit(15.0)
+	_check(mgr.plays.size() == 1 and mgr.plays[0][0] == &"hard" and mgr.plays[0][1] == Vector3(1, 2, 3), "a landing plays the stock for its impact at the body", str(mgr.plays))
+	_check(is_equal_approx(mgr.plays[0][2], 0.6), "scaled by the landing volume")
+	controller.landed.emit(2.0)
+	_check(mgr.plays.size() == 1, "a landing under the rules' minimum is silent")
+	rules.volume = 0.0
+	controller.landed.emit(15.0)
+	_check(mgr.plays.size() == 1, "cl_landing_volume 0 mutes it")
+	node.kick = 0.5
+	_check(is_equal_approx(view.landing_strength, 0.5), "cl_landing_kick reaches the controller's view")
+	var console := StubConsoleSource.new()
+	_check(node.bind_console(console) and console.vars.has(&"cl_landing_volume") and console.vars.has(&"cl_landing_kick"), "both cvars register on a console source")
+	console.vars[&"cl_landing_kick"][1].call("9")
+	_check(is_equal_approx(node.kick, 2.0) and is_equal_approx(view.landing_strength, 2.0), "the kick cvar is clamped and applied live")
+	_check(Landing.is_controller(Node.new()) == false, "a plain node is no controller")
+	node.queue_free()
+	body.queue_free()
+	await _frames(2)
+	mgr.free()
+	view.free()
+	console.free()
+	_done()
