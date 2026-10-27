@@ -91,6 +91,7 @@ func _run() -> void:
 		await _test_link_survives_reload()
 		_test_workbench_hosting()
 		_test_combat_feel_inert()
+		_test_class_immunity()
 		_test_workbench_thread_cvars()
 		_test_thread_defaults_off()
 		_test_map_load_threads()

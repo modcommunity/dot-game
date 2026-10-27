@@ -281,6 +281,91 @@ func _test_workbench_hosting() -> void:
 	_done()
 
 
+func _test_class_immunity() -> void:
+	_section("class immunity: a class that lists fall takes none and breaks no legs; respawn clears it")
+	var combat_path := "res://addons/dot_combat/dot_combat_manager.gd"
+	if not ResourceLoader.exists(combat_path) or not ResourceLoader.exists(DotGameClassImmunity.APPLY_SCRIPT):
+		_check(DotGameClassImmunity.apply(null, null, 1) == 0, "without dot-combat it is a no-op")
+		_done()
+		return
+	var manager: Node = load(combat_path).new()
+	manager.set(&"register_service", false)
+	manager.set(&"trace", load("res://addons/dot_combat/trace/dot_trace_flat.gd").call(&"with_floor", 0.0))
+	manager.set(&"rules", load("res://addons/dot_combat/resolve/dot_damage_rules.gd").new())
+	manager.set(&"config", load("res://addons/dot_combat/dot_combat_config.gd").new())
+	add_child(manager)
+	# Immunity matches DotDamageType.id; an unregistered kind resolves as the default type, so games register "fall".
+	manager.call(&"register_damage_type", load("res://addons/dot_combat/core/dot_damage_type.gd").call(&"make", &"fall", "Fall"))
+	var health := _immune_health()
+	manager.call(&"register_health", 7, health)
+	manager.call(&"register_health", 8, _immune_health())
+	var rules: Object = load("res://addons/dot_combat/core/dot_fall_damage_rules.gd").new()
+	rules.set(&"enabled", true)
+	rules.set(&"threshold", 10.0)
+	rules.set(&"scale", 2.0)
+	rules.set(&"legs_seconds", 2.0)
+	var ctl := ImmuneController.new()
+	add_child(ctl)
+	var fall: Node = load("res://addons/dot_combat/core/dot_fall_damage.gd").new()
+	fall.set(&"rules", rules)
+	fall.set(&"victim", 7)
+	var cref: DotNodeRef = DotNodeRef.of_path(ctl.get_path())
+	cref.mode = DotNodeRef.Mode.ABSOLUTE
+	var mref: DotNodeRef = DotNodeRef.of_path(manager.get_path())
+	mref.mode = DotNodeRef.Mode.ABSOLUTE
+	fall.set(&"controller", cref)
+	fall.set(&"combat", mref)
+	add_child(fall)
+	var legs: Array[int] = []
+	fall.connect(&"legs_broken", func(_s: float, _k: float) -> void: legs.append(1))
+	var immune_def := ImmuneDef.new([&"fall"])
+	var plain_def := ImmuneDef.new([])
+
+	_check(DotGameClassImmunity.ensure(manager, false) == null, "nothing is created until a class is applied")
+	ctl.landed.emit(15.0)
+	_check(is_equal_approx(health.get(&"health"), 90.0) and legs.size() == 1, "no class applied: unchanged (10 damage, legs break)")
+	health.set(&"health", 100.0)
+
+	_check(DotGameClassImmunity.apply(manager, immune_def, 7) == 1, "a class with immune [fall] writes one kind")
+	ctl.landed.emit(15.0)
+	_check(is_equal_approx(health.get(&"health"), 100.0), "immune to fall: no damage")
+	_check(legs.size() == 1, "immune to fall: legs_broken is not emitted")
+
+	_check(DotGameClassImmunity.apply(manager, plain_def, 8) == 0, "a class without immune writes none")
+	_check(not DotGameClassImmunity.ensure(manager).call(&"is_immune", 7, &"bullet"), "other kinds still hurt")
+
+	_check(DotGameClassImmunity.apply(manager, plain_def, 7) == 0, "respawn as another class")
+	ctl.landed.emit(15.0)
+	_check(is_equal_approx(health.get(&"health"), 90.0) and legs.size() == 2, "the old immunity is gone")
+	_check(DotGameClassImmunity.apply(manager, immune_def, 7) == 1 and DotGameClassImmunity.apply(manager, null, 7) == 0, "a null class clears")
+	_check(not DotGameClassImmunity.ensure(manager).call(&"is_immune", 7, &"fall"), "cleared")
+	manager.queue_free()
+	ctl.queue_free()
+	fall.queue_free()
+	_done()
+
+
+func _immune_health() -> Node:
+	var h: Node = load("res://addons/dot_combat/core/dot_health.gd").new()
+	h.set(&"max_health", 100.0)
+	h.set(&"health", 100.0)
+	add_child(h)
+	return h
+
+
+class ImmuneController extends Node:
+	signal landed(impact: float)
+	var state: Object = null
+	var surfaces: Object = null
+
+
+class ImmuneDef extends RefCounted:
+	var immune_to: Array = []
+
+	func _init(kinds: Array) -> void:
+		immune_to = kinds
+
+
 func _test_combat_feel_inert() -> void:
 	_section("combat feel is an inert no-op without dot-weapon, dot-ui and dot-player-controller")
 	var feel := DotGameCombatFeel.new(true)
