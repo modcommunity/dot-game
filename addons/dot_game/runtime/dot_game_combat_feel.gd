@@ -14,6 +14,7 @@ extends RefCounted
 
 const SPREAD_SCRIPT := "res://addons/dot_weapon/math/dot_weapon_spread_rules.gd"
 const RECOIL_SCRIPT := "res://addons/dot_weapon/math/dot_weapon_recoil_rules.gd"
+const BALLISTICS_SCRIPT := "res://addons/dot_weapon/math/dot_weapon_ballistics_rules.gd"
 const SPRINT_SCRIPT := "res://addons/dot_player_controller/fp/core/dot_fps_sprint_rules.gd"
 const CVAR_FLAGS := DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
 
@@ -21,6 +22,8 @@ const CVAR_FLAGS := DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.F
 var spread: RefCounted = null
 ## DotWeaponRecoilRules, or null without dot-weapon.
 var recoil: RefCounted = null
+## DotWeaponBallisticsRules (`sv_ballistics*`, always off until the cvar is set), or null without dot-weapon.
+var ballistics: RefCounted = null
 ## DotFpsSprintRules (sv_sprint*, sv_stamina*), or null without dot-player-controller API 11 or when built with [code]sprint = false[/code].
 var sprint: RefCounted = null
 ## DotCrosshairCvars (cl_crosshair_*), or null without dot-ui API 10.
@@ -34,6 +37,7 @@ var _tunables: Array = []
 func _init(on: bool = false, with_sprint: bool = true) -> void:
 	spread = _make(SPREAD_SCRIPT, on)
 	recoil = _make(RECOIL_SCRIPT, on)
+	ballistics = _make(BALLISTICS_SCRIPT, false)
 	if with_sprint:
 		sprint = _make(SPRINT_SCRIPT, true)
 		if sprint != null and sprint.has_signal(&"changed"):
@@ -64,6 +68,8 @@ func attach(arsenal: Object) -> void:
 		arsenal.set(&"spread_rules", spread)
 	if recoil != null:
 		arsenal.set(&"recoil_rules", recoil)
+	if ballistics != null:
+		arsenal.set(&"ballistics_rules", ballistics)
 
 
 ## Takes the sprint and stamina numbers of a game's config tunables as the defaults (before [method bind_cvars]).
@@ -91,14 +97,14 @@ func _push_sprint() -> void:
 
 ## Server: registers sv_spread_*, sv_recoil_* and sv_sprint*/sv_stamina* (replicated) through [param add_cvar].
 func bind_cvars(add_cvar: Callable, flags: int = CVAR_FLAGS) -> void:
-	for rules: RefCounted in [spread, recoil, sprint]:
+	for rules: RefCounted in [spread, recoil, ballistics, sprint]:
 		if rules != null:
 			var _made: Variant = rules.call(&"bind_cvars", add_cvar, flags)
 
 
 ## Client: follows the server's values through [param link].
 func follow_cvars(link: Object) -> void:
-	for rules: RefCounted in [spread, recoil, sprint]:
+	for rules: RefCounted in [spread, recoil, ballistics, sprint]:
 		if rules != null:
 			var _followed: Variant = rules.call(&"follow_cvars", link)
 
