@@ -54,6 +54,8 @@ signal menu_state_changed(any_open: bool)
 @export var use_standalone_content: bool = true
 ## Build the load gate and its cover. Off for a client whose shell covers it some other way.
 @export var use_gate: bool = true
+## Mount what `content.lock.json` pins ([DotGameLockedContent]) once at start. No lock file means nothing happens; `--locked_content=0` or `DOT_PACKS_FROM=none` switch it off.
+@export var use_locked_content: bool = true
 ## Hold the cover until a current camera exists in the game. Off for a game with none.
 @export var require_camera: bool = true
 ## Compile what the first frame draws under the cover before lifting it. Never headless, where the warm-up would only wait out its timeout.
@@ -182,6 +184,8 @@ var user_tier_on: bool = false
 var user_cfg_overlay: DotGameUserCfg.Overlay = null
 ## dot-core's load gate, under [member host]. Hold more on it: [code]gate.hold(&"map")[/code].
 var gate: DotLoadGate = null
+## [method DotCloudClient.ensure_locked]'s report once the lock was processed, else null.
+var locked_content: Variant = null
 ## Set by [method add_noblock].
 var noblock: DotGameNoblock = null
 ## The settings' menu (dot-menu's `DotMenu`), its board and its map menu. A game with its own menu assigns [member menu] before [method setup] (or calls [method adopt_menu]); an assigned [member board] is kept.
@@ -241,11 +245,23 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
+	var standalone: Node = null
 	if offline and use_standalone_content:
-		DotGameStandaloneContent.install(self, gate)
+		standalone = DotGameStandaloneContent.install(self, gate)
+	if use_locked_content:
+		_mount_locked_content(standalone)
 	_Vis.apply_cmdline(self)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
+
+
+## The shell's content client, else the one standalone play just made. Runs after the gate exists so the cover shows it.
+func _mount_locked_content(standalone: Node) -> void:
+	var cloud: Object = DotRegistry.get_service(DotGameStandaloneContent.CLOUD_SERVICE)
+	if cloud == null:
+		cloud = standalone
+	var lock_result: DotResult = await DotGameLockedContent.run(cloud, gate)
+	locked_content = lock_result.value if lock_result.ok else null
 
 
 ## Whether the player's cfg tier may be on: solo or listen host, never a dedicated server or a guest.
