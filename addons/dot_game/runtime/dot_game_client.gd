@@ -104,6 +104,8 @@ var look_conflicts: Array[Dictionary] = []
 @export var user_cfg: bool = true
 ## [code]func() -> bool[/code]: this client also hosts the server it is connected to. Unset means a connected client is a guest and gets no tier.
 var listen_host_fn: Callable = Callable()
+## Answers whether this process is a dedicated server; empty reads the engine's feature tag. A seam so a suite can play one.
+var dedicated_fn: Callable = Callable()
 ## Files the player may edit, each `{addon, file, schema, label}`; append before [method setup]. Empty hides the entry.
 var user_cfg_files: Array[Dictionary] = []
 
@@ -285,7 +287,8 @@ static func user_tier_allowed(opt_in: bool, solo: bool, listen_host: bool, dedic
 
 func _apply_user_tier() -> void:
 	var host_here := listen_host_fn.is_valid() and bool(listen_host_fn.call())
-	user_tier_on = user_tier_allowed(user_cfg, offline, host_here, OS.has_feature("dedicated_server"))
+	var dedicated := bool(dedicated_fn.call()) if dedicated_fn.is_valid() else OS.has_feature("dedicated_server")
+	user_tier_on = user_tier_allowed(user_cfg, offline, host_here, dedicated)
 	DotAddonConfig.set_user_tier(user_tier_on)
 
 
