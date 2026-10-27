@@ -281,6 +281,28 @@ func _test_workbench_hosting() -> void:
 	_done()
 
 
+func _test_combat_feel_inert() -> void:
+	_section("combat feel is an inert no-op without dot-weapon, dot-ui and dot-player-controller")
+	var feel := DotGameCombatFeel.new(true)
+	_check(feel.spread == null and feel.recoil == null and feel.sprint == null, "no addon, no rules")
+	var names: Array[String] = []
+	feel.bind_cvars(func(n: String, _d: String, _h: String, _f: int) -> Object:
+		names.append(n)
+		return null)
+	_check(names.is_empty(), "no cvars register")
+	var arsenal := Node.new()
+	feel.attach(arsenal)
+	feel.attach(null)
+	feel.track_tunables(arsenal)
+	feel.sprint_defaults(arsenal)
+	feel.follow_cvars(null)
+	_check(not feel.bind_console(null) and not feel.bind_console(arsenal), "no console binding")
+	feel.drive(null, arsenal)
+	_check(true, "attach, track, follow and drive on nothing do not error")
+	arsenal.free()
+	_done()
+
+
 func _test_thread_defaults_off() -> void:
 	_section("threads are off by default and turn on only through their own switch")
 	var sc := DotServerConfig.new()

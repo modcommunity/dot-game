@@ -52,5 +52,6 @@ extends RefCounted
 #    DotGameClient vis_mode / attach_visibility / detach_visibility / set_vis_mode.
 # 26: the net_interest_radius / net_far_every / net_far_distance server cvars (DotGameRelevance), DotGameWorkbench.relevance_cvars.
 # 27: DotGameCombatFeel (opt-in spread, recoil and spread-crosshair rules and cvars) and DotGameClient.add_combat_feel.
-const LEVEL := 27
+# 28: DotGameCombatFeel sprint (sv_sprint*, sv_stamina*): sprint, sprint_defaults, track_tunables, the with_sprint argument.
+const LEVEL := 28
 const OLDEST := 1
