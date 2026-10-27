@@ -10,9 +10,14 @@ const SKIP_DIRS := ["addons", "maps", "assets", "images", "cfg", "build"]
 
 ## Every game config script (registered or not: configs rarely have a `class_name`) that declares `static func make_binder(config, json_path)` contributes its binder's sets, kind -> field Array.
 static func profile_schemas() -> Dictionary:
+	return schemas_for(config_scripts())
+
+
+## The game's config scripts (those declaring a static `make_binder`), found under `res://`.
+static func config_scripts() -> Array:
 	var scripts: Array = []
 	_scan("res://", scripts)
-	return schemas_for(scripts)
+	return scripts
 
 
 static func _scan(dir: String, scripts: Array) -> void:
