@@ -15,6 +15,8 @@ const LOCAL_ACTOR := "workbench-local"
 const DEFAULT_TOKEN_FILE := "user://workbench.token"
 
 signal open_changed(open: bool)
+## A panel was built after [method start] (a remote admin's, once the server allows it); the host mounts it.
+signal panel_built(panel: Control)
 
 ## -1 follows [method default_panel], 0 never, 1 always.
 @export_enum("auto", "off", "on") var panel_mode: int = 0
@@ -24,6 +26,12 @@ signal open_changed(open: bool)
 var listen_host_fn: Callable = Callable()
 ## True on a dedicated server, where no panel is built (HTTP can still run).
 var dedicated: bool = false
+## Callable() -> bool: this process is connected to somebody else's server. While it is, even an editor or debug build is not trusted locally; the server decides.
+var remote_fn: Callable = Callable()
+## Set on a connected client: the panel is built only while the server says this player holds a workbench flag, and edits are forwarded to it.
+var remote_client: DotGameWorkbenchRemoteClient = null
+## The server half, set by [method serve_remote]; remote admins act as `remote:<uid>`.
+var remote_server: DotGameWorkbenchRemote = null
 ## Callable(actor, flag) -> bool for actors other than [constant LOCAL_ACTOR] (the console's or admin manager's permit).
 var permit_fn: Callable = Callable()
 ## Callable() -> {cvar: value} of cvars changed from the shipped default, for the export.
@@ -75,8 +83,8 @@ static func default_panel(editor: bool, debug: bool, listen: bool, is_dedicated:
 
 
 ## The panel's actor is trusted only where the player owns the process.
-static func local_allowed(editor: bool, debug: bool, listen: bool) -> bool:
-	return editor or debug or listen
+static func local_allowed(editor: bool, debug: bool, listen: bool, remote: bool = false) -> bool:
+	return listen or (not remote and (editor or debug))
 
 
 static func available() -> bool:
@@ -123,10 +131,13 @@ func start(runtime: Object = null) -> DotResult:
 	var editor := OS.has_feature("editor")
 	var debug := OS.is_debug_build()
 	var listen: bool = listen_host_fn.is_valid() and bool(listen_host_fn.call())
-	var local_ok := local_allowed(editor, debug, listen)
 	api.set("permit", func(actor: Variant, flag: String) -> bool:
 		if actor is String and actor == LOCAL_ACTOR:
-			return local_ok
+			return local_allowed(editor, debug, listen, remote_fn.is_valid() and bool(remote_fn.call()))
+		if actor is String and actor == DotGameWorkbenchRemoteClient.ACTOR:
+			return remote_client != null and remote_client.permit(actor, flag)
+		if actor is String and (actor as String).begins_with(DotGameWorkbenchRemote.ACTOR_PREFIX):
+			return remote_server != null and remote_server.permit_actor(actor, flag)
 		return permit_fn.is_valid() and bool(permit_fn.call(actor, flag)))
 	_attach_accounts()
 	var export_script: GDScript = load(EXPORT_SCRIPT)
@@ -136,7 +147,13 @@ func start(runtime: Object = null) -> DotResult:
 	var want_panel := panel_mode == 2 or (panel_mode == 0 and bool(config.get("panel", default_panel(editor, debug, listen, dedicated))))
 	if dedicated or panel_mode == 1:
 		want_panel = false
-	if want_panel:
+	if remote_client != null:
+		# Nobody gets a panel node until the server says so; the node is freed again if it takes the flag back.
+		api.set("forward", func(req: Dictionary) -> void: remote_client.request(req))
+		remote_client.access_changed.connect(_on_remote_access)
+		if remote_client.allowed:
+			_on_remote_access(true)
+	elif want_panel:
 		_build_panel()
 	var res := _start_http()
 	if not res.ok:
@@ -227,9 +244,37 @@ func _attach_accounts() -> void:
 		DotLog.info(CHANNEL, "workbench accepts dot-auth accounts")
 
 
-func _build_panel() -> void:
+## Answers requests from admin clients through this workbench's api. Value: the [DotGameWorkbenchRemote], whose message must already be registered by [method DotGameWorkbenchRemote.serve] on [param net].
+func serve_remote(net: DotNetManager) -> DotGameWorkbenchRemote:
+	var remote := DotGameWorkbenchRemote.of(net)
+	if remote == null:
+		return null
+	remote.api = api
+	remote.bind_server(DotRegistry.get_node_service(DotServer.SERVICE))
+	remote_server = remote
+	return remote
+
+
+func _on_remote_access(allowed: bool) -> void:
+	if allowed and overlay == null and api != null and not dedicated:
+		_build_panel(DotGameWorkbenchRemoteClient.ACTOR)
+	elif not allowed and overlay != null:
+		_drop_panel()
+
+
+func _drop_panel() -> void:
+	var was_open := is_open()
+	if _canvas != null and is_instance_valid(_canvas):
+		_canvas.queue_free()
+	_canvas = null
+	overlay = null
+	if was_open:
+		open_changed.emit(false)
+
+
+func _build_panel(actor: String = LOCAL_ACTOR) -> void:
 	var o_script: GDScript = load(OVERLAY_SCRIPT)
-	var built: Variant = o_script.call("create", api, LOCAL_ACTOR, _labels)
+	var built: Variant = o_script.call("create", api, actor, _labels)
 	if not (built is Control):
 		DotLog.info(CHANNEL, "dot-menu or dot-ui is not linked: no workbench panel")
 		return
@@ -243,6 +288,7 @@ func _build_panel() -> void:
 	_canvas.add_child(overlay)
 	overlay.connect(&"closed", func() -> void: open_changed.emit(false))
 	DotLog.info(CHANNEL, "workbench panel ready", {"key": OS.get_keycode_string(toggle_key)})
+	panel_built.emit(overlay)
 
 
 func _start_http() -> DotResult:
@@ -279,6 +325,8 @@ func _make_token(path: String) -> DotResult:
 
 
 func _process(_d: float) -> void:
+	if remote_server != null:
+		remote_server.poll()
 	if running_http and http != null:
 		http.call("poll")
 
@@ -316,6 +364,8 @@ func console_command(args: PackedStringArray) -> Variant:
 	match verb:
 		"open", "toggle", "close":
 			if overlay == null:
+				if remote_client != null:
+					return "workbench: not allowed"
 				return DotResult.fail(DotError.CODE_STATE, "no workbench panel in this build or process")
 			if verb == "open" or (verb == "toggle" and not is_open()):
 				open()
@@ -353,12 +403,14 @@ func describe_lines() -> PackedStringArray:
 static func host_on(c: DotGameClient, wb: Node) -> void:
 	if wb.get_parent() == null:
 		c.add_child(wb)
-	var panel: Variant = wb.get(&"overlay")
-	if panel is Control and c.menu != null and c.menu.has_method(&"add_overlay"):
-		c.menu.call(&"add_overlay", panel)
-		wb.connect(&"open_changed", func(open: bool) -> void:
-			if open and c.menu != null and is_instance_valid(c.menu) and c.menu.has_method(&"overlay_opened"):
-				c.menu.call(&"overlay_opened"))
+	var mount := func(panel: Variant) -> void:
+		if panel is Control and c.menu != null and c.menu.has_method(&"add_overlay"):
+			c.menu.call(&"add_overlay", panel)
+	mount.call(wb.get(&"overlay"))
+	wb.connect(&"panel_built", mount)
+	wb.connect(&"open_changed", func(open: bool) -> void:
+		if open and c.menu != null and is_instance_valid(c.menu) and c.menu.has_method(&"overlay_opened"):
+			c.menu.call(&"overlay_opened"))
 	if c.console != null and is_instance_valid(c.console) and ResourceLoader.exists(DotGameClient.LOCAL_SCRIPT):
 		var local: Object = (load(DotGameClient.LOCAL_SCRIPT) as GDScript).new()
 		local.call(&"add_command", &"workbench", "Tuning panel: workbench [open|close|toggle|export|http]", Callable(wb, &"console_command"))

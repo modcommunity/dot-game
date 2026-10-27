@@ -167,6 +167,11 @@ static func build(
 	if not avatar.ok:
 		DotLog.warn(CHANNEL, "avatar actions not served", {"why": avatar.error.message})
 
+	# The remote workbench frame; inert until a DotGameWorkbench calls serve_remote and sv_workbench_remote is 1.
+	var bench := DotGameWorkbenchRemote.serve(net)
+	if not bench.ok:
+		DotLog.warn(CHANNEL, "remote workbench not served", {"why": bench.error.message})
+
 	# After the bridge, never before: see the class note.
 	net.messages.seal()
 	if server != null:

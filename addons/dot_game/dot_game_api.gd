@@ -54,5 +54,6 @@ extends RefCounted
 # 27: DotGameCombatFeel (opt-in spread, recoil and spread-crosshair rules and cvars) and DotGameClient.add_combat_feel.
 # 28: DotGameCombatFeel sprint (sv_sprint*, sv_stamina*): sprint, sprint_defaults, track_tunables, the with_sprint argument.
 # 29: slide sounds for every first-person game: DotGameClient use_slide_sounds / slide_settings / slide_sounds, the sv_slide_sounds cvar bound by DotGameModule, the slide_volume setting.
-const LEVEL := 29
+# 30: the remote workbench: DotGameWorkbenchMessage / Remote / RemoteClient, DotGameWorkbench remote_client / remote_fn / serve_remote / panel_built, local_allowed(remote), the sv_workbench_remote cvar.
+const LEVEL := 30
 const OLDEST := 1

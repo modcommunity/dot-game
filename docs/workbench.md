@@ -38,3 +38,15 @@ Export builds need `*.html` in the preset's `include_filter` for the HTTP page. 
 ## NPC level of detail
 
 `DotGameModule.attach_npc_lod(spawner)` (a game calls it once, from its `_follow_npc_threads`) hands the horde spawner to `DotGameNpcLod`, which each tick copies `sv_threads_npc` into `sense_workers`, applies `npc_sense_quiet` to the spawner limits and, when `npc_lod` is 1, advances dot-npc-ai's scheduler. All cvars default off and appear in the workbench as "NPC level of detail". Requires dot-npc and dot-npc-ai in the game.
+
+## Remote admin of a running server (API level 30)
+
+Flagged admins edit profiles from a connected client; nobody else even gets a panel. Off until the owner sets `sv_workbench_remote 1`.
+
+- **Wire.** `DotGameWorkbenchMessage` (both directions, reliable, not required) carries ask, request, reply and access frames. `DotGameNetcode.build` serves it; a client's bridge calls `DotGameWorkbenchMessage.register(net)` (or `DotGameWorkbenchRemoteClient.attach(net)`) before the schema seals.
+- **Server.** `DotGameWorkbenchRemote` (found with `DotGameWorkbenchRemote.of(net)`; `wb.serve_remote(net)` binds it to the api, the console cvar and `DotServer.admins`). Every request is checked in order: cvar on, an identified account (a guest is never an admin), size (4096 bytes), rate (4/s, burst 8 per peer), then the flag the op needs, held now through `DotAdminManager.uid_has_permission`, so a revoked admin is refused on the next edit. Only then does the api see it, as the actor `remote:<uid>`, and the api's permit asks again. A refusal is a WARN with the uid and peer; an applied edit is an INFO `workbench edit` line with uid, peer, op, kind, id, key, old and new. Edits replicate through the runtime's own `broadcast`, so every client sees them.
+- **Client.** `DotGameWorkbenchRemoteClient` asks once connected and is told `allowed` and the flags; `poll()` on the server tells it again when the flags change, so a revoked admin's panel is freed. Set `wb.remote_client` before `start()`: no panel node is built until the server allows it (`panel_built` tells the host to mount it, `host_on` does), edits go to the local copy and are forwarded (`DotWorkbenchApi.forward`), and the server's reply or replicated row is the truth. F9 and `workbench` do nothing visible for anybody else (the console says `workbench: not allowed`).
+- **No local trust against a remote server.** `local_allowed(editor, debug, listen, remote)`: set `wb.remote_fn` to "connected to somebody else's server"; only a listen host stays trusted then.
+- **Not done here.** The game clients still have to create the client and set `remote_client`/`remote_fn` (zz_client's `_add_noblock_and_workbench` returns early when `link != null`), and each game's server must call `wb.serve_remote(net)`; no game is wired yet.
+
+Test: `examples/headless_workbench_remote.tscn` (the real-api half needs `addons/dot_workbench` linked and is counted as skipped otherwise).
