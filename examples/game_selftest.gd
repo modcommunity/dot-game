@@ -810,6 +810,8 @@ func _test_server_threads_reach_the_netcode() -> void:
 		"a value the game set is kept")
 
 	var nat := DotNetConfig.new()
+	sc.net_native = false
+	sc.net_native_interest = false
 	DotGameNetcode.follow_server_threads(nat, sc)
 	_check(not nat.native, "net_native off leaves the native core off")
 	sc.net_native = true
