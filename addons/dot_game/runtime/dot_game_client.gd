@@ -188,6 +188,10 @@ var gate: DotLoadGate = null
 var locked_content: Variant = null
 ## Whether `setup()` adds the slide scrape ([DotGameSlideSounds]): the server's `sv_slide_sounds`, the player's `slide_volume`. On by default; it plays only with dot-audio and a `DotAudioManager` in the registry.
 var use_slide_sounds: bool = true
+## Whether `setup()` adds dot-fx's `DotFxRenderQuality` (anisotropic filtering, anti-aliasing, mip bias; the menu's `aniso`, `aa`, `mip_bias`, `sharpness`). A no-op without dot-fx, or when a `RenderQuality` child exists.
+var use_render_quality: bool = true
+## The node [member use_render_quality] added, else null.
+var render_quality: Node = null
 ## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, is found by itself).
 var slide_settings: Object = null
 ## The slide node, once `setup()` has added it.
@@ -338,6 +342,7 @@ func setup() -> DotResult:
 	_wire_menu()
 	DotGameClientLook.build(self)
 	_add_slide_sounds()
+	_add_render_quality()
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -349,6 +354,15 @@ func setup() -> DotResult:
 ## Adds `slide_volume` to a settings schema a game builds itself (a game on dot-menu's node through `setup()` gets it without this).
 static func declare_slide_setting(schema: Object) -> void:
 	preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").declare(schema)
+
+
+func _add_render_quality() -> void:
+	if not use_render_quality or gate_only:
+		return
+	var store: Object = null
+	if settings != null and is_instance_valid(settings):
+		store = settings.get(&"settings")
+	render_quality = preload("res://addons/dot_game/runtime/dot_game_client_render.gd").add(self, store)
 
 
 func _add_slide_sounds() -> void:

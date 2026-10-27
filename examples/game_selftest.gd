@@ -95,6 +95,7 @@ func _run() -> void:
 		_test_thread_defaults_off()
 		_test_map_load_threads()
 		_test_client_vis_mode()
+		_test_render_quality()
 		_test_relevance_cvars()
 		await _test_slide_sounds()
 		await _test_avatar_actions()

@@ -456,6 +456,56 @@ class VisConsole extends Node:
 		return list
 
 
+class RenderStore:
+	extends RefCounted
+	signal changed(key: StringName, value: Variant, why: StringName)
+	var vals := {}
+	func get_int(key: StringName, d: int) -> int:
+		return int(vals.get(key, d))
+	func get_float(key: StringName, d: float) -> float:
+		return float(vals.get(key, d))
+
+
+func _test_render_quality() -> void:
+	_section("every client applies render quality (dot-fx) from the menu's keys, no per-game wiring")
+	var c := DotGameClient.new()
+	c.use_gate = false
+	c.use_settings = false
+	c.use_console = false
+	c.use_slide_sounds = false
+	c.capture_pointer = false
+	add_child(c)
+	var has_fx := ResourceLoader.exists("res://addons/dot_fx/runtime/dot_fx_render_quality.gd")
+	_check(c.setup().ok, "setup succeeds")
+	if not has_fx:
+		_check(c.render_quality == null, "without dot-fx it is a no-op")
+	else:
+		_check(c.render_quality != null and c.get_node_or_null("RenderQuality") == c.render_quality, "the node is added")
+		var vp := c.get_viewport()
+		_check(vp.anisotropic_filtering_level == Viewport.ANISOTROPY_16X, "desktop default is 16x anisotropic")
+		var store := RenderStore.new()
+		c.render_quality.follow(store)
+		store.vals[&"aniso"] = 8
+		store.vals[&"mip_bias"] = -0.5
+		store.changed.emit(&"aniso", 8, &"set")
+		_check(vp.anisotropic_filtering_level == Viewport.ANISOTROPY_8X, "the menu's aniso reaches the viewport")
+		_check(is_equal_approx(vp.texture_mipmap_bias, -0.5), "and mip_bias")
+	c.use_render_quality = false
+	var off := DotGameClient.new()
+	off.use_render_quality = false
+	off.use_gate = false
+	off.use_settings = false
+	off.use_console = false
+	off.use_slide_sounds = false
+	off.capture_pointer = false
+	add_child(off)
+	off.setup()
+	_check(off.render_quality == null, "use_render_quality = false adds nothing")
+	off.queue_free()
+	c.queue_free()
+	_done()
+
+
 func _test_client_vis_mode() -> void:
 	_section("map culling is opt-in, and the console's vis_mode drives it")
 	var c := DotGameClient.new()
