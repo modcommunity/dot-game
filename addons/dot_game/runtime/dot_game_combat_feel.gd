@@ -132,4 +132,6 @@ func drive(crosshair: Control, arsenal: Object, fov: float = 75.0) -> void:
 	if not crosshair.has_method(&"set_spread"):
 		return
 	crosshair.set(&"fov_degrees", clampf(fov, 10.0, 170.0))
+	if arsenal.has_method(&"crosshair_scale"):
+		crosshair.set(&"gap_scale", clampf(float(arsenal.call(&"crosshair_scale")), 0.1, 4.0))
 	crosshair.call(&"set_spread", float(arsenal.call(&"spread_now")))

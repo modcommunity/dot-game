@@ -388,6 +388,45 @@ func _test_combat_feel_inert() -> void:
 	_done()
 
 
+class FakeSpread:
+	extends RefCounted
+	var enabled := true
+
+
+class FakeArsenal:
+	extends Node
+	var scale := 1.0
+	func spread_now() -> float:
+		return 1.0
+	func crosshair_scale() -> float:
+		return scale
+
+
+class FakeCrosshair:
+	extends Control
+	var gap_scale := 1.0
+	var fov_degrees := 75.0
+	func set_spread(_d: float) -> void:
+		pass
+
+
+func _test_combat_feel_gap_scale() -> void:
+	_section("drive carries the weapon's crosshair_scale to the crosshair: a sniper wider, an automatic tighter")
+	var feel := DotGameCombatFeel.new(true)
+	feel.spread = FakeSpread.new()
+	var arsenal := FakeArsenal.new()
+	var cross := FakeCrosshair.new()
+	arsenal.scale = 1.6
+	feel.drive(cross, arsenal)
+	_check(is_equal_approx(cross.gap_scale, 1.6), "a sniper's scale widens the gap")
+	arsenal.scale = 0.7
+	feel.drive(cross, arsenal)
+	_check(is_equal_approx(cross.gap_scale, 0.7), "an automatic's scale tightens it")
+	arsenal.free()
+	cross.free()
+	_done()
+
+
 func _test_thread_defaults_off() -> void:
 	_section("threads are off by default and turn on only through their own switch")
 	var sc := DotServerConfig.new()
