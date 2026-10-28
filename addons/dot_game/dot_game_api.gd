@@ -55,5 +55,6 @@ extends RefCounted
 # 28: DotGameCombatFeel sprint (sv_sprint*, sv_stamina*): sprint, sprint_defaults, track_tunables, the with_sprint argument.
 # 29: slide sounds for every first-person game: DotGameClient use_slide_sounds / slide_settings / slide_sounds, the sv_slide_sounds cvar bound by DotGameModule, the slide_volume setting.
 # 30: the remote workbench: DotGameWorkbenchMessage / Remote / RemoteClient, DotGameWorkbench remote_client / remote_fn / serve_remote / panel_built, local_allowed(remote), the sv_workbench_remote cvar.
-const LEVEL := 30
+# 31: DotGamePrejoin.extra_steps (a game or addon adds async pre-join steps, such as a trail pack fetch).
+const LEVEL := 31
 const OLDEST := 1

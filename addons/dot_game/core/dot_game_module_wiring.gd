@@ -131,3 +131,25 @@ static func watched_packs(host: Object) -> Array:
 				var parts := DotGameDescriptor.split_key(key)
 				out.append({"id": parts[0], "version": parts[1]})
 	return out
+
+
+## Applies the map's scripts and per-map config, building the config on first use.
+static func apply_map_config(m: DotGameModule, map_id: String) -> void:
+	if m.map_scripts != null:
+		if m.map_scripts.console == null:
+			m.map_scripts.console = m.console
+		m.map_scripts.map_changed()
+	if m.map_config == null:
+		var keys := m._map_config_keys()
+		if m.map_scripts != null:
+			keys.merge(m.map_scripts.config_keys())
+		var defaults := m._map_config_defaults()
+		if keys.is_empty() and defaults.is_empty():
+			return
+		m.map_config = DotGameMapConfig.new()
+		m.map_config.game_id = m._map_config_game()
+		m.map_config.keys = keys
+		m.map_config.defaults = defaults
+		m.map_config.get_fn = m._map_config_get
+		m.map_config.set_fn = m._map_config_set
+	m.map_config.apply(map_id)

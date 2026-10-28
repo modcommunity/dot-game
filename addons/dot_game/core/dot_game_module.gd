@@ -609,24 +609,7 @@ func _map_config_set(key: String, value: Variant) -> bool:
 
 
 func _apply_map_config(map_id: String) -> void:
-	if map_scripts != null:
-		if map_scripts.console == null:
-			map_scripts.console = console
-		map_scripts.map_changed()
-	if map_config == null:
-		var keys := _map_config_keys()
-		if map_scripts != null:
-			keys.merge(map_scripts.config_keys())
-		var defaults := _map_config_defaults()
-		if keys.is_empty() and defaults.is_empty():
-			return
-		map_config = DotGameMapConfig.new()
-		map_config.game_id = _map_config_game()
-		map_config.keys = keys
-		map_config.defaults = defaults
-		map_config.get_fn = _map_config_get
-		map_config.set_fn = _map_config_set
-	map_config.apply(map_id)
+	DotGameModuleWiring.apply_map_config(self, map_id)
 
 
 func _module_unload() -> void:
