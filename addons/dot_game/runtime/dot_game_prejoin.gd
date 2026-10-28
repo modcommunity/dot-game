@@ -25,18 +25,20 @@ var rules_fn: Callable = Callable()
 ## Assigned, replaces the download: `func(ids: Array, gate: DotLoadGate) -> DotResult`. For suites.
 var fetch_fn: Callable = Callable()
 var http: DotHttp = null
-## Assigned, fetches the server's trail pack: `func(rules: Dictionary) -> DotResult` (DotGameTrailClient.fetch_pack). A failure is a warning; the join goes ahead without trails.
-var trails_fn: Callable = Callable()
+## Extra steps an addon adds, each `func(rules: Dictionary) -> DotResult`, run in order with the server's rules before the avatar files (a content pack the rules name, say). A failure is a warning; the join goes ahead.
+var extra_steps: Array[Callable] = []
 
 
 ## Success holds the number of files downloaded. A failure means the files are not ready;
 ## the caller logs it and connects regardless.
 func prepare(host: Node, address: String) -> DotResult:
 	var rules: Dictionary = await _rules(host, address)
-	if trails_fn.is_valid():
-		var trails: DotResult = await trails_fn.call(rules)
-		if trails != null and not trails.ok:
-			DotLog.warn(CHANNEL, "trail pack not ready; joining without trails", {"why": trails.error.message, "address": address})
+	for step in extra_steps:
+		if not step.is_valid():
+			continue
+		var done: DotResult = await step.call(rules)
+		if done != null and not done.ok:
+			DotLog.warn(CHANNEL, "extra pre-join step failed; joining anyway", {"why": done.error.message, "address": address})
 	var ids := DotGameAvatarContent.ids_from_rules(rules)
 	if ids.is_empty():
 		return DotResult.success(0)

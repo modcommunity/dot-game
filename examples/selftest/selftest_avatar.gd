@@ -440,6 +440,16 @@ func _test_prejoin() -> void:
 	var failed: DotResult = await pj.prepare(host, "127.0.0.1:1")
 	_check(not failed.ok and failed.error.code == DotError.CODE_NETWORK, "a failed download is reported so the caller can log it and join anyway")
 
+	var steps := []
+	pj.fetch_fn = func(_ids: Array, _gate: DotLoadGate) -> DotResult: return DotResult.success(1)
+	pj.extra_steps.append(func(rules: Dictionary) -> DotResult:
+		steps.append(rules.get("sv_avatar_content", ""))
+		return DotResult.fail(DotError.CODE_NETWORK, "pack host down"))
+	var stepped: DotResult = await pj.prepare(host, "127.0.0.1:1")
+	_check(steps == ["avatar/5/1"], "an extra pre-join step is handed the server's rules")
+	_check(stepped.ok and stepped.value == 1, "a failing extra step never blocks the join or the avatar files")
+	pj.extra_steps.clear()
+
 	pj.timeout_sec = 0.3
 	pj.fetch_fn = func(_ids: Array, _gate: DotLoadGate) -> DotResult:
 		await get_tree().create_timer(5.0).timeout
