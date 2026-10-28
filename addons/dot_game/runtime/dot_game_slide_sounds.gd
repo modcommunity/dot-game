@@ -108,9 +108,13 @@ static func is_controller(node: Node) -> bool:
 	return false
 
 
-## The bodies being followed, one per live controller.
+var _bodies: Array = []
+
+
+## The bodies being followed, one per live controller; the array is reused each call.
 func bodies() -> Array:
-	var out: Array = []
+	var out := _bodies
+	out.clear()
 	for id: int in _controllers.keys():
 		var controller: Node = (_controllers[id] as WeakRef).get_ref()
 		if controller == null or not is_instance_valid(controller) or not controller.is_inside_tree():
@@ -147,12 +151,14 @@ func _bind() -> void:
 			var held := String(l.call(&"replicated_cvar", CVAR, ""))
 			if held != "":
 				enabled = held != "0"
-			l.connect(&"replicated_cvar_changed", _on_cvar)
+			if not l.is_connected(&"replicated_cvar_changed", _on_cvar):
+				l.connect(&"replicated_cvar_changed", _on_cvar)
 	var s: Object = settings_fn.call() if settings_fn.is_valid() else null
 	if s != _bound_settings and s != null and is_instance_valid(s):
 		_bound_settings = s
 		if s.has_signal(&"changed"):
-			s.connect(&"changed", _on_setting)
+			if not s.is_connected(&"changed", _on_setting):
+				s.connect(&"changed", _on_setting)
 		slide.set(&"volume", float(s.call(&"get_float", SETTING, 1.0)))
 
 
