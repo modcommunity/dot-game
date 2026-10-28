@@ -4,8 +4,6 @@ extends RefCounted
 ## The avatar and action files a server requires, advertised as one notify cvar (in the query
 ## rules, [code]entry.rules[CVAR][/code]) and fetched by the client before it connects.
 
-const CHANNEL := "game.avatar_content"
-
 ## Comma-separated content ids ([code]avatar/<id>/<version>[/code], [code]action/<id>/<version>[/code]).
 const CVAR := "sv_avatar_content"
 

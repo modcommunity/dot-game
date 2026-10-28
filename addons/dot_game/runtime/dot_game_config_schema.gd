@@ -4,8 +4,6 @@ extends RefCounted
 ## What a [DotConfig]'s exported fields look like to a form: type, bounds, options, group and
 ## description, read from the property list and the doc comments.
 
-const CHANNEL := "game.config"
-
 ## Fields of this type are not exposed (no scalar or list form).
 const _TYPES := {
 	TYPE_BOOL: "bool", TYPE_INT: "int", TYPE_FLOAT: "float", TYPE_STRING: "string",

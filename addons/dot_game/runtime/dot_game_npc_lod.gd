@@ -64,6 +64,7 @@ static func attach(p_host: Node, p_console: DotConsole, p_spawner: Object, p_ser
 	lod.spawner = p_spawner
 	lod.server_config = p_server_config
 	lod._players = p_players
+	DotLog.debug(CHANNEL, "attached")
 	lod.follow()
 	return lod
 

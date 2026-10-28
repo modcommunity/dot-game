@@ -71,6 +71,7 @@ func bind(add_cvar: Callable, host: Object, runtime: Object = null) -> DotResult
 		var res: Variant = commands.call(&"install", host)
 		if res is DotResult and not (res as DotResult).ok:
 			return (res as DotResult).wrap("!block and !noblock")
+	DotLog.debug(CHANNEL, "bound", {"chat_commands": commands != null})
 	return DotResult.success(self)
 
 

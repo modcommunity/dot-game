@@ -39,6 +39,7 @@ static func ticket_resolver(auth: Object) -> Callable:
 		return Callable()
 	# An empty server_id makes verify skip the audience check, so any server's ticket would pass.
 	if str(cfg.get("server_id")).strip_edges().is_empty():
+		DotLog.warn(CHANNEL, "ticket sign-in is off: server_id is empty, so the audience cannot be checked")
 		return Callable()
 	var key: String = cfg.get("ticket_public_key")
 	var sid: String = cfg.get("server_id")
@@ -52,6 +53,7 @@ static func identity_of_ticket(token: String, public_key: String, server_id: Str
 		return null
 	var res: DotResult = (load(TICKET_SCRIPT) as GDScript).call("verify", token, public_key, server_id, leeway)
 	if not res.ok:
+		DotLog.debug(CHANNEL, "ticket refused", {"code": res.error.code})
 		return null
 	var who: Object = (res.value as Dictionary).get("identity")
 	return who if who != null and int(who.get("expires_at")) > 0 else null

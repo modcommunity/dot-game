@@ -2,8 +2,6 @@ extends Object
 
 ## The relevance settings as server cvars: `net_interest_radius`, `net_far_every`, `net_far_distance`. 0 on each means the game's own value; the operator file (the same names in server.yml) is the starting value.
 
-const CHANNEL := "game.relevance"
-
 ## cvar name -> [DotNetInterestDistance] property.
 const CVARS := {
 	"net_interest_radius": "radius",

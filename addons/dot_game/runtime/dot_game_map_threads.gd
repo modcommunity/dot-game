@@ -34,6 +34,7 @@ static func apply(workers: int) -> bool:
 	if script == null:
 		return false
 	script.set(&"default_workers", workers)
+	DotLog.debug(CHANNEL, "map load workers set", {"workers": workers})
 	return true
 
 
