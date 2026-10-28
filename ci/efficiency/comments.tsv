@@ -9,7 +9,6 @@ addons/dot_game/net/dot_game_link.gd::long_block	5
 addons/dot_game/net/dot_game_netcode.gd::long_block	9
 addons/dot_game/runtime/dot_game_chat_client.gd::history	2
 addons/dot_game/runtime/dot_game_chat_client.gd::long_block	5
-addons/dot_game/runtime/dot_game_client.gd::history	1
 addons/dot_game/runtime/dot_game_client.gd::long_block	1
 addons/dot_game/runtime/dot_game_roster.gd::banner	2
 addons/dot_game/runtime/dot_game_roster.gd::long_block	11

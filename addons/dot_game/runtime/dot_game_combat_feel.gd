@@ -3,14 +3,7 @@ extends RefCounted
 
 ## Movement-dependent spread, recoil patterns and the spread crosshair for a game that opts in.
 ## dot-weapon and dot-ui are loaded by path and named nowhere: a build without them gets inert no-ops.
-##
-## [codeblock]
-## var feel := DotGameCombatFeel.new(true)       # both sides; false keeps the rules off until sv_*_enabled
-## feel.attach(player.arsenal)                   # every arsenal, both sides
-## feel.track_tunables(player.controller.tunables)  # sprint and stamina, every player's tunables
-## feel.bind_cvars(add_cvar)                     # server module
-## client.add_combat_feel(feel, crosshair, func(): return player.arsenal)   # client
-## [/codeblock]
+## Wire it with [method attach], [method track_tunables], [method bind_cvars] and [method DotGameClient.add_combat_feel].
 
 const SPREAD_SCRIPT := "res://addons/dot_weapon/math/dot_weapon_spread_rules.gd"
 const RECOIL_SCRIPT := "res://addons/dot_weapon/math/dot_weapon_recoil_rules.gd"

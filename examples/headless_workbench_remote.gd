@@ -155,6 +155,12 @@ func _run() -> void:
 	var got := api.calls.size() - before
 	_check(got >= 1 and got < 30 and _log("WARN", "refused", "why", "rate limited") > 0, "a flood is rate limited and logged (%d of 30 passed)" % got)
 
+	_panel_phase(_client_phase(net, remote, api, flags, clock))
+	_real_api(remote, flags, clock, enabled)
+	_finish()
+
+
+func _client_phase(net: DotNetManager, remote: DotGameWorkbenchRemote, api: FakeApi, flags: Dictionary, clock: Array) -> DotGameWorkbenchRemoteClient:
 	# Access notices ride the real wire to a client; a revoked flag closes the panel.
 	var cnet := _net(false)
 	var client := DotGameWorkbenchRemoteClient.attach(cnet)
@@ -188,7 +194,10 @@ func _run() -> void:
 	client.refused.connect(func(_s: int, m: String) -> void: refusals.append(m))
 	var _q := client.request({"op": "set", "kind": "npc", "id": "zombie", "key": "health", "value": 1})
 	_check(replies.size() == 1 and replies[0]["ok"] == false and refusals.size() == 1, "the client hears the refusal")
+	return client
 
+
+func _panel_phase(client: DotGameWorkbenchRemoteClient) -> void:
 	# Not trusted locally against a remote server.
 	_check(DotGameWorkbench.local_allowed(false, true, false, false), "offline, a debug build trusts its own panel")
 	_check(not DotGameWorkbench.local_allowed(false, true, false, true), "a debug build connected to a remote server does not")
@@ -206,9 +215,6 @@ func _run() -> void:
 	_check(str(wb.console_command(PackedStringArray(["open"]))) == "workbench: not allowed" or not DotGameWorkbench.available(), "the console says a neutral not allowed")
 	wb.toggle()
 	_check(not wb.is_open(), "F9 does nothing for a non-admin")
-
-	_real_api(remote, flags, clock, enabled)
-	_finish()
 
 
 ## Needs dot-workbench linked into this project; skipped (and counted as such) when it is not.

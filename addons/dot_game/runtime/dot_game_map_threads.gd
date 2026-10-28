@@ -44,7 +44,7 @@ static func current() -> int:
 	return int(script.get(&"default_workers")) if script != null else 0
 
 
-## Adds the variable to a client console source (found by [DotGameClient]'s vis helper) and applies the value it holds.
+## Adds the variable to a client console source (looked up by [DotGameClient]'s vis helper) and applies the value it holds.
 static func add_client_var(local: Object) -> void:
 	local.call(&"add_var", StringName(CVAR), HELP,
 		func() -> Variant: return client_value,

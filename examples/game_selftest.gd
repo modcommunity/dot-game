@@ -1,4 +1,4 @@
-extends "selftest/selftest_extra.gd"
+extends "selftest/selftest_slide.gd"
 
 ## dot-game: the sequence, the roster, the tick, and every way it has to unwind.
 ##

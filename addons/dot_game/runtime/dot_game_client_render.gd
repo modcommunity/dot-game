@@ -2,7 +2,7 @@ extends RefCounted
 
 ## [DotGameClient]'s render quality: dot-fx's [DotFxRenderQuality] on the client, so every game gets
 ## anisotropic filtering, anti-aliasing and mip bias from the player's menu and the `--render-*` cvars.
-## No class_name: the client preloads it. dot-fx is optional and found by path.
+## No class_name: the client preloads it. dot-fx is optional and looked up by path.
 
 const CHANNEL := "game.client"
 const SCRIPT := "res://addons/dot_fx/runtime/dot_fx_render_quality.gd"

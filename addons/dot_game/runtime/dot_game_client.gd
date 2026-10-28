@@ -16,7 +16,7 @@ extends Node
 ##
 ## A child the client root adds, never a base class: roots are Node, Node2D and Node3D. [method _ready] puts the cover up before the game builds anything; [method setup] builds the settings and menu after the game made what they bind to.
 ##
-## dot-menu and dot-console are found by path and driven by `call` and `set`, so a build without either still parses. Each piece switches off ([member use_gate], [member use_settings], [member use_console], [member capture_pointer], [member sync_on_exit], an empty [member scoreboard_action]); override [method _make_settings] or [method _make_gate] to build one differently.
+## dot-menu and dot-console are looked up by path and driven by `call` and `set`, so a build without either still parses. Each piece switches off ([member use_gate], [member use_settings], [member use_console], [member capture_pointer], [member sync_on_exit], an empty [member scoreboard_action]); override [method _make_settings] or [method _make_gate] to build one differently.
 ##
 ## A HUD or chat built after setup goes through [method set_hud] and [method set_chat]; a game with its own menu assigns [member menu] or calls [method adopt_menu]; [member gate_only] takes only the gate, link, input block and web flush.
 
@@ -194,7 +194,7 @@ var use_slide_sounds: bool = true
 var use_render_quality: bool = true
 ## The node [member use_render_quality] added, else null.
 var render_quality: Node = null
-## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, is found by itself).
+## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, finds itself).
 var slide_settings: Object = null
 ## The slide node, once `setup()` has added it.
 var slide_sounds: Node = null
@@ -543,17 +543,7 @@ func set_vis_mode(mode: String) -> bool:
 
 ## Relays the menu's open and close as [signal menu_state_changed], from the settings node else the menu (an adopted menu also via `overlays_changed`).
 func _connect_menu_state() -> void:
-	if settings != null and settings.has_signal(&"menu_state_changed") \
-			and not settings.is_connected(&"menu_state_changed", _on_menu_state):
-		settings.connect(&"menu_state_changed", _on_menu_state)
-	if menu == null or not menu.has_signal(&"overlays_changed"):
-		return
-	if menu == _settings_menu() and settings != null and settings.has_signal(&"menu_state_changed"):
-		return
-	if not menu.is_connected(&"overlays_changed", _on_menu_state):
-		menu.connect(&"overlays_changed", _on_menu_state)
-		_wired_menu = menu
-		_wired_signal = &"overlays_changed"
+	DotGameClientMenu.connect_state(self)
 
 
 func _settings_menu() -> Object:
@@ -565,19 +555,7 @@ func _settings_menu() -> Object:
 
 ## Undoes _wire_menu for the menu being replaced: its signal, busy callable and HUD follow.
 func _unwire_menu() -> void:
-	var old: Object = menu
-	if old == null or not is_instance_valid(old):
-		_wired_menu = null
-		return
-	if old.has_signal(&"overlays_changed") and old.is_connected(&"overlays_changed", _on_menu_state):
-		old.disconnect(&"overlays_changed", _on_menu_state)
-	_wired_menu = null
-	_wired_signal = &""
-	if &"busy" in old:
-		old.set(&"busy", Callable())
-	if hud != null and is_instance_valid(hud) and old.has_method(&"unfollow_hud"):
-		old.call(&"unfollow_hud", hud)
-	_menu_open = false
+	DotGameClientMenu.unwire(self)
 
 
 func _wire_menu() -> void:
@@ -599,20 +577,7 @@ func _wire_menu() -> void:
 
 
 func _ensure_scoreboard_action() -> void:
-	if scoreboard_action != SCOREBOARD_ACTION or InputMap.has_action(scoreboard_action):
-		return
-	InputMap.add_action(scoreboard_action)
-	var tab := InputEventKey.new()
-	tab.physical_keycode = KEY_TAB
-	InputMap.action_add_event(scoreboard_action, tab)
-
-
-func _look_chat_mute(peer: int, muted: bool) -> void:
-	DotGameClientLook.chat_mute(self, peer, muted)
-
-
-func _look_target() -> int:
-	return DotGameClientLook.target(self)
+	DotGameClientMenu.ensure_scoreboard_action(self)
 
 
 ## The first of [param candidates] no action holds and no row of [param table] defaults to.
@@ -635,6 +600,14 @@ func find_look_conflicts() -> Array[Dictionary]:
 	return DotGameClientLook.conflicts(self)
 
 
+func _look_chat_mute(peer: int, muted: bool) -> void:
+	DotGameClientLook.chat_mute(self, peer, muted)
+
+
+func _look_target() -> int:
+	return DotGameClientLook.target(self)
+
+
 func _on_menu_state(any_open: bool) -> void:
 	_menu_open = any_open
 	if capture_pointer:
@@ -655,15 +628,7 @@ func _input(event: InputEvent) -> void:
 
 ## Whether [param event] was an Escape that only freed the captured pointer; nothing is freed while a menu, the chat or the game's keyboard owner has the keys.
 func _release_pointer_on_escape(event: InputEvent) -> bool:
-	if not escape_releases_pointer or not capture_pointer or not _set_up or gate_only:
-		return false
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or key.physical_keycode != KEY_ESCAPE:
-		return false
-	if not _pointer_captured() or is_menu_open() or _chat_typing() or _busy():
-		return false
-	_free_pointer()
-	return true
+	return DotGameClientPointer.escape_frees(self, event)
 
 
 # Two seams: a headless display server keeps no captured mode, so the suite overrides these.
@@ -676,14 +641,7 @@ func _free_pointer() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not capture_pointer or not _set_up or gate_only:
-		return
-	var click := event as InputEventMouseButton
-	if click == null or not click.pressed or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		return
-	if is_menu_open() or _chat_typing() or _busy() or not is_shown() or not _pointer_wanted():
-		return
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	DotGameClientPointer.click_captures(self, event)
 
 
 func _pointer_wanted() -> bool:
@@ -691,32 +649,15 @@ func _pointer_wanted() -> bool:
 
 
 func _process(_delta: float) -> void:
-	_drive_combat_feel()
+	DotGameClientFeel.drive(self)
 	# Polled as well as signalled: busy_fn is the game's and says nothing when it changes.
 	_refresh_blocked()
-	_refresh_page_guard()
+	DotGamePageGuard.refresh(self)
 
 
 ## Opts this client into [DotGameCombatFeel]: follows the server's sv_spread_* / sv_recoil_* values, adds cl_crosshair_* to the console once it exists, and opens [param crosshair] with the cone of the arsenal [param arsenal_fn] returns each frame. Call after [method setup]; [param link] defaults to this client's.
 func add_combat_feel(feel: DotGameCombatFeel, crosshair: Control, arsenal_fn: Callable, camera_fn: Callable = Callable()) -> void:
-	_feel = feel
-	_feel_crosshair = crosshair
-	_feel_arsenal_fn = arsenal_fn
-	_feel_camera_fn = camera_fn
-	if link != null:
-		feel.follow_cvars(link)
-	if console != null:
-		var _bound := feel.bind_console(console, crosshair)
-
-
-func _drive_combat_feel() -> void:
-	if _feel == null or not _feel_arsenal_fn.is_valid():
-		return
-	if not _feel_console_bound and console != null:
-		_feel_console_bound = _feel.bind_console(console, _feel_crosshair)
-	var cam: Variant = _feel_camera_fn.call() if _feel_camera_fn.is_valid() else null
-	var fov: float = float((cam as Camera3D).fov) if cam is Camera3D else 75.0
-	_feel.drive(_feel_crosshair, _feel_arsenal_fn.call() as Object, fov)
+	DotGameClientFeel.add(self, feel, crosshair, arsenal_fn, camera_fn)
 
 
 ## True while this client is online with the link connected; the main menu, a normal leave and a dropped link are false.
@@ -724,10 +665,6 @@ func is_in_live_game() -> bool:
 	if offline or link == null or not is_instance_valid(link):
 		return false
 	return link.has_method(&"is_connected_to_server") and bool(link.call(&"is_connected_to_server"))
-
-
-func _refresh_page_guard() -> void:
-	DotGamePageGuard.refresh(self)
 
 
 ## Drops the leave-site prompt now, for code that deliberately navigates the page. The next frame re-arms it if the link is live, so call it in the same frame.
@@ -794,21 +731,7 @@ func is_shown() -> bool:
 
 ## True while the Escape menu, one of its screens or the console is open.
 func is_menu_open() -> bool:
-	if settings != null and is_instance_valid(settings) and settings.has_method(&"is_open"):
-		if bool(settings.call(&"is_open")):
-			return true
-		var own: Object = _settings_menu()
-		if menu != null and menu != own and is_instance_valid(menu):
-			for method: StringName in [&"any_open", &"is_open"]:
-				if menu.has_method(method):
-					return bool(menu.call(method))
-		return false
-	# A menu adopted without settings: its own answer, else what its signal last said.
-	if settings == null and menu != null and is_instance_valid(menu):
-		for method: StringName in [&"any_open", &"is_open"]:
-			if menu.has_method(method):
-				return bool(menu.call(method))
-	return _menu_open
+	return DotGameClientMenu.is_open(self)
 
 
 func _chat_typing() -> bool:
@@ -868,42 +791,8 @@ func _notification(what: int) -> void:
 
 
 func describe() -> Dictionary:
-	return {
-		"host": str(host.name) if host != null else "",
-		"offline": offline,
-		"user_tier": user_tier_on,
-		"link": link != null,
-		"gate": gate.describe() if gate != null and is_instance_valid(gate) else {},
-		"set_up": _set_up,
-		"settings": settings != null,
-		"menu": menu != null,
-		"menu_open": is_menu_open(),
-		"console": console != null,
-		"chat": chat != null,
-		"typing": _chat_typing(),
-		"board": board != null,
-		"maps": maps != null,
-		"scoreboard_action": String(scoreboard_action),
-		"look_mute": look_mute != null,
-		"look_conflicts": look_conflicts.size(),
-		"input_blocked": is_input_blocked(),
-		"capture_pointer": capture_pointer,
-		"leave_guard": _guard_armed,
-		"leave_guard_installed": _guard_installed,
-	}
+	return DotGameClientDescribe.describe(self)
 
 
 func describe_lines() -> PackedStringArray:
-	var d := describe()
-	var out := PackedStringArray()
-	out.append("client %s, %s" % [d["host"], "offline" if offline else "connected"])
-	out.append("  cover %s" % ("lifted" if is_shown() else "up"))
-	out.append("  settings %s, menu %s%s, console %s" % [
-		"yes" if d["settings"] else "no", "yes" if d["menu"] else "no",
-		" (open)" if d["menu_open"] else "", "yes" if d["console"] else "no"])
-	out.append("  chat %s%s, board %s, maps %s" % [
-		"yes" if d["chat"] else "no", " (typing)" if d["typing"] else "",
-		"yes" if d["board"] else "no", "yes" if d["maps"] else "no"])
-	out.append("  input %s" % ("blocked" if d["input_blocked"] else "live"))
-	out.append("  leave-site prompt %s" % ("armed" if d["leave_guard"] else "off"))
-	return out
+	return DotGameClientDescribe.lines(self)

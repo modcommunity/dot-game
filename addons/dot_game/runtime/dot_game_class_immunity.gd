@@ -2,11 +2,7 @@ class_name DotGameClassImmunity
 extends RefCounted
 
 ## Per-class damage immunity for a game with dot-combat and dot-player-class, both loaded by path
-## and named nowhere. A game calls [method apply] where it applies a class to a spawned player.
-##
-## [codeblock]
-## DotGameClassImmunity.apply(combat, class_def, player_id)   # at every spawn; null def clears
-## [/codeblock]
+## and named nowhere. Call [method apply] with (combat, class_def, player_id) at every spawn; a null def clears.
 
 const IMMUNITY_SCRIPT := "res://addons/dot_combat/resolve/dot_damage_immunity.gd"
 const APPLY_SCRIPT := "res://addons/dot_player_class/bridge/dot_player_class_apply.gd"

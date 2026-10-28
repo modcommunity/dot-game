@@ -35,3 +35,26 @@ static func on_mode_changed(on: bool, c, node: Node) -> void:
 		c.hold_pointer(node)
 	else:
 		c.release_pointer(node)
+
+
+static func escape_frees(c: DotGameClient, event: InputEvent) -> bool:
+	if not c.escape_releases_pointer or not c.capture_pointer or not c._set_up or c.gate_only:
+		return false
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo or key.physical_keycode != KEY_ESCAPE:
+		return false
+	if not c._pointer_captured() or c.is_menu_open() or c._chat_typing() or c._busy():
+		return false
+	c._free_pointer()
+	return true
+
+
+static func click_captures(c: DotGameClient, event: InputEvent) -> void:
+	if not c.capture_pointer or not c._set_up or c.gate_only:
+		return
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		return
+	if c.is_menu_open() or c._chat_typing() or c._busy() or not c.is_shown() or not c._pointer_wanted():
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
