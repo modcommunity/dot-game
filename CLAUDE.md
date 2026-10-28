@@ -15,6 +15,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/map-config.md](docs/map-config.md) | a game taking per-map settings (`DotGameMapConfig`, `_map_config_keys`, `DotGameClient.map_changed`) |
 | [docs/config-binder.md](docs/config-binder.md) | a game's `*Config` made server-tunable: `DotGameConfigBinder`, strict boot, the cvars, the workbench kind, the yml diff |
 | [docs/avatar-actions.md](docs/avatar-actions.md) | emotes, poses and gestures: the checked message and relay, `DotGameClient.add_avatar_actions`, the module's `_avatar_actions_equipped` and `_avatar_action_veto` hooks, the server-read loadouts (`DotGameAvatarLoadouts`) and uploaded clips on other players |
+| [docs/trails.md](docs/trails.md) | player trails: `DotGameTrailRelay`, `DotGameTrailClient`, the `sv_trail_pack` rule and the prejoin hook |
 | [docs/noblock.md](docs/noblock.md) | teammates passing through each other: `DotGameNoblock`, the module's `_noblock_*` hooks, `DotGameClient.add_noblock`, the `noblock` cfg kind |
 | [docs/workbench.md](docs/workbench.md) | hosting dot-workbench: `DotGameWorkbench`, `DotGameClient.add_workbench`, dot-auth accounts (`DotGameWorkbenchAuth`) |
 | [docs/qa.md](docs/qa.md) | `tools/perf_budget.sh`, `visual_check.sh`, `netchaos.sh` and the `DotGameNetchaos*` classes: what a game supplies (`tools/qa.conf`, the two netchaos scripts) |
