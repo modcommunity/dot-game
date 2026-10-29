@@ -4,6 +4,9 @@ extends RefCounted
 ## What [DotGameClient] does for avatar actions and the files a server advertises; the client keeps the state.
 
 const CHANNEL := "game.client"
+## The node service a client is published under once it knows its figures, so an addon can find a player's figure.
+const SERVICE := &"dot_game_client"
+const FIGURE_META := &"dot_game_figure_fn"
 
 
 static func prepare_content(c: DotGameClient, rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
@@ -22,6 +25,7 @@ static func prepare_content(c: DotGameClient, rules: Dictionary, base_url: Strin
 
 
 static func add_actions(c: DotGameClient, net: DotNetManager, figure_fn: Callable, backbone_actions: Variant = null) -> DotResult:
+	publish_figures(c, figure_fn)
 	var path := "res://addons/dot_user_avatar/actions/dot_avatar_action_input.gd"
 	if not ResourceLoader.exists(path):
 		return DotResult.fail(DotError.CODE_UNSUPPORTED, "dot-user-avatar is not in this build.")
@@ -66,3 +70,19 @@ static func read_actions(http: DotHttp, user_key: String, headers: Dictionary) -
 	if http == null or not ResourceLoader.exists(path):
 		return DotResult.success(null)
 	return await (load(path) as GDScript).call(&"fetch_actions", http, user_key, headers)
+
+
+## Publishes [param c] as [constant SERVICE] with [param figure_fn] (peer id -> figure); add_avatar_actions does it.
+static func publish_figures(c: DotGameClient, figure_fn: Callable) -> void:
+	c.set_meta(FIGURE_META, figure_fn)
+	DotRegistry.register(SERVICE, c)
+
+
+## The figure of [param peer_id] in the published client, or null.
+static func figure_of(peer_id: int) -> Node:
+	var c: Object = DotRegistry.get_service(SERVICE)
+	if c == null or not is_instance_valid(c) or not c.has_meta(FIGURE_META):
+		return null
+	var fn: Callable = c.get_meta(FIGURE_META)
+	var figure: Variant = fn.call(peer_id) if fn.is_valid() else null
+	return figure as Node if figure is Node and is_instance_valid(figure) else null

@@ -519,6 +519,12 @@ func _test_site_server() -> void:
 	platform.avatar_site_url = "https://other.test"
 	platform.avatar_server_id = 9
 	_check(platform.avatar_site() == "https://other.test" and platform.avatar_server() == 9, "and a game's own values win")
+	var figure := Node.new()
+	DotGameClientAvatars.publish_figures(platform, func(peer: int) -> Node: return figure if peer == 5 else null)
+	_check(DotGameClientAvatars.figure_of(5) == figure and DotGameClientAvatars.figure_of(6) == null, "an addon finds a player's figure through the published client")
+	DotRegistry.unregister_instance(DotGameClientAvatars.SERVICE, platform)
+	_check(DotGameClientAvatars.figure_of(5) == null, "and nothing once it is gone")
+	figure.free()
 	platform.free()
 	DotRegistry.unregister_instance(&"dot_auth_client", ac)
 	_done()

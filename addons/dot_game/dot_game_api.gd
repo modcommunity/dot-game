@@ -58,5 +58,6 @@ extends RefCounted
 # 31: DotGamePrejoin.extra_steps (a game or addon adds async pre-join steps, such as a trail pack fetch).
 # 32: DotGameHitFlinch and DotGameClient.add_hit_flinch / note_hit (hit shake and aim wobble, sv_hit_*).
 # 33: DotGameStatsFeed.key_for / forget / open_sessions / scope_key_file (stable per-server stats key); DotGameClassImmunity.call_apply.
-const LEVEL := 33
+# 34: DotGameClientAvatars.publish_figures / figure_of and the dot_game_client service (an addon finds a player's figure).
+const LEVEL := 34
 const OLDEST := 1
