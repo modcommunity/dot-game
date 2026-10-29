@@ -40,3 +40,7 @@ The first hand-written game moved onto both bases (a 2D lobby, since scratched) 
 ## Hibernation
 
 After `_game_load`, `_follow_hibernation()` searches the module's subtree for anything answering `follow_hibernation(server)` (dot-vote's `DotVoteDirector`, dot-map's `DotMapSession`, found by the method and named nowhere), hands it the server, then calls `_game_hibernation(hibernating)` on every `hibernation_changed`. Every game here builds its vote under its module, so a game on this base gets "the map clock waits while the server is empty and starts again from the top when somebody joins" without a line; a clock that is the game's own rule (a ballot timer, a round) is reset in `_game_hibernation(false)`. The teardown disconnects it.
+
+## Stats sessions
+
+`DotGameModule.stats_feed` (`DotGameStatsFeed`) listens to the roster's `seated` and `unseated` signals and calls `begin(key, name, {is_bot, map})` and `end(key)` on a dot-stats tracker, set as `stats_feed.tracker` or registered as the service `dot_stats_tracker`. Duck-typed: no tracker, nothing happens. A bot is a `local` session (no transport peer), which is how dot-bot's players are seated; a seat never carries a `tmc_user`. `player_key_fn` swaps the default `u<userid>` for dot-user's scoped key.

@@ -60,6 +60,9 @@ var services: Node = null
 ## Who is in the game, as opposed to who is connected.
 var roster: DotGameRoster = null
 
+## Reports each seat to a dot-stats tracker when one is set or registered as `dot_stats_tracker`; null feeds nothing.
+var stats_feed: DotGameStatsFeed = null
+
 ## Authoritative ticks since load. The number the bridge is driven with.
 var tick: int = 0
 
@@ -395,6 +398,9 @@ func _build_roster() -> void:
 
 	roster.follow(services)
 	_follow_avatar_loadouts()
+	stats_feed = DotGameStatsFeed.new()
+	stats_feed.map_fn = func() -> String: return _reported_map
+	stats_feed.follow(roster)
 
 		# Through the module's helper, so it is unhooked on unload; a stale hook crashes the next spawn.
 	hook_post("client_spawn", _on_client_spawn)
@@ -724,6 +730,12 @@ func _teardown() -> void:
 	if server != null and roster != null:
 		if server.client_disconnected.is_connected(roster.on_client_disconnected):
 			server.client_disconnected.disconnect(roster.on_client_disconnected)
+
+	if stats_feed != null:
+		stats_feed.end_all()
+		if roster != null:
+			stats_feed.unfollow(roster)
+		stats_feed = null
 
 	if roster != null:
 		if roster.loading_changed.is_connected(_on_loading_changed):

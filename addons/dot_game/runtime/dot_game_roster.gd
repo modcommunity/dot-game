@@ -40,6 +40,12 @@ const COVER_KIND := &"game.cover"
 ## it timed out, it left).
 signal loading_changed(userid: int, loading: bool)
 
+## A session joined the game (after [member add_fn]).
+signal seated(session: DotClientSession)
+
+## A session left the game (after [member remove_fn]).
+signal unseated(session: DotClientSession)
+
 ## The server this roster reads sessions out of.
 var server: DotServer = null
 
@@ -200,6 +206,8 @@ func add(session: DotClientSession) -> DotResult:
 		if is_instance_valid(follower) and follower.has_method("add_peer"):
 			follower.call("add_peer", session.peer_id)
 
+	seated.emit(session)
+
 	DotLog.info(CHANNEL, "player joined", {
 		"userid": session.userid, "name": session.display_name
 	})
@@ -249,6 +257,8 @@ func remove(session: DotClientSession) -> void:
 		# id the live tools key a player on too.
 		if follower.has_method("forget_player"):
 			follower.call("forget_player", StringName(str(session.userid)))
+
+	unseated.emit(session)
 
 	DotLog.info(CHANNEL, "player left", {"userid": session.userid})
 
