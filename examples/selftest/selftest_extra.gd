@@ -338,6 +338,10 @@ func _test_class_immunity() -> void:
 	ctl.landed.emit(15.0)
 	_check(is_equal_approx(health.get(&"health"), 90.0) and legs.size() == 2, "the old immunity is gone")
 	_check(DotGameClassImmunity.apply(manager, immune_def, 7) == 1 and DotGameClassImmunity.apply(manager, null, 7) == 0, "a null class clears")
+	var old := GDScript.new()
+	old.source_code = "static func other() -> int:\n\treturn 1\n"
+	old.reload()
+	_check(DotGameClassImmunity.call_apply(old, immune_def, RefCounted.new(), 7) == 0, "an older dot-player-class without to_immunity is skipped, not a script error")
 	_check(not DotGameClassImmunity.ensure(manager).call(&"is_immune", 7, &"fall"), "cleared")
 	manager.queue_free()
 	ctl.queue_free()
