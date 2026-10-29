@@ -1,4 +1,4 @@
-extends "selftest/selftest_slide.gd"
+extends "selftest/selftest_stats.gd"
 
 ## dot-game: the sequence, the roster, the tick, and every way it has to unwind.
 ##
@@ -43,7 +43,7 @@ extends "selftest/selftest_slide.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 487
+const CHECKS := 502
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -64,6 +64,7 @@ func _run() -> void:
 			await _test_the_roster()
 			_test_still_loading()
 			_test_stats_feed()
+			_test_stats_keys()
 			await _test_the_tick()
 			_test_hibernation()
 			await _test_the_teardown()
@@ -494,48 +495,6 @@ func _test_still_loading() -> void:
 
 
 # --- 4. The tick -----------------------------------------------------------
-
-class _FakeTracker extends RefCounted:
-	var begun: Array = []
-	var ended: Array = []
-	func begin(id: StringName, who: String = "", meta: Dictionary = {}) -> void: begun.append([id, who, meta])
-	func end(id: StringName) -> void: ended.append(id)
-
-
-func _test_stats_feed() -> void:
-	_section("a tracker, when there is one, gets a session per seat and bots flagged")
-
-	var roster := _module.roster
-	var feed := _module.stats_feed
-	_check(feed != null, "the module builds a stats feed")
-	var t := _FakeTracker.new()
-	feed.tracker = t
-
-	var cy := _fake_session(7, 71, "Cy")
-	var rob := _fake_session(0, 72, "Rob")
-	rob.local = true
-	roster.add(cy)
-	roster.add(rob)
-	_check(t.begun.size() == 2, "each seat begins a session", str(t.begun))
-	_check(t.begun[0][1] == "Cy" and t.begun[0][2]["is_bot"] == false, "a player is not flagged a bot")
-	_check(t.begun[1][2]["is_bot"] == true, "a bot is flagged")
-	_check(not t.begun[1][2].has("tmc_user"), "no account claim rides along")
-	_check(str(t.begun[0][0]).begins_with("u"), "the key is not an account id", str(t.begun[0][0]))
-
-	roster.remove(cy)
-	_check(t.ended.size() == 1 and t.ended[0] == t.begun[0][0], "leaving ends that session")
-	feed.end_all()
-	_check(t.ended.size() == 2 and feed.open_count() == 0, "an unload ends the rest")
-
-	feed.tracker = null
-	var before := t.begun.size()
-	roster.remove(rob)
-	var dee := _fake_session(8, 73, "Dee")
-	roster.add(dee)
-	_check(t.begun.size() == before and feed.open_count() == 0, "with no tracker nothing is reported and nothing errors")
-	roster.remove(dee)
-	_done()
-
 
 func _test_the_tick() -> void:
 	_section("the tick reaches the bridge, and the game after it")
@@ -1087,14 +1046,6 @@ func _test_services_hooks() -> void:
 	link.queue_free()
 	services.queue_free()
 	_done()
-
-
-func _fake_session(peer_id: int, userid: int, who: String) -> DotClientSession:
-	var session := DotClientSession.new()
-	session.peer_id = peer_id
-	session.userid = userid
-	session.display_name = who
-	return session
 
 
 class _FakeGames extends RefCounted:

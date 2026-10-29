@@ -16,6 +16,7 @@
 /addons/dot_fx
 /addons/dot_combat
 /addons/dot_player_class
+/addons/dot_user
 
 # Exports
 build/

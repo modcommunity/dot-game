@@ -57,5 +57,6 @@ extends RefCounted
 # 30: the remote workbench: DotGameWorkbenchMessage / Remote / RemoteClient, DotGameWorkbench remote_client / remote_fn / serve_remote / panel_built, local_allowed(remote), the sv_workbench_remote cvar.
 # 31: DotGamePrejoin.extra_steps (a game or addon adds async pre-join steps, such as a trail pack fetch).
 # 32: DotGameHitFlinch and DotGameClient.add_hit_flinch / note_hit (hit shake and aim wobble, sv_hit_*).
-const LEVEL := 32
+# 33: DotGameStatsFeed.key_for / forget / open_sessions / scope_key_file (stable per-server stats key).
+const LEVEL := 33
 const OLDEST := 1
