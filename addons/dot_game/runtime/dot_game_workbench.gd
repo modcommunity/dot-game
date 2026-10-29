@@ -24,6 +24,9 @@ signal panel_built(panel: Control)
 @export var layer: int = 125
 ## Callable() -> bool: this process hosts a listen game. Unset means no.
 var listen_host_fn: Callable = Callable()
+## Build the panel's nodes on the first open instead of at start (about 50 nodes a player who never presses the key pays for).
+var lazy_panel: bool = false
+var _panel_pending := false
 ## True on a dedicated server, where no panel is built (HTTP can still run).
 var dedicated: bool = false
 ## Callable() -> bool: this process is connected to somebody else's server. While it is, even an editor or debug build is not trusted locally; the server decides.
@@ -153,12 +156,14 @@ func start(runtime: Object = null) -> DotResult:
 		remote_client.access_changed.connect(_on_remote_access)
 		if remote_client.allowed:
 			_on_remote_access(true)
+	elif want_panel and lazy_panel:
+		_panel_pending = true
 	elif want_panel:
 		_build_panel()
 	var res := _start_http()
 	if not res.ok:
 		return res
-	return DotResult.success(overlay != null or running_http)
+	return DotResult.success(overlay != null or _panel_pending or running_http)
 
 
 ## A profile set over [param types] ({cvar name: "int" | "bool" | "float" | "string"}) of [param console]'s cvars, one implicit id [constant CVAR_SET_ID]; names that are not cvars are left out. Null when none is.
@@ -332,7 +337,7 @@ func _process(_d: float) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if overlay == null or not (event is InputEventKey):
+	if (overlay == null and not _panel_pending) or not (event is InputEventKey):
 		return
 	var k := event as InputEventKey
 	if k.pressed and not k.echo and k.keycode == toggle_key:
@@ -352,6 +357,9 @@ func toggle() -> void:
 
 
 func open() -> void:
+	if overlay == null and _panel_pending:
+		_panel_pending = false
+		_build_panel()
 	if overlay == null:
 		return
 	overlay.call("open")
