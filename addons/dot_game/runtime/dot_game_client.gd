@@ -229,6 +229,7 @@ var _feel_crosshair: Control = null
 var _feel_arsenal_fn: Callable = Callable()
 var _feel_camera_fn: Callable = Callable()
 var _feel_console_bound: bool = false
+var _hit_flinch: DotGameHitFlinch = null
 # True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
 var _board_auto: bool = false
 # Boards already given to board_prepare_fn: each is prepared once, however often it is wired.
@@ -650,6 +651,8 @@ func _pointer_wanted() -> bool:
 
 func _process(_delta: float) -> void:
 	DotGameClientFeel.drive(self)
+	if _hit_flinch != null:
+		_hit_flinch.drive()
 	# Polled as well as signalled: busy_fn is the game's and says nothing when it changes.
 	_refresh_blocked()
 	DotGamePageGuard.refresh(self)
@@ -658,6 +661,22 @@ func _process(_delta: float) -> void:
 ## Opts this client into [DotGameCombatFeel]: follows the server's sv_spread_* / sv_recoil_* values, adds cl_crosshair_* to the console once it exists, and opens [param crosshair] with the cone of the arsenal [param arsenal_fn] returns each frame. Call after [method setup]; [param link] defaults to this client's.
 func add_combat_feel(feel: DotGameCombatFeel, crosshair: Control, arsenal_fn: Callable, camera_fn: Callable = Callable()) -> void:
 	DotGameClientFeel.add(self, feel, crosshair, arsenal_fn, camera_fn)
+
+
+## Opts this client into [DotGameHitFlinch]: a hit shakes the camera and wobbles the aim (sv_hit_*) instead of dropping the sights. [param sampler_fn] returns the active DotFpsSampler, [param camera_fn] the view's Camera3D, [param aim_fn] whether the sights are up. Feed hits with [method note_hit].
+func add_hit_flinch(sampler_fn: Callable, camera_fn: Callable, aim_fn: Callable, tunables_fn: Callable = Callable()) -> DotGameHitFlinch:
+	_hit_flinch = DotGameHitFlinch.new()
+	_hit_flinch.sampler_fn = sampler_fn
+	_hit_flinch.camera_fn = camera_fn
+	_hit_flinch.aim_fn = aim_fn
+	_hit_flinch.tunables_fn = tunables_fn
+	return _hit_flinch
+
+
+## The local player was hurt by [param amount]; a no-op until [method add_hit_flinch].
+func note_hit(amount: float = 0.0, weapon_scale: float = 1.0) -> void:
+	if _hit_flinch != null:
+		_hit_flinch.note_hit(amount, weapon_scale)
 
 
 ## True while this client is online with the link connected; the main menu, a normal leave and a dropped link are false.

@@ -56,5 +56,6 @@ extends RefCounted
 # 29: slide sounds for every first-person game: DotGameClient use_slide_sounds / slide_settings / slide_sounds, the sv_slide_sounds cvar bound by DotGameModule, the slide_volume setting.
 # 30: the remote workbench: DotGameWorkbenchMessage / Remote / RemoteClient, DotGameWorkbench remote_client / remote_fn / serve_remote / panel_built, local_allowed(remote), the sv_workbench_remote cvar.
 # 31: DotGamePrejoin.extra_steps (a game or addon adds async pre-join steps, such as a trail pack fetch).
-const LEVEL := 31
+# 32: DotGameHitFlinch and DotGameClient.add_hit_flinch / note_hit (hit shake and aim wobble, sv_hit_*).
+const LEVEL := 32
 const OLDEST := 1
