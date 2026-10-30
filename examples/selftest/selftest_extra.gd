@@ -153,6 +153,16 @@ class FakeChatBridge:
 		pass
 
 
+func _test_store_entitlements_absent() -> void:
+	_section("store entitlements: a project without dot-loadout, or a non-manager, is left alone")
+	var plain := Node.new()
+	_check(not DotGameStoreEntitlements.attach(plain), "a node without entitlement_source is not wrapped")
+	_check(not DotGameStoreEntitlements.attach(null), "null is not wrapped")
+	_check(DotGameStoreEntitlements.attach_tree(plain) == 0, "an empty tree attaches nothing")
+	plain.free()
+	_done()
+
+
 func _test_look_mute() -> void:
 	_section("the look-to-gag keys: default on, G and K, a conflict is found, not clobbered")
 

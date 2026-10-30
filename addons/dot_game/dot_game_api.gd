@@ -61,5 +61,6 @@ extends RefCounted
 # 34: DotGameClientAvatars.publish_figures / figure_of and the dot_game_client service (an addon finds a player's figure).
 # 35: DotGameStatsFeed.upgrade (a late profile key moves a seat's stats key, deliberately).
 # 36: DotGameSlideSounds.surf / surf_rules / surf_cvar_specs, DotGameLanding.surf_rules_fn, DotGameModuleWiring.bind_surf_sounds (the replicated sv_surf_* cvars).
-const LEVEL := 36
+# 37: DotGameStoreEntitlements.attach / attach_tree (site store entitlements merged into a dot-loadout manager; the module does it on every seat).
+const LEVEL := 37
 const OLDEST := 1

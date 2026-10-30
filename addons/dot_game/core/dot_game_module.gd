@@ -400,6 +400,10 @@ func _build_roster() -> void:
 
 	roster.follow(services)
 	_follow_avatar_loadouts()
+	# Any dot-loadout manager the game built gets the site store's entitlements; idempotent per manager.
+	roster.seated.connect(func(_s: DotClientSession) -> void:
+		if is_inside_tree():
+			DotGameStoreEntitlements.attach_tree(get_tree().root))
 	stats_feed = DotGameStatsFeed.new()
 	stats_feed.map_fn = func() -> String: return _reported_map
 	stats_feed.follow(roster)
