@@ -59,6 +59,25 @@ func key_for(session: DotClientSession) -> StringName:
 	return key
 
 
+## Moves a seat from its fallback key to the profile or issued key once one has arrived (a late
+## admission). A key never changes on its own mid-session; the game calls this, and an open stats
+## session is ended under the old key and begun under the new. True when the key changed.
+func upgrade(session: DotClientSession) -> bool:
+	if player_key_fn.is_valid() or session.local or not _keys.has(session.userid):
+		return false
+	var given := _given_key(session)
+	if given == &"" or _keys[session.userid] == given:
+		return false
+	_keys[session.userid] = given
+	if _open.has(session.userid):
+		var t := _tracker()
+		if t != null:
+			t.call("end", _open[session.userid])
+			t.call("begin", given, session.display_name, {"is_bot": false, "map": str(map_fn.call()) if map_fn.is_valid() else ""})
+		_open[session.userid] = given
+	return true
+
+
 ## Drops [param userid]'s remembered key when it leaves; a game without a roster calls this itself.
 func forget(userid: int) -> void:
 	_keys.erase(userid)
@@ -68,6 +87,18 @@ func _resolve(session: DotClientSession) -> StringName:
 	var seat := StringName("u%d" % session.userid)
 	if session.local or session.uid() == "":
 		return seat
+	var given := _given_key(session)
+	if given != &"":
+		return given
+	var scope := _scope_or_null()
+	if scope == null:
+		return seat
+	var derived: DotResult = scope.call(&"derive", session.uid())
+	return StringName(str(derived.value)) if derived.ok else seat
+
+
+## The key a profile or the backbone gave [param session], or empty: the only keys worth upgrading to.
+func _given_key(session: DotClientSession) -> StringName:
 	var platform: Variant = session.data.get("platform")
 	if platform is Object and (platform as Object).has_method(&"key"):
 		var profile_key := str((platform as Object).call(&"key"))
@@ -76,11 +107,7 @@ func _resolve(session: DotClientSession) -> StringName:
 	var claims: Variant = session.identity.get("claims") if session.identity != null else null
 	if claims is Dictionary and _issued_re.search(str((claims as Dictionary).get("scoped_key", ""))) != null:
 		return StringName(str(claims["scoped_key"]))
-	var scope := _scope_or_null()
-	if scope == null:
-		return seat
-	var derived: DotResult = scope.call(&"derive", session.uid())
-	return StringName(str(derived.value)) if derived.ok else seat
+	return &""
 
 
 ## Loads this server's scope key, or makes and keeps one; null without dot-user or a usable key.

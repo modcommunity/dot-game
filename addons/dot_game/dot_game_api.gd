@@ -59,5 +59,6 @@ extends RefCounted
 # 32: DotGameHitFlinch and DotGameClient.add_hit_flinch / note_hit (hit shake and aim wobble, sv_hit_*).
 # 33: DotGameStatsFeed.key_for / forget / open_sessions / scope_key_file (stable per-server stats key); DotGameClassImmunity.call_apply.
 # 34: DotGameClientAvatars.publish_figures / figure_of and the dot_game_client service (an addon finds a player's figure).
-const LEVEL := 34
+# 35: DotGameStatsFeed.upgrade (a late profile key moves a seat's stats key, deliberately).
+const LEVEL := 35
 const OLDEST := 1

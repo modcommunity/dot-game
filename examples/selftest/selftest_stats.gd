@@ -116,6 +116,22 @@ func _test_stats_keys() -> void:
 	held.k = "ProfileKey_abcdefghijkl"
 	plat.data["platform"] = held
 	_check(boot1.key_for(plat) == &"ProfileKey_abcdefghijkl", "dot-platform's profile key wins over both")
+	var late := _who(12, "backbone:fay")
+	var first := boot1.key_for(late)
+	late.data["platform"] = held
+	_check(boot1.key_for(late) == first, "a profile key attached after the first ask does not change the key by itself")
+	_check(boot1.upgrade(late) and boot1.key_for(late) == &"ProfileKey_abcdefghijkl", "upgrade() moves the seat to the profile key, deliberately")
+	_check(not boot1.upgrade(late), "and only once")
+	var lt := _FakeTracker.new()
+	boot1.tracker = lt
+	var gina := _who(13, "backbone:gina")
+	boot1._on_seated(gina)
+	gina.data["platform"] = held
+	boot1.upgrade(gina)
+	_check(lt.ended.size() == 1 and lt.begun.size() == 2 and lt.begun[1][0] == &"ProfileKey_abcdefghijkl", "an open session is ended under the old key and begun under the new", str(lt.begun))
+	boot1.tracker = null
+	boot1.forget(12)
+	boot1.forget(13)
 	var bot := _who(7, "")
 	bot.local = true
 	_check(boot1.key_for(bot) == &"u7", "a bot keeps its seat's key")
