@@ -43,7 +43,7 @@ extends "selftest/selftest_stats.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 509
+const CHECKS := 513
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -655,6 +655,12 @@ func _test_noblock_wired() -> void:
 	_check(
 		slide_cvar != null and slide_cvar.get_string() == "1" and slide_cvar.has_flag(DotConVar.FLAG_REPLICATED),
 		"every game's module binds sv_slide_sounds, on and replicated"
+	)
+	var surf_specs: Array = load("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").surf_cvar_specs()
+	var surf_cvar: DotConVar = module.console.find_cvar("sv_surf_volume") if module != null else null
+	_check(
+		(surf_cvar != null and surf_cvar.has_flag(DotConVar.FLAG_REPLICATED)) == (not surf_specs.is_empty()),
+		"the module binds the replicated sv_surf_* cvars exactly when dot-audio is in the build"
 	)
 	_unload_module()
 	_game.set("body_rules", null)

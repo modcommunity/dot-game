@@ -4,6 +4,8 @@ extends Node
 
 const CHANNEL := "game.client.slide"
 const SLIDE_SCRIPT := "res://addons/dot_audio/runtime/dot_audio_slide.gd"
+const SURF_SCRIPT := "res://addons/dot_audio/runtime/dot_audio_surf.gd"
+const SURF_RULES_SCRIPT := "res://addons/dot_audio/core/dot_audio_surf_rules.gd"
 const DEF_SCRIPT := "res://addons/dot_settings/core/dot_settings_def.gd"
 const SCHEMA_SCRIPT := "res://addons/dot_settings/core/dot_settings_schema.gd"
 const STOCK_SCRIPT := "res://addons/dot_menu/stock/dot_menu_stock.gd"
@@ -19,6 +21,10 @@ var link_fn: Callable = Callable()
 var settings_fn: Callable = Callable()
 ## `func(node) -> bool`: what counts as a controller; unset is [method is_controller]. A suite swaps it.
 var controller_fn: Callable = Callable()
+## dot-audio's `DotAudioSurf` (the glide on a ramp), built by [method start] when dot-audio ships it.
+var surf: Node = null
+## The `DotAudioSurfRules` behind [member surf] and its replicated `sv_surf_*` cvars; shared with [DotGameLanding] to mute landings.
+var surf_rules: RefCounted = null
 ## The server's switch, from [constant CVAR].
 var enabled: bool = true
 
@@ -75,10 +81,31 @@ func start() -> bool:
 		slide.name = "Slide"
 	if slide.get_parent() == null:
 		add_child(slide)
+	_start_surf()
 	if not get_tree().node_added.is_connected(_on_node_added):
 		get_tree().node_added.connect(_on_node_added)
 	_scan(get_tree().root)
 	return true
+
+
+func _start_surf() -> void:
+	if surf != null or not ResourceLoader.exists(SURF_SCRIPT) or not ResourceLoader.exists(SURF_RULES_SCRIPT):
+		return
+	var node: Variant = load(SURF_SCRIPT).new()
+	if not (node is Node):
+		return
+	surf = node as Node
+	surf.name = "Surf"
+	surf_rules = load(SURF_RULES_SCRIPT).new() as RefCounted
+	surf.set(&"rules", surf_rules)
+	add_child(surf)
+
+
+## The `sv_surf_*` cvar specs (name, value, description, range) of dot-audio, or none without it.
+static func surf_cvar_specs() -> Array:
+	if not ResourceLoader.exists(SURF_RULES_SCRIPT):
+		return []
+	return (load(SURF_RULES_SCRIPT) as GDScript).call(&"cvar_specs")
 
 
 func _exit_tree() -> void:
@@ -141,6 +168,8 @@ func _process(_delta: float) -> void:
 	_bind()
 	slide.set(&"enabled", enabled)
 	slide.call(&"keep", bodies(), _sliding)
+	if surf != null:
+		surf.call(&"keep_surfers", bodies())
 
 
 func _bind() -> void:
@@ -151,6 +180,11 @@ func _bind() -> void:
 			var held := String(l.call(&"replicated_cvar", CVAR, ""))
 			if held != "":
 				enabled = held != "0"
+			if surf_rules != null:
+				for spec: Dictionary in surf_cvar_specs():
+					var v := String(l.call(&"replicated_cvar", String(spec["name"]), ""))
+					if v != "":
+						surf_rules.call(&"apply_cvar", String(spec["name"]), v)
 			if not l.is_connected(&"replicated_cvar_changed", _on_cvar):
 				l.connect(&"replicated_cvar_changed", _on_cvar)
 	var s: Object = settings_fn.call() if settings_fn.is_valid() else null
@@ -159,12 +193,15 @@ func _bind() -> void:
 		if s.has_signal(&"changed"):
 			if not s.is_connected(&"changed", _on_setting):
 				s.connect(&"changed", _on_setting)
-		slide.set(&"volume", float(s.call(&"get_float", SETTING, 1.0)))
+		if s.has_method(&"get_float"):
+			slide.set(&"volume", float(s.call(&"get_float", SETTING, 1.0)))
 
 
 func _on_cvar(cvar_name: String, value: String) -> void:
 	if cvar_name == CVAR:
 		enabled = value != "0"
+	elif surf_rules != null and cvar_name.begins_with("sv_surf_"):
+		surf_rules.call(&"apply_cvar", cvar_name, value)
 
 
 func _on_setting(key: StringName, value: Variant, _why: StringName) -> void:

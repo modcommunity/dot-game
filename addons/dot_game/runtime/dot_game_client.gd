@@ -379,6 +379,7 @@ func _add_landing() -> void:
 		return
 	var node: Node = preload("res://addons/dot_game/runtime/dot_game_landing.gd").new()
 	node.name = "Landing"
+	node.set(&"surf_rules_fn", func() -> Object: return slide_sounds.get(&"surf_rules") if slide_sounds != null and is_instance_valid(slide_sounds) else null)
 	add_child(node)
 	if node.call(&"start"):
 		landing = node

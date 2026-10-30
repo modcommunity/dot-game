@@ -85,6 +85,11 @@ func _test_slide_sounds() -> void:
 	link.replicated_cvar_changed.emit("sv_slide_sounds", "1")
 	await _frames(1)
 	_check(slide.enabled, "a replicated change switches it back on")
+	var surf_stub := StubSurfRules.new()
+	node.surf_rules = surf_stub
+	link.replicated_cvar_changed.emit("sv_surf_volume", "0.3")
+	link.replicated_cvar_changed.emit("sv_slide_volume_x", "9")
+	_check(surf_stub.applied == {"sv_surf_volume": "0.3"}, "a replicated sv_surf_ cvar reaches the surf rules, and only those", str(surf_stub.applied))
 	settings.changed.emit(&"slide_volume", 0.2, &"applied")
 	_check(is_equal_approx(slide.volume, 0.2), "a settings change moves the volume live")
 	body.queue_free()
@@ -103,6 +108,18 @@ func _test_slide_sounds() -> void:
 	link.free()
 	settings.free()
 	_done()
+
+
+class StubSurfRules:
+	extends RefCounted
+	var mute_steps: bool = true
+	var surfing: bool = true
+	var applied: Dictionary = {}
+	func is_surfing(_body: Node3D) -> bool:
+		return surfing
+	func apply_cvar(cvar_name: String, value: String) -> bool:
+		applied[cvar_name] = value
+		return true
 
 
 class StubLandingRules:
@@ -160,11 +177,19 @@ func _test_landing() -> void:
 	controller.landed.emit(15.0)
 	_check(mgr.plays.size() == 1 and mgr.plays[0][0] == &"hard" and mgr.plays[0][1] == Vector3(1, 2, 3), "a landing plays the stock for its impact at the body", str(mgr.plays))
 	_check(is_equal_approx(mgr.plays[0][2], 0.6), "scaled by the landing volume")
+	var surf_stub := StubSurfRules.new()
+	node.surf_rules_fn = func() -> Object: return surf_stub
+	controller.landed.emit(15.0)
+	_check(mgr.plays.size() == 1, "a landing while surfing makes no thump")
+	surf_stub.mute_steps = false
+	controller.landed.emit(15.0)
+	_check(mgr.plays.size() == 2, "unless sv_surf_mute_steps is 0")
+	node.surf_rules_fn = Callable()
 	controller.landed.emit(2.0)
-	_check(mgr.plays.size() == 1, "a landing under the rules' minimum is silent")
+	_check(mgr.plays.size() == 2, "a landing under the rules' minimum is silent")
 	rules.volume = 0.0
 	controller.landed.emit(15.0)
-	_check(mgr.plays.size() == 1, "cl_landing_volume 0 mutes it")
+	_check(mgr.plays.size() == 2, "cl_landing_volume 0 mutes it")
 	node.kick = 0.5
 	_check(is_equal_approx(view.landing_strength, 0.5), "cl_landing_kick reaches the controller's view")
 	var console := StubConsoleSource.new()

@@ -17,6 +17,8 @@ var manager_fn: Callable = Callable()
 var id_fn: Callable = Callable()
 ## `func(node) -> bool`: what counts as a controller; unset is [method is_controller].
 var controller_fn: Callable = Callable()
+## `func() -> Object`: dot-audio's `DotAudioSurfRules`; a landing on a surf ramp is silent when it says so. Unset plays every landing.
+var surf_rules_fn: Callable = Callable()
 ## Multiplier for the camera kick, from [constant CVAR_KICK].
 var kick: float = 1.0:
 	set(value):
@@ -118,6 +120,8 @@ func _on_landed(impact: float, controller: Node) -> void:
 	var scale: float = float(rules.call(&"volume_for", impact))
 	if scale <= 0.0:
 		return
+	if _on_surf_ramp(controller):
+		return
 	var m: Object = manager_fn.call() if manager_fn.is_valid() else DotRegistry.get_node_service(AUDIO_SERVICE)
 	if m == null or not is_instance_valid(m):
 		return
@@ -126,6 +130,12 @@ func _on_landed(impact: float, controller: Node) -> void:
 	var at: Vector3 = body.global_position if body != null and body.is_inside_tree() else Vector3.ZERO
 	var _handle: Variant = m.call(&"play_at", id, at, scale)
 	played += 1
+
+
+func _on_surf_ramp(controller: Node) -> bool:
+	var sr: Object = surf_rules_fn.call() if surf_rules_fn.is_valid() else null
+	var body := controller.get_parent() as Node3D
+	return sr != null and body != null and bool(sr.get(&"mute_steps")) and bool(sr.call(&"is_surfing", body))
 
 
 func _stock_id(impact: float) -> StringName:

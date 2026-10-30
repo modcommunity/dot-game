@@ -60,5 +60,6 @@ extends RefCounted
 # 33: DotGameStatsFeed.key_for / forget / open_sessions / scope_key_file (stable per-server stats key); DotGameClassImmunity.call_apply.
 # 34: DotGameClientAvatars.publish_figures / figure_of and the dot_game_client service (an addon finds a player's figure).
 # 35: DotGameStatsFeed.upgrade (a late profile key moves a seat's stats key, deliberately).
-const LEVEL := 35
+# 36: DotGameSlideSounds.surf / surf_rules / surf_cvar_specs, DotGameLanding.surf_rules_fn, DotGameModuleWiring.bind_surf_sounds (the replicated sv_surf_* cvars).
+const LEVEL := 36
 const OLDEST := 1

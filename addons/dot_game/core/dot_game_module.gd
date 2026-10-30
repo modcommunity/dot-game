@@ -235,6 +235,7 @@ func _module_load() -> DotResult:
 		return loaded
 
 	DotGameModuleWiring.bind_slide_sounds(self)
+	DotGameModuleWiring.bind_surf_sounds(self)
 	var blocked := _build_noblock()
 	if not blocked.ok:
 		_teardown()

@@ -68,6 +68,17 @@ static func bind_slide_sounds(m: DotGameModule) -> void:
 	)
 
 
+## Binds dot-audio's `sv_surf_*` cvars (glide volume, speed range, pitch, whether steps stop on a ramp), which every client follows. Nothing without dot-audio.
+static func bind_surf_sounds(m: DotGameModule) -> void:
+	for spec: Dictionary in preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").surf_cvar_specs():
+		var cv := m.add_cvar(
+			String(spec["name"]), String(spec["value"]), String(spec["description"]),
+			DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+		)
+		if cv != null and cv.has_method(&"with_range"):
+			cv.call(&"with_range", float(spec["min"]), float(spec["max"]))
+
+
 ## Builds the block rules when the game has a `body_rules`; null in the result when off.
 static func build_noblock(m: DotGameModule) -> DotResult:
 	if not m._noblock_enabled():
