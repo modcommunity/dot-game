@@ -764,6 +764,11 @@ func add_noblock(game: Object, side_fn: Callable) -> DotResult:
 	return DotGameNoblock.add_to_client(self, game, side_fn)
 
 
+## Adds the site-store page (what the player owns, and a button to the store) to the game's dot-menu. [param player_key_fn] returns the signed-in player's key; empty shows an empty list. Call after the menu is built.
+func add_store_panel(game_menu: Object, player_key_fn: Callable) -> Object:
+	return DotGameStorePanel.add_to_menu(game_menu, player_key_fn)
+
+
 ## Downloads what a server advertises ([constant DotGameAvatarContent.CVAR]) before connecting, holding [member gate]; on failure the gate stays held and the caller must not connect.
 func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
 	return await DotGameClientAvatars.prepare_content(self, rules, base_url, server_id, http)

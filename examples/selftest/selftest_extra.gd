@@ -190,6 +190,8 @@ func _test_store_panel() -> void:
 	_check(got == ["https://example.test/dashboard/store"], "the button reports the store address")
 	_check(DotGameStorePanel.owned_from({"items": "bad"}).is_empty(), "a malformed body owns nothing")
 	panel.queue_free()
+	_check(DotGameStorePanel.add_to_menu(null, Callable()) == null, "no menu: no store page")
+	_check(DotGameStorePanel.add_to_menu(Node.new(), Callable()) == null, "a non-menu is left alone")
 	_done()
 
 

@@ -41,6 +41,29 @@ static func owned_from(body: Dictionary) -> Array:
 	return out
 
 
+## Adds a "Store" page to a dot-menu (found by duck typing: null or no `add_page` does nothing) that shows a fresh panel each time it opens. [param player_key_fn] returns the player key; [param client_fn] the backbone client (default: the registry's `dot_backbone_client`). Returns the page, or null.
+static func add_to_menu(menu: Object, player_key_fn: Callable, client_fn: Callable = Callable(), before: StringName = &"") -> Object:
+	if menu == null or not menu.has_method(&"add_page"):
+		return null
+	var page_script: Script = DotGameStoreEntitlements._class_script("DotMenuPage")
+	if page_script == null:
+		return null
+	var cache: Array = []
+	var page: Object = page_script.call("make", &"store", "Store", "What you own from the site store.")
+	page.set("build", func(_kit: Object, body: Control) -> void:
+		var panel := DotGameStorePanel.new()
+		panel.set_owned(cache)
+		body.add_child(panel)
+		var client: Object = client_fn.call() if client_fn.is_valid() else DotRegistry.get_service(&"dot_backbone_client")
+		var key: String = str(player_key_fn.call()) if player_key_fn.is_valid() else ""
+		if client == null or key == "":
+			return
+		await panel.refresh(client, key)
+		cache.assign(panel.owned()))
+	menu.call(&"add_page", page, before)
+	return page
+
+
 func _init() -> void:
 	name = "StorePanel"
 	custom_minimum_size = Vector2(260, 0)
