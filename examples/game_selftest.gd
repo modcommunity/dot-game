@@ -78,6 +78,7 @@ func _run() -> void:
 		await _test_operator_ceiling_reaches_the_netcode()
 		await _test_server_threads_reach_the_netcode()
 		_test_npc_lod_cvars()
+		_test_movement_cvars()
 		await _test_services_without_the_addons()
 		await _test_services_hooks()
 		await _test_chat_client_without_the_addons()

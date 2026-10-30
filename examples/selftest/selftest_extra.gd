@@ -949,3 +949,41 @@ class EscMenu extends Node:
 		if key != null and key.pressed and key.physical_keycode == KEY_ESCAPE:
 			open_now = true
 			overlays_changed.emit(true)
+
+
+func _test_movement_cvars() -> void:
+	_section("bind_movement_cvars: the game's movement targets become replicated cvars, with no per-game code")
+	var console := DotConsole.new()
+	add_child(console)
+	var m := DotGameModule.new()
+	m.console = console
+	add_child(m)
+	var target: Object = preload("res://examples/fixtures/test_movement_target.gd").new()
+
+	_check(m.bind_movement_cvars().is_empty() and m.movement_cvars == null, "a game offering no targets binds nothing")
+
+	var game := Node.new()
+	game.set_script(preload("res://examples/fixtures/test_movement_game.gd"))
+	game.set("target", target)
+	m.game = game
+	var saved := DotGameModule.fps_cvars_script
+	DotGameModule.fps_cvars_script = "res://examples/fixtures/missing_binder.gd"
+	_check(m.bind_movement_cvars().is_empty() and m.movement_cvars == null, "without dot-player-controller it is skipped, not an error")
+
+	DotGameModule.fps_cvars_script = "res://examples/fixtures/test_fps_cvars.gd"
+	var made := m.bind_movement_cvars()
+	var cv := console.find_cvar("sv_gravity")
+	_check(made.size() == 1 and cv != null and m.movement_cvars != null, "the game's movement_targets() are bound as cvars")
+	_check(cv != null and (cv.flags & DotConVar.FLAG_REPLICATED) != 0, "and replicated, because a client predicts its own movement")
+	var explicit := DotGameModule.new()
+	explicit.console = DotConsole.new()
+	add_child(explicit.console)
+	add_child(explicit)
+	_check(explicit.bind_movement_cvars([target]).size() == 1, "targets can also be passed explicitly")
+
+	DotGameModule.fps_cvars_script = saved
+	game.free()
+	m.free()
+	explicit.free()
+	console.free()
+	_done()

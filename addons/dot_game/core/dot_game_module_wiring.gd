@@ -164,3 +164,21 @@ static func apply_map_config(m: DotGameModule, map_id: String) -> void:
 		m.map_config.get_fn = m._map_config_get
 		m.map_config.set_fn = m._map_config_set
 	m.map_config.apply(map_id)
+
+
+## Builds a `DotFpsCvars` (by path: dot-player-controller is not a dependency) over [param targets] and registers its cvars, replicated, since a client predicts its own movement from them.
+static func bind_movement_cvars(m: DotGameModule, targets: Array) -> Array:
+	if targets.is_empty() or m.console == null:
+		return []
+	var script: Variant = load(DotGameModule.fps_cvars_script) if ResourceLoader.exists(DotGameModule.fps_cvars_script) else null
+	if not (script is GDScript):
+		DotLog.debug(CHANNEL, "no dot-player-controller; movement cvars not bound")
+		return []
+	var binder: Object = (script as GDScript).new()
+	for target: Variant in targets:
+		if target is Object:
+			binder.call(&"add_target", target)
+	m.movement_cvars = binder
+	var made: Array = binder.call(&"bind_cvars", Callable(m, "add_cvar"), DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
+	DotLog.debug(CHANNEL, "movement cvars bound", {"count": made.size()})
+	return made

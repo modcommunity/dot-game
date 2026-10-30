@@ -22,6 +22,10 @@ const CHANNEL := "game.module"
 
 ## Where dot-platform's module is loaded from, by path: the module host constructs the module itself, so a pre-built instance would be thrown away.
 const PLATFORM_MODULE_PATH := "res://addons/dot_platform/dot_platform_module.gd"
+const FPS_CVARS_SCRIPT := "res://addons/dot_player_controller/fp/core/dot_fps_cvars.gd"
+
+## Where [method bind_movement_cvars] looks for the binder; a suite points it at a stub.
+static var fps_cvars_script: String = FPS_CVARS_SCRIPT
 const LOOK_MUTE_SCRIPT := "res://addons/dot_voice/runtime/dot_voice_look_mute.gd"
 ## dot-cloud's server auto-update, loaded by path: dot-cloud is not a dependency.
 const AUTO_UPDATE_SCRIPT := "res://addons/dot_cloud/server/dot_cloud_auto_update.gd"
@@ -50,6 +54,9 @@ var bridge: Node = null
 
 ## The NPC level-of-detail and sense-thread cvars, once the game called [method attach_npc_lod].
 var npc_lod: DotGameNpcLod = null
+
+## The movement cvars (`sv_gravity` and the rest), once [method bind_movement_cvars] ran: dot-player-controller's `DotFpsCvars`.
+var movement_cvars: Object = null
 
 ## The identity layer, when [method _make_identity] returned one.
 var identity: Node = null
@@ -159,6 +166,19 @@ func _game_board_extra() -> Dictionary:
 	return {}
 
 
+## The movement tunables the `sv_*` cvars drive (anything with `cvar_specs()` and `set_cvar()`: `DotFpsTunables`, swim, ladder). The default asks the game object's `movement_targets()`; empty binds nothing.
+func _movement_targets() -> Array:
+	if game != null and game.has_method(&"movement_targets"):
+		var targets: Variant = game.call(&"movement_targets")
+		return targets if targets is Array else []
+	return []
+
+
+## Binds dot-player-controller's movement cvars over [param targets] (default [method _movement_targets]) so a game's movement is server-tunable without per-game code. Skips with a log line when dot-player-controller is absent or nothing is offered. Returns the cvars made.
+func bind_movement_cvars(targets: Array = []) -> Array:
+	return DotGameModuleWiring.bind_movement_cvars(self, targets if not targets.is_empty() else _movement_targets())
+
+
 ## Wires a DotNpcSpawner to `sv_threads_npc` and the `npc_lod*` / `npc_sense_quiet` cvars (all off by default; see [DotGameNpcLod]). Call it once the spawner is in the tree; [param players] returns the positions NPCs measure distance from (default: the spawner's candidates).
 func attach_npc_lod(spawner: Object, players: Callable = Callable()) -> DotGameNpcLod:
 	if npc_lod != null:
@@ -238,6 +258,7 @@ func _module_load() -> DotResult:
 		_teardown()
 		return loaded
 
+	var _movement := bind_movement_cvars()
 	DotGameModuleWiring.bind_slide_sounds(self)
 	DotGameModuleWiring.bind_surf_sounds(self)
 	var blocked := _build_noblock()
@@ -729,6 +750,7 @@ func _build_noblock() -> DotResult:
 
 ## Everything the sequence built, in the reverse order it was built in: the netcode is what the rest attached to, so freeing it first leaves them calling a freed object.
 func _teardown() -> void:
+	movement_cvars = null
 	_detach_board()
 	_release_cover_reports()
 
