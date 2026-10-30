@@ -64,5 +64,6 @@ extends RefCounted
 # 37: DotGameStoreEntitlements.attach / attach_tree (site store entitlements merged into a dot-loadout manager; the module does it on every seat).
 # 38: DotGameStatsBoard / DotGameModule.stats_board (st_*, lt_* and stat_columns on the Tab board snapshot), DotGameStatsFeed.active_tracker; DotGameClient.show_stats / stats_ui / stats_panel and the cl_stats_ui cvar (DotGameClientStats).
 # 39: DotGameStorePanel (+ add_to_menu, DotGameClient.add_store_panel).
-const LEVEL := 39
+# 40: DotGameClient.add_loadout_store / DotGameStoreEntitlements.wire_menu (locked store items in the loadout menu), DotGameStorePanel.default_store_url; attach sets the manager's store_url.
+const LEVEL := 40
 const OLDEST := 1

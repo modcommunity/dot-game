@@ -195,6 +195,50 @@ func _test_store_panel() -> void:
 	_done()
 
 
+class FakeManager:
+	extends RefCounted
+	var store_url: String = "https://example.test/store"
+	var asked: Array = []
+	func request_store(item_id: StringName) -> String:
+		asked.append(item_id)
+		return store_url
+
+
+class FakeCommand:
+	extends RefCounted
+	var manager := FakeManager.new()
+	func offer(key: String, include_locked: bool = false) -> Dictionary:
+		return {"key": key, "locked": include_locked}
+
+
+class FakeLoadoutMenu:
+	extends RefCounted
+	var offer_fn := Callable()
+	var store_fn := Callable()
+	var include_locked := true
+
+
+func _test_loadout_store() -> void:
+	_section("loadout menu: locked store items solo (offer asks for locked, store button reaches the manager)")
+	_check(not DotGameStoreEntitlements.wire_menu(null, Callable(), Callable()), "no menu: nothing wired")
+	_check(not DotGameStoreEntitlements.wire_menu(Node.new(), Callable(), Callable()), "a non-loadout menu is left alone")
+	var menu := FakeLoadoutMenu.new()
+	var holder: Array = [null]
+	_check(DotGameStoreEntitlements.wire_menu(menu, func() -> Object: return holder[0], func() -> String: return "p1"), "wired")
+	var early: Variant = await menu.offer_fn.call()
+	_check(early is DotResult and not early.ok, "before the match exists the offer fails, not crashes")
+	var command := FakeCommand.new()
+	holder[0] = command
+	var offer: Dictionary = await menu.offer_fn.call()
+	_check(offer.get("key") == "p1" and offer.get("locked") == true, "the solo offer includes locked items", str(offer))
+	menu.include_locked = false
+	var plain: Dictionary = await menu.offer_fn.call()
+	_check(plain.get("locked") == false, "include_locked off is honoured")
+	var url: String = menu.store_fn.call(&"sniper")
+	_check(url == "https://example.test/store" and command.manager.asked == [&"sniper"], "store_fn is the manager's request_store")
+	_done()
+
+
 func _test_look_mute() -> void:
 	_section("the look-to-gag keys: default on, G and K, a conflict is found, not clobbered")
 

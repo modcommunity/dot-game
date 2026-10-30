@@ -114,10 +114,13 @@ func refresh(client: Object, player_key: String) -> DotResult:
 	return DotResult.success(_owned.size())
 
 
-## The address "Get more" opens: [member store_url], else the sign-in site's store page. Empty when neither is known.
+## The address "Get more" opens: [member store_url], else [method default_store_url].
 func resolved_store_url() -> String:
-	if store_url != "":
-		return store_url
+	return store_url if store_url != "" else default_store_url()
+
+
+## The sign-in site's store page; empty when the site is not known. Shared with the loadout menu's locked items.
+static func default_store_url() -> String:
 	var site := DotGameAvatarContent.default_site_url()
 	return site + STORE_PATH if site != "" else ""
 

@@ -782,6 +782,11 @@ func add_store_panel(game_menu: Object, player_key_fn: Callable) -> Object:
 	return DotGameStorePanel.add_to_menu(game_menu, player_key_fn)
 
 
+## Shows the items the player does not own in the loadout menu, greyed with a "Get in store" button, solo and connected. [param loadout_menu] is what dot-menu's `use_loadout` returned; [param command_fn] returns the game's dot-loadout command (null until the match exists); [param key_fn] the player's storage key. Call right after `use_loadout`.
+func add_loadout_store(loadout_menu: Object, command_fn: Callable, key_fn: Callable) -> bool:
+	return DotGameStoreEntitlements.wire_menu(loadout_menu, command_fn, key_fn)
+
+
 ## Downloads what a server advertises ([constant DotGameAvatarContent.CVAR]) before connecting, holding [member gate]; on failure the gate stays held and the caller must not connect.
 func prepare_avatar_content(rules: Dictionary, base_url: String, server_id: int, http: DotHttp = null) -> DotResult:
 	return await DotGameClientAvatars.prepare_content(self, rules, base_url, server_id, http)

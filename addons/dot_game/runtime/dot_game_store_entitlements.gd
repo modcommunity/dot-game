@@ -21,6 +21,8 @@ static func attach(manager: Object) -> bool:
 	if site_script == null or ents_script == null:
 		return false
 	manager.set_meta(META, true)
+	if "store_url" in manager and str(manager.get("store_url")) == "":
+		manager.set("store_url", DotGameStorePanel.default_store_url())
 	var site: Object = site_script.new()
 	var inner: Callable = manager.get("entitlement_source")
 	manager.set("entitlement_source", func(key: String) -> Object:
@@ -35,6 +37,26 @@ static func attach(manager: Object) -> bool:
 			out.call("merge", ents_script.call("of", site.call("ids_of", key)))
 		return out)
 	DotLog.debug(CHANNEL, "site store entitlements attached", {"manager": str(manager.get_path()) if manager is Node and manager.is_inside_tree() else ""})
+	return true
+
+
+## Gives a dot-menu loadout menu locked store items on the solo path: [param command_fn] returns the game's dot-loadout command (null before the match exists), [param key_fn] the player's storage key. Connected needs nothing more, the menu already asks `/loadout locked`. Returns false for a menu without the hooks.
+static func wire_menu(menu: Object, command_fn: Callable, key_fn: Callable) -> bool:
+	if menu == null or not "offer_fn" in menu or not "store_fn" in menu:
+		return false
+	menu.set("offer_fn", func() -> Variant:
+		var command: Object = command_fn.call()
+		var key := str(key_fn.call())
+		if command == null or key == "":
+			return DotResult.fail(DotError.CODE_STATE, "Join the match first.")
+		attach(command.get("manager"))
+		return await command.call("offer", key, bool(menu.get("include_locked"))))
+	menu.set("store_fn", func(item_id: StringName) -> String:
+		var command: Object = command_fn.call()
+		var manager: Object = command.get("manager") if command != null else null
+		if manager != null and manager.has_method("request_store"):
+			return str(manager.call("request_store", item_id))
+		return DotGameStorePanel.default_store_url())
 	return true
 
 
