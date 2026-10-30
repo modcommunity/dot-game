@@ -83,6 +83,82 @@ func _test_stats_feed() -> void:
 	_done()
 
 
+class _FakeValues extends RefCounted:
+	var v: Dictionary = {}
+	func has(id: StringName) -> bool: return v.has(id)
+	func get_value(id: StringName, fallback: float = 0.0) -> float: return float(v.get(id, fallback))
+	func duplicate_values() -> _FakeValues:
+		var c := _FakeValues.new()
+		c.v = v.duplicate()
+		return c
+	func merge_from(other: _FakeValues, _schema: Object) -> void:
+		for id in other.v:
+			v[id] = float(v.get(id, 0.0)) + float(other.v[id])
+
+
+class _FakeDef extends RefCounted:
+	var id: StringName = &""
+	var display_name := ""
+	var column := "default"
+	var visible := true
+	var derived = null
+	func format_value(x: float) -> String: return "%d" % x
+
+
+class _FakeSchema extends RefCounted:
+	var defs: Dictionary = {}
+	func ids() -> PackedStringArray: return PackedStringArray(defs.keys())
+	func find(id: StringName) -> _FakeDef: return defs.get(id)
+
+
+class _FakeStore extends RefCounted:
+	var lifetime: Dictionary = {}
+	func values_for(key: StringName) -> DotResult:
+		var out := _FakeValues.new()
+		out.v = lifetime.get(key, {}).duplicate()
+		return DotResult.success(out)
+
+
+class _FakeBoardTracker extends RefCounted:
+	var schema := _FakeSchema.new()
+	var store := _FakeStore.new()
+	var sessions: Dictionary = {}
+	func begin(id: StringName, _who: String = "", _meta: Dictionary = {}) -> void: sessions[id] = _FakeValues.new()
+	func end(id: StringName) -> void: sessions.erase(id)
+	func has_player(id: StringName) -> bool: return sessions.has(id)
+	func session_values(id: StringName) -> _FakeValues: return sessions[id]
+
+
+func _test_stats_board() -> void:
+	_section("the Tab board carries each stat this game and for life, and the list of stats")
+	var feed := _module.stats_feed
+	var board := _module.stats_board
+	_check(board != null, "the module builds a stats board")
+	var t := _FakeBoardTracker.new()
+	for spec in [["kills", "Kills", "default", true], ["secret", "Secret", "hidden", true], ["off", "Off", "default", false]]:
+		var d := _FakeDef.new()
+		d.id = StringName(spec[0])
+		d.display_name = spec[1]
+		d.column = spec[2]
+		d.visible = spec[3]
+		t.schema.defs[d.id] = d
+	feed.tracker = t
+	var cy := _fake_session(7, 81, "Cy")
+	t.store.lifetime[feed.key_for(cy)] = {&"kills": 40.0}
+	_module.roster.add(cy)
+	await get_tree().process_frame
+	t.sessions[feed.key_for(cy)].v[&"kills"] = 3.0
+	var f := board.fields(cy)
+	_check(f.get("st_kills") == "3" and f.get("lt_kills") == "43", "this game's 3 and the lifetime 40 + 3", str(f))
+	_check(not f.has("st_secret") and not f.has("st_off"), "a hidden or invisible stat is not sent", str(f))
+	var cols: Array = board.extra().get("stat_columns", [])
+	_check(cols.size() == 1 and cols[0]["key"] == "kills" and cols[0]["title"] == "Kills", "the list names only the shown stats", str(cols))
+	_module.roster.remove(cy)
+	feed.tracker = null
+	_check(board.fields(cy).is_empty() and board.extra().is_empty(), "with no tracker nothing is sent")
+	_done()
+
+
 func _test_stats_keys() -> void:
 	_section("stats keys: stable across a restart, scoped per server, never an account id")
 	for f in [KEY_A, KEY_B]:

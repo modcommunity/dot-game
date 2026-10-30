@@ -161,6 +161,11 @@ func open_count() -> int:
 	return _open.size()
 
 
+## The tracker sessions are opened on, or null.
+func active_tracker() -> Object:
+	return _tracker()
+
+
 func _tracker() -> Object:
 	var t: Object = tracker if tracker != null else DotRegistry.get_service(SERVICE)
 	if t == null or not is_instance_valid(t) or not t.has_method("begin") or not t.has_method("end"):

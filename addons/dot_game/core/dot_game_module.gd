@@ -63,6 +63,9 @@ var roster: DotGameRoster = null
 ## Reports each seat to a dot-stats tracker when one is set or registered as `dot_stats_tracker`; null feeds nothing.
 var stats_feed: DotGameStatsFeed = null
 
+## Adds the tracker's per-player figures to the Tab board (`st_*`, `lt_*`, `stat_columns`). Null without a roster.
+var stats_board: DotGameStatsBoard = null
+
 ## Authoritative ticks since load. The number the bridge is driven with.
 var tick: int = 0
 
@@ -256,8 +259,16 @@ func _module_load() -> DotResult:
 func _attach_board() -> void:
 	if server == null or not ("scoreboard_fields" in server):
 		return
-	server.set(&"scoreboard_fields", func(session: Object) -> Dictionary: return _game_board_fields(session))
-	server.set(&"scoreboard_extra", func() -> Dictionary: return _game_board_extra())
+	server.set(&"scoreboard_fields", func(session: Object) -> Dictionary:
+		var own := _game_board_fields(session)
+		if stats_board != null and session is DotClientSession:
+			own.merge(stats_board.fields(session as DotClientSession))
+		return own)
+	server.set(&"scoreboard_extra", func() -> Dictionary:
+		var own := _game_board_extra()
+		if stats_board != null:
+			own.merge(stats_board.extra())
+		return own)
 
 
 ## Takes them back. The server outlives this game, and the next one is not asked about it.
@@ -407,6 +418,7 @@ func _build_roster() -> void:
 	stats_feed = DotGameStatsFeed.new()
 	stats_feed.map_fn = func() -> String: return _reported_map
 	stats_feed.follow(roster)
+	stats_board = DotGameStatsBoard.attach(stats_feed, roster)
 
 		# Through the module's helper, so it is unhooked on unload; a stale hook crashes the next spawn.
 	hook_post("client_spawn", _on_client_spawn)
