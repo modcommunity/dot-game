@@ -634,6 +634,53 @@ func _test_render_quality() -> void:
 	_done()
 
 
+class LatencyLink extends RefCounted:
+	signal replicated_cvar_changed(cvar_name: String, value: String)
+	var held := {}
+
+	func replicated_cvar(cvar_name: String, fallback: String = "") -> String:
+		return String(held.get(cvar_name, fallback))
+
+
+func _test_client_latency() -> void:
+	_section("cl_latency_baseline on the client and sv_allow_client_latency on the server, switch reaching the client")
+	var loaded: DotResult = await _load_module()
+	if _check(loaded.ok, "the module loads", str(loaded.error)):
+		var module := loaded.value as DotGameModule
+		var sv := module.console.find_cvar("sv_allow_client_latency")
+		_check(sv != null and sv.get_string() == "1" and sv.has_flag(DotConVar.FLAG_REPLICATED), "the server cvar exists, defaults to 1 and replicates")
+		_check(module.net != null and module.net.latency.allowed, "and the server's latency allows it")
+		if sv != null:
+			var _r := module.console.set_cvar("sv_allow_client_latency", "0")
+			_check(not module.net.latency.allowed, "setting it to 0 reaches the server's latency")
+		_unload_module()
+	var c := DotGameClient.new()
+	c.use_gate = false
+	add_child(c)
+	var net := DotNetManager.new()
+	var link := LatencyLink.new()
+	c.link = link
+	var local := VisLocal.new()
+	var con := VisConsole.new()
+	con.list = [local]
+	c.console = con
+	c.add_latency(net)
+	_check(local.vars.has(&"cl_latency_baseline"), "the client console gets cl_latency_baseline")
+	var res: Variant = (local.vars[&"cl_latency_baseline"][1] as Callable).call("0.2")
+	_check(res is DotResult and (res as DotResult).ok and is_equal_approx(net.latency.requested, 0.2) and is_equal_approx(net.latency.effective(), 0.2), "typing seconds sets the baseline")
+	res = (local.vars[&"cl_latency_baseline"][1] as Callable).call("fast")
+	_check(res is DotResult and not (res as DotResult).ok, "a non-number is refused")
+	link.replicated_cvar_changed.emit("sv_allow_client_latency", "0")
+	_check(not net.latency.allowed and net.latency.effective() == 0.0 and is_equal_approx(net.latency.requested, 0.2), "the server's switch at 0 forces the client to 0 and keeps the request")
+	link.replicated_cvar_changed.emit("sv_allow_client_latency", "1")
+	_check(is_equal_approx(net.latency.effective(), 0.2), "and back to 1 restores it")
+	c.console = null
+	con.free()
+	net.free()
+	c.queue_free()
+	_done()
+
+
 func _test_client_vis_mode() -> void:
 	_section("map culling is opt-in, and the console's vis_mode drives it")
 	var c := DotGameClient.new()

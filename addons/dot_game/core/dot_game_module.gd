@@ -218,6 +218,7 @@ func _module_load() -> DotResult:
 		net = built.value["net"]
 		bridge = built.value["bridge"]
 		_bind_avatar_hooks()
+		var _latency := net.latency.bind_server_cvar(Callable(self, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
 
 	var identified: DotResult = await _build_identity()
 	DotLog.result(CHANNEL, "the identity layer", identified)

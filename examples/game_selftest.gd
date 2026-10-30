@@ -43,7 +43,7 @@ extends "selftest/selftest_stats.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 513
+const CHECKS := 522
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -99,6 +99,7 @@ func _run() -> void:
 		_test_thread_defaults_off()
 		_test_map_load_threads()
 		_test_client_vis_mode()
+		await _test_client_latency()
 		_test_render_quality()
 		_test_relevance_cvars()
 		await _test_slide_sounds()

@@ -229,6 +229,7 @@ var _feel_crosshair: Control = null
 var _feel_arsenal_fn: Callable = Callable()
 var _feel_camera_fn: Callable = Callable()
 var _feel_console_bound: bool = false
+var _latency_net: DotNetManager = null
 var _hit_flinch: DotGameHitFlinch = null
 # True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
 var _board_auto: bool = false
@@ -525,7 +526,34 @@ func add_console(manager: Object = null) -> Node:
 	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
 	console = built if built is Node else null
 	var _v := _Vis.add_console_var(self)
+	if _latency_net != null:
+		_bind_latency()
 	return console
+
+
+## Makes `cl_latency_baseline <seconds>` typable in the console (artificial lag for testing) and follows the server's replicated `sv_allow_client_latency`, which at 0 forces it to 0. Call after [method setup] with the client's manager.
+func add_latency(manager: DotNetManager) -> void:
+	_latency_net = manager
+	_bind_latency()
+
+
+func _bind_latency() -> void:
+	if _latency_net == null or _latency_net.latency == null:
+		return
+	var latency := _latency_net.latency
+	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
+	var _followed := latency.follow_cvars(source)
+	var local := _Vis.local_source(self, StringName(latency.CVAR_BASELINE))
+	if local == null:
+		return
+	var _bound := latency.bind_client_cvar(func(n: String, _d: String, help: String, _f: int) -> Object:
+		local.call(&"add_var", StringName(n), help,
+			func() -> Variant: return latency.requested,
+			func(v: Variant) -> Variant:
+				if latency.set_cvar(n, str(v)):
+					return DotResult.success(latency.requested)
+				return DotResult.fail(DotError.CODE_INVALID, "%s takes seconds, e.g. 0.1" % n))
+		return null)
 
 
 ## Culls [param world] (a dot-map DotMapBspMesh) drawn as [param drawn] by [member vis_mode], under [param parent] (default [param drawn]); call on every map load. Null while off, without dot-map, or for a map with no visibility data.
