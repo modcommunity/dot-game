@@ -44,13 +44,16 @@ static func attach(manager: Object) -> bool:
 static func wire_menu(menu: Object, command_fn: Callable, key_fn: Callable) -> bool:
 	if menu == null or not "offer_fn" in menu or not "store_fn" in menu:
 		return false
+	# Weak: the menu holds these callables, so capturing it would be a RefCounted cycle that leaks at exit.
+	var weak := weakref(menu)
 	menu.set("offer_fn", func() -> Variant:
 		var command: Object = command_fn.call()
 		var key := str(key_fn.call())
 		if command == null or key == "":
 			return DotResult.fail(DotError.CODE_STATE, "Join the match first.")
 		attach(command.get("manager"))
-		return await command.call("offer", key, bool(menu.get("include_locked"))))
+		var live: Object = weak.get_ref()
+		return await command.call("offer", key, live == null or bool(live.get("include_locked"))))
 	menu.set("store_fn", func(item_id: StringName) -> String:
 		var command: Object = command_fn.call()
 		var manager: Object = command.get("manager") if command != null else null
