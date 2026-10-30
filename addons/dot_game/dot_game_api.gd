@@ -62,7 +62,7 @@ extends RefCounted
 # 35: DotGameStatsFeed.upgrade (a late profile key moves a seat's stats key, deliberately).
 # 36: DotGameSlideSounds.surf / surf_rules / surf_cvar_specs, DotGameLanding.surf_rules_fn, DotGameModuleWiring.bind_surf_sounds (the replicated sv_surf_* cvars).
 # 37: DotGameStoreEntitlements.attach / attach_tree (site store entitlements merged into a dot-loadout manager; the module does it on every seat).
-# 38: DotGameStatsBoard / DotGameModule.stats_board (st_*, lt_* and stat_columns on the Tab board snapshot), DotGameStatsFeed.active_tracker.
-# 39: DotGameStorePanel
+# 38: DotGameStatsBoard / DotGameModule.stats_board (st_*, lt_* and stat_columns on the Tab board snapshot), DotGameStatsFeed.active_tracker; DotGameClient.show_stats / stats_ui / stats_panel and the cl_stats_ui cvar (DotGameClientStats).
+# 39: DotGameStorePanel (+ add_to_menu, DotGameClient.add_store_panel).
 const LEVEL := 39
 const OLDEST := 1

@@ -212,6 +212,12 @@ var board: Object = null:
 		_board_auto = false
 ## [code]func(board)[/code]: the game's own preparation of the board (columns, teams, a header), run before it is fed. Unset does nothing.
 var board_prepare_fn: Callable = Callable()
+
+## Lifetime stats on the board and the stats card (the `cl_stats_ui` cvar). False hides both.
+var stats_ui: bool = true
+var stats_columns: Object = null
+## The card of the local player's figures, or null; [method show_stats] opens it.
+var stats_panel: Object = null
 var maps: Object = null
 ## dot-console's controller.
 var console: Node = null
@@ -528,6 +534,7 @@ func add_console(manager: Object = null) -> Node:
 	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
 	console = built if built is Node else null
 	var _v := _Vis.add_console_var(self)
+	DotGameClientStats.add_console_var(self)
 	if _latency_net != null:
 		_bind_latency()
 	return console
@@ -625,7 +632,13 @@ func _wire_menu() -> void:
 			board = got if got is Object else null
 			_board_auto = board != null
 	DotGameClientMenu.wire_board(self)
+	DotGameClientStats.wire(self)
 	DotGameClientMenu.wire_maps(self)
+
+
+## Opens the stats card for [param seconds] (0 keeps it): the end of a round. Nothing when the stats UI is off or the menu has no card.
+func show_stats(seconds: float = 8.0) -> void:
+	DotGameClientStats.show(self, seconds)
 
 
 func _ensure_scoreboard_action() -> void:
