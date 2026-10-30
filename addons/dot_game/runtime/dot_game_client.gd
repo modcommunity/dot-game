@@ -230,6 +230,7 @@ var _feel_arsenal_fn: Callable = Callable()
 var _feel_camera_fn: Callable = Callable()
 var _feel_console_bound: bool = false
 var _latency_net: DotNetManager = null
+var _latency_bound: DotNetManager = null
 var _hit_flinch: DotGameHitFlinch = null
 # True while board came from the menu's own scoreboard: adopting another menu then takes that menu's board.
 var _board_auto: bool = false
@@ -353,6 +354,7 @@ func setup() -> DotResult:
 	_add_slide_sounds()
 	_add_landing()
 	_add_render_quality()
+	_watch_latency_net()
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -531,14 +533,33 @@ func add_console(manager: Object = null) -> Node:
 	return console
 
 
-## Makes `cl_latency_baseline <seconds>` typable in the console (artificial lag for testing) and follows the server's replicated `sv_allow_client_latency`, which at 0 forces it to 0. Call after [method setup] with the client's manager.
+## Makes `cl_latency_baseline <seconds>` typable in the console (artificial lag for testing) and follows the server's replicated `sv_allow_client_latency`, which at 0 forces it to 0. [method setup] calls it with the client's registered [DotNetManager]; safe to call again.
 func add_latency(manager: DotNetManager) -> void:
+	if manager == null or (manager == _latency_bound and _latency_net == manager):
+		return
 	_latency_net = manager
 	_bind_latency()
 
 
+## Finds the client's DotNetManager in the registry now or when it registers (a server's is skipped).
+func _watch_latency_net() -> void:
+	var bus := DotRegistry.signals()
+	if not bus.service_registered.is_connected(_on_latency_service):
+		bus.service_registered.connect(_on_latency_service)
+	for service_name in DotRegistry.names():
+		_on_latency_service(service_name, DotRegistry.get_service(service_name))
+
+
+func _on_latency_service(service_name: StringName, instance: Object) -> void:
+	if not String(service_name).begins_with(String(DotNetManager.SERVICE)) or not (instance is DotNetManager):
+		return
+	if (instance as DotNetManager).is_server:
+		return
+	add_latency(instance as DotNetManager)
+
+
 func _bind_latency() -> void:
-	if _latency_net == null or _latency_net.latency == null:
+	if _latency_net == null or _latency_net.latency == null or _latency_bound == _latency_net:
 		return
 	var latency := _latency_net.latency
 	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
@@ -546,6 +567,7 @@ func _bind_latency() -> void:
 	var local := _Vis.local_source(self, StringName(latency.CVAR_BASELINE))
 	if local == null:
 		return
+	_latency_bound = _latency_net
 	var _bound := latency.bind_client_cvar(func(n: String, _d: String, help: String, _f: int) -> Object:
 		local.call(&"add_var", StringName(n), help,
 			func() -> Variant: return latency.requested,

@@ -572,7 +572,9 @@ func _test_relevance_cvars() -> void:
 class VisLocal extends RefCounted:
 	var vars := {}
 	var taken: Array = []
+	var adds: Array = []
 	func add_var(n: StringName, _h: String, g: Callable, st: Callable) -> void:
+		adds.append(n)
 		vars[n] = [g, st]
 	func claims(n: String) -> bool:
 		return taken.has(n)
@@ -674,10 +676,34 @@ func _test_client_latency() -> void:
 	_check(not net.latency.allowed and net.latency.effective() == 0.0 and is_equal_approx(net.latency.requested, 0.2), "the server's switch at 0 forces the client to 0 and keeps the request")
 	link.replicated_cvar_changed.emit("sv_allow_client_latency", "1")
 	_check(is_equal_approx(net.latency.effective(), 0.2), "and back to 1 restores it")
+	c.add_latency(net)
+	_check(local.adds.count(&"cl_latency_baseline") == 1, "add_latency twice binds once")
 	c.console = null
 	con.free()
 	net.free()
 	c.queue_free()
+	var auto := DotGameClient.new()
+	auto.use_gate = false
+	add_child(auto)
+	var local2 := VisLocal.new()
+	var con2 := VisConsole.new()
+	con2.list = [local2]
+	auto.console = con2
+	auto.link = LatencyLink.new()
+	auto.setup()
+	var net2 := DotNetManager.new()
+	add_child(net2)
+	_check(local2.vars.has(&"cl_latency_baseline"), "setup finds the client's registered net by itself")
+	net2.queue_free()
+	var srv := DotNetManager.new()
+	srv.is_server = true
+	srv.service_scope = &"latency_test_srv"
+	add_child(srv)
+	_check(auto._latency_net != srv, "a server's manager is not taken")
+	srv.queue_free()
+	auto.console = null
+	con2.free()
+	auto.queue_free()
 	_done()
 
 

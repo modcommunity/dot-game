@@ -131,4 +131,4 @@ dot-map is reached by path (`dot_game_map_threads.gd`, no class_name) and never 
 
 ## Artificial latency
 
-`DotGameModule` registers the replicated `sv_allow_client_latency` (default 1) from the server's `net.latency`. A client calls `DotGameClient.add_latency(net)` after `setup()` with its `DotNetManager`: `cl_latency_baseline <seconds>` is then typable in the console, and the server's switch arrives through the link; at 0 the effective delay is forced to 0.
+`DotGameModule` registers the replicated `sv_allow_client_latency` (default 1) from the server's `net.latency`. `DotGameClient.setup()` finds the client's `DotNetManager` in the registry (now or when it registers; a server's is skipped) and calls `add_latency(net)` itself, so no game wires it: `cl_latency_baseline <seconds>` is then typable in the console, and the server's switch arrives through the link; at 0 the effective delay is forced to 0.
