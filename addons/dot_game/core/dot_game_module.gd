@@ -179,6 +179,11 @@ func bind_movement_cvars(targets: Array = []) -> Array:
 	return DotGameModuleWiring.bind_movement_cvars(self, targets if not targets.is_empty() else _movement_targets())
 
 
+## Registers the family's `stats_report` cvar (default 0) and aliases for a game's old names; see [DotGameStatsReport].
+func bind_stats_report(apply: Callable = Callable(), legacy: PackedStringArray = PackedStringArray()) -> DotConVar:
+	return DotGameStatsReport.bind(self, apply, legacy)
+
+
 ## Wires a DotNpcSpawner to `sv_threads_npc` and the `npc_lod*` / `npc_sense_quiet` cvars (all off by default; see [DotGameNpcLod]). Call it once the spawner is in the tree; [param players] returns the positions NPCs measure distance from (default: the spawner's candidates).
 func attach_npc_lod(spawner: Object, players: Callable = Callable()) -> DotGameNpcLod:
 	if npc_lod != null:

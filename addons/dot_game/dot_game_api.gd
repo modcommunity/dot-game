@@ -65,5 +65,6 @@ extends RefCounted
 # 38: DotGameStatsBoard / DotGameModule.stats_board (st_*, lt_* and stat_columns on the Tab board snapshot), DotGameStatsFeed.active_tracker; DotGameClient.show_stats / stats_ui / stats_panel and the cl_stats_ui cvar (DotGameClientStats).
 # 39: DotGameStorePanel (+ add_to_menu, DotGameClient.add_store_panel).
 # 40: DotGameClient.add_loadout_store / DotGameStoreEntitlements.wire_menu (locked store items in the loadout menu), DotGameStorePanel.default_store_url; attach sets the manager's store_url.
-const LEVEL := 40
+# 41: DotGameModule.bind_stats_report / DotGameStatsReport (the family cvar stats_report, aliases for old names).
+const LEVEL := 41
 const OLDEST := 1

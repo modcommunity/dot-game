@@ -48,6 +48,29 @@ class _FakeTracker extends RefCounted:
 	func end(id: StringName) -> void: ended.append(id)
 
 
+func _test_stats_report() -> void:
+	_section("stats_report is one switch for any game, and an old name follows it")
+
+	var calls: Array = []
+	var cv := _module.bind_stats_report(
+		func(on: bool) -> DotResult:
+			calls.append(on)
+			return DotResult.success(on),
+		PackedStringArray(["old_stats_report"]))
+	var old: DotConVar = _module.console.find_cvar("old_stats_report")
+	_check(cv != null and cv.get_string() == "0", "stats_report is off by default")
+	_check(old != null and calls.is_empty(), "the old name is registered and nothing applies at boot")
+	var _r1 := cv.set_value("1")
+	_check(calls == [true] and old.get_string() == "1", "turning it on applies once and moves the old name", str(calls))
+	var _r2 := old.set_value("0")
+	_check(cv.get_string() == "0" and calls == [true, false], "the old name turns the new one off, once", str(calls))
+	var _r3 := cv.set_value("0")
+	_check(calls.size() == 2, "setting the value it already has applies nothing")
+	var res := DotGameStatsReport.apply_default(_module, true)
+	_check(not res.ok, "the default apply refuses, not crashes, with no real tracker")
+	_done()
+
+
 func _test_stats_feed() -> void:
 	_section("a tracker, when there is one, gets a session per seat and bots flagged")
 
