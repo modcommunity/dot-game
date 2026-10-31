@@ -68,6 +68,11 @@ func _test_stats_report() -> void:
 	_check(calls.size() == 2, "setting the value it already has applies nothing")
 	var res := DotGameStatsReport.apply_default(_module, true)
 	_check(not res.ok, "the default apply refuses, not crashes, with no real tracker")
+
+	# A signal connection that captures its own cvar is a cycle that shows as "leaked objects at exit".
+	var plain := _module.add_cvar("plain_ref_probe", "0")
+	_check(cv.get_reference_count() == plain.get_reference_count() and old.get_reference_count() == plain.get_reference_count(),
+		"binding stats_report leaves no reference cycle on its cvars", "%d %d %d" % [cv.get_reference_count(), old.get_reference_count(), plain.get_reference_count()])
 	_done()
 
 

@@ -20,22 +20,33 @@ static func bind(module: DotModule, apply: Callable = Callable(), legacy: Packed
 	for old_name: String in legacy:
 		all.append(module.add_cvar(old_name, "0", "Alias of %s" % CVAR, flags).with_min(0.0).with_max(1.0))
 
+	# Weak refs throughout: the cvar's own signal must not hold the cvar (or the module that owns it) alive.
+	var refs: Array[WeakRef] = []
+	for cv: DotConVar in all:
+		refs.append(weakref(cv))
+	var module_ref := weakref(module)
 	var busy := [false]
 	var run := func(on: bool) -> void:
-		var res: DotResult = apply.call(on) if apply.is_valid() else apply_default(module, on)
+		var m := module_ref.get_ref() as DotModule
+		if m == null:
+			return
+		var res: DotResult = apply.call(on) if apply.is_valid() else apply_default(m, on)
 		DotLog.info(CHANNEL, "stats reporting", {"on": on, "ok": res.ok})
 	var follow := func(changed_cv: DotConVar, new_value: String) -> void:
 		if busy[0]:
 			return
 		busy[0] = true
 		var on := new_value.to_int() != 0
-		for other: DotConVar in all:
-			if other != changed_cv:
+		for ref: WeakRef in refs:
+			var other := ref.get_ref() as DotConVar
+			if other != null and other != changed_cv:
 				other.force_set("1" if on else "0")
 		busy[0] = false
 		run.call(on)
-	for cv: DotConVar in all:
-		cv.changed.connect(func(_old: String, new_value: String) -> void: follow.call(cv, new_value))
+	for i in all.size():
+		var idx := i
+		all[i].changed.connect(func(_old: String, new_value: String) -> void:
+			follow.call(refs[idx].get_ref() as DotConVar, new_value))
 
 	# A cfg that sets only an old name still turns it on.
 	for cv: DotConVar in all:
