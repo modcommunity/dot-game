@@ -202,6 +202,7 @@ var render_quality: Node = null
 @export var use_profiler: bool = true
 ## The node [member use_profiler] added, else null.
 var profiler: Node = null
+var _profiler_bound: bool = false
 ## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, finds itself).
 var slide_settings: Object = null
 ## The slide node, once `setup()` has added it.
@@ -392,8 +393,36 @@ func _add_profiler() -> void:
 	if not use_profiler:
 		return
 	profiler = _Profiler.add(self)
-	if profiler != null and console != null:
-		_Profiler.bind_client_console(profiler, _Vis.local_source(self, &"profiler_enabled"))
+	if profiler == null:
+		return
+	if not _bind_profiler_console():
+		# A game that builds its own console registers it later; bind then (deferred, so its own commands are on it).
+		DotRegistry.signals().service_registered.connect(_on_console_registered)
+
+
+func _on_console_registered(service: StringName, _instance: Object) -> void:
+	if service == &"dot_console":
+		_bind_profiler_console.call_deferred()
+
+
+func _bind_profiler_console() -> bool:
+	if _profiler_bound or profiler == null or not is_instance_valid(profiler):
+		return _profiler_bound
+	var con: Object = console if console != null and is_instance_valid(console) else DotRegistry.get_service(&"dot_console")
+	if con == null or not con.has_method(&"sources"):
+		return false
+	var local: Object = null
+	for s: Object in con.call(&"sources"):
+		if s.has_method(&"add_var"):
+			if s.has_method(&"claims") and bool(s.call(&"claims", "profiler_enabled")):
+				_profiler_bound = true
+				return true
+			local = s
+	if local == null:
+		return false
+	_Profiler.bind_client_console(profiler, local)
+	_profiler_bound = true
+	return true
 
 
 func _add_render_quality() -> void:
