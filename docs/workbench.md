@@ -57,3 +57,7 @@ Flagged admins edit profiles from a connected client; nobody else even gets a pa
 4. `examples/headless_net.gd` gets a section that registers both ends in that order and checks that an admin's edit applies and replicates, and that a guest, a non-admin, a revoked admin and the cvar off are refused.
 
 Test: `examples/headless_workbench_remote.tscn` (the real-api half needs `addons/dot_workbench` linked and is counted as skipped otherwise).
+
+## The suite base: DotGameWorkbenchSuite
+
+`DotGameWorkbenchSuite` (`qa/`, extends `DotGameCheckSuite`) is the whole body of a game's `examples/headless_workbench.gd`: override `_make_config()` and `_make_binder(config)`. It opens the window, edits one field per profile set (so one per bound group when the binder is grouped) through `api.handle`, and checks the live config changed, the export holds the key in the cfg layout, the written file loads back through a strict binder, and a second actor needs a permit. Checks: 7 plus 3 per set.
