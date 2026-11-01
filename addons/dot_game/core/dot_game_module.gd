@@ -36,9 +36,12 @@ signal loading_changed(seat: int, loading: bool)
 
 ## The property a game object may declare to be handed [method is_peer_loading]: `var peer_loading_fn: Callable`. Assigned before [method _game_load], cleared at unload.
 const PEER_LOADING_PROPERTY := &"peer_loading_fn"
+const _Profiler := preload("res://addons/dot_game/runtime/dot_game_profiler.gd")
 
 ## Seconds a seat may stay loading before it counts as loaded anyway, with a warning.
 @export var load_timeout_sec: float = 30.0
+## Place dot-profiler with sv_profiler_* on the console; `--no-profiler` or DOT_GAME_PROFILER=0 turns it off.
+@export var use_profiler: bool = true
 
 ## After a map change, seconds to wait for a client's cover to go up again before counting it loaded.
 @export var reload_grace_sec: float = 5.0
@@ -271,6 +274,8 @@ func _module_load() -> DotResult:
 		_teardown()
 		return blocked
 
+	if use_profiler:
+		_Profiler.install_server(_Profiler.add(self))
 	_advertise_avatar_content()
 	_advertise_site_server()
 	_follow_hibernation()
@@ -665,6 +670,9 @@ func _apply_map_config(map_id: String) -> void:
 func _module_unload() -> void:
 	_game_unload()
 	_teardown()
+	var prof := get_node_or_null(_Profiler.NODE_NAME)
+	if prof != null:
+		prof.queue_free()
 
 
 ## Starts dot-cloud's auto-update once per headless server process, under the server. No-op without dot-cloud, on a listen server and in a browser.

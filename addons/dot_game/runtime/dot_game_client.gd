@@ -38,6 +38,7 @@ const REASON_SPAWNED := &"spawned"
 const _Settings := preload("res://addons/dot_game/runtime/dot_game_client_settings.gd")
 const _Vis := preload("res://addons/dot_game/runtime/dot_game_client_vis.gd")
 const _RenderQuality := preload("res://addons/dot_game/runtime/dot_game_render_quality.gd")
+const _Profiler := preload("res://addons/dot_game/runtime/dot_game_profiler.gd")
 
 ## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
 signal input_blocked_changed(blocked: bool)
@@ -197,6 +198,10 @@ var use_slide_sounds: bool = true
 var use_render_quality: bool = true
 ## The node [member use_render_quality] added, else null.
 var render_quality: Node = null
+## Place dot-profiler (the menu's Performance tab); `--no-profiler` or DOT_GAME_PROFILER=0 turns it off for the run.
+@export var use_profiler: bool = true
+## The node [member use_profiler] added, else null.
+var profiler: Node = null
 ## A settings manager holding `slide_volume` when the game keeps its own (dot-menu's node, if [member settings] is set, finds itself).
 var slide_settings: Object = null
 ## The slide node, once `setup()` has added it.
@@ -363,6 +368,7 @@ func setup() -> DotResult:
 		_build_settings()
 	if use_console:
 		add_console()
+	_add_profiler()
 	_wire_menu()
 	DotGameClientLook.build(self)
 	_add_slide_sounds()
@@ -380,6 +386,14 @@ func setup() -> DotResult:
 ## Adds `slide_volume` to a settings schema a game builds itself (a game on dot-menu's node through `setup()` gets it without this).
 static func declare_slide_setting(schema: Object) -> void:
 	preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").declare(schema)
+
+
+func _add_profiler() -> void:
+	if not use_profiler:
+		return
+	profiler = _Profiler.add(self)
+	if profiler != null and console != null:
+		_Profiler.bind_client_console(profiler, _Vis.local_source(self, &"profiler_enabled"))
 
 
 func _add_render_quality() -> void:

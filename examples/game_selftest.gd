@@ -86,6 +86,7 @@ func _run() -> void:
 		await _test_chat_client_server_lines()
 		await _test_map_content()
 		_test_auto_update_wiring()
+		_test_profiler_placement()
 		await _test_client_platform()
 		await _test_look_mute()
 		_test_store_entitlements_absent()
@@ -1101,6 +1102,23 @@ func _test_auto_update_wiring() -> void:
 	], "a delivered game's own pack, dependencies and maps; a built-in game adds nothing", str(watched))
 	_check(DotGameModule.watched_packs(null).is_empty(), "no server watches nothing")
 	_check(DotGameModule.start_auto_update(_server) == null, "a build without dot-cloud starts no updater")
+	_done()
+
+
+## The profiler placement is optional: with dot-profiler absent it places nothing and parses.
+func _test_profiler_placement() -> void:
+	_section("profiler placement")
+	var prof := preload("res://addons/dot_game/runtime/dot_game_profiler.gd")
+	var host := Node.new()
+	add_child(host)
+	var placed: Node = prof.add(host)
+	if ResourceLoader.exists(prof.SCRIPT):
+		_check(placed != null and DotRegistry.get_service(&"dot_profiler") == placed, "placed and registered as dot_profiler")
+		_check(prof.add(host) == null, "placing twice adds nothing")
+	else:
+		_check(placed == null and host.get_child_count() == 0, "a build without dot-profiler places nothing")
+	prof.install_server(null)
+	host.queue_free()
 	_done()
 
 
