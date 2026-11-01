@@ -159,13 +159,16 @@ PY
 rc=$?
 if [ "$post" = 1 ] && [ -s "$out" ]; then
     # The payload is the result plus the /api/qa summary; qa-post.sh lives with the panel on dev01.
-    python3 -I - "$out" <<'PY' | ssh dev01 "f=\$(mktemp) && cat >\$f && QA_URL=http://127.0.0.1:3010 QA_COMMIT=$commit ~/stack/nightly/scripts/qa-post.sh perf $GAME \$f; r=\$?; rm -f \$f; exit \$r"
-import json, sys
+    # Any "<name>.seq" frame dirs a case left in "<out>.media" go up as mp4 clips beside the numbers.
+    vid=$(mktemp -d); "$(dirname "$0")/seq_to_mp4.sh" "${out%.json}.media" "$vid"
+    python3 -I - "$out" "$vid" <<'PY' | ssh dev01 "f=\$(mktemp) && cat >\$f && QA_URL=http://127.0.0.1:3010 QA_COMMIT=$commit ~/stack/nightly/scripts/qa-post.sh perf $GAME \$f; r=\$?; rm -f \$f; exit \$r"
+import base64, glob, json, os, sys
 r = json.load(open(sys.argv[1]))
+clips = [{"name": os.path.basename(f), "data": base64.b64encode(open(f, "rb").read()).decode()} for f in sorted(glob.glob(sys.argv[2] + "/*.mp4"))]
 metrics = {m: {k: {x: v[x] for x in ("value", "baseline", "budget", "cap", "noise_pct", "status") if x in v} for k, v in d["metrics"].items()} for m, d in r["maps"].items()}
 print(json.dumps({"ok": r["ok"], "timestamp": r["time"], "failures": r["failures"] + ([{"name": "GPU mismatch", "reasons": [f"baseline on {r['baseline_gpu']}, run on {r['gpu']}"]}] if r["gpu_mismatch"] else []),
     "summary": {"total": r["total"], "failed": len(r["failures"]) + int(r["gpu_mismatch"]), "gpu": r["gpu"], "tolerance": r["tolerance"],
-                "resolution": r["resolution"], "dirty": r["dirty"], "metrics": metrics}}))
+                "resolution": r["resolution"], "dirty": r["dirty"], "metrics": metrics}, "attachments": clips}))
 PY
 fi
 exit $rc

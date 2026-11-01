@@ -73,11 +73,12 @@ done
 summary="visual: $((${#maps[@]} - failed))/${#maps[@]} maps ok, $total frames$([ $update -eq 1 ] && echo ' (goldens updated)')"
 echo "$summary"
 if [ $post -eq 1 ] && [ $update -eq 0 ]; then
-    # qa-post.sh reads the "visual: N/M maps ok" line and the *_diff.png files; it lives with the panel on dev01.
+    # qa-post.sh reads the "visual: N/M maps ok" line, the *_diff.png files and the *.mp4 clips (from each shot's .seq); it lives with the panel on dev01.
     log=$out/summary.log; : >"$log"
     for map in ${failed_maps[@]+"${failed_maps[@]}"}; do echo "map $map: FAIL" >>"$log"; done
     echo "$summary" >>"$log"
-    tar -C "$out" -cf - summary.log $(cd "$out" && ls *_diff.png 2>/dev/null) \
+    rm -f "$out"/*.mp4; "$SHARED/seq_to_mp4.sh" screenshots "$out"
+    tar -C "$out" -cf - summary.log $(cd "$out" && ls *_diff.png *.mp4 2>/dev/null) \
         | ssh dev01 "d=\$(mktemp -d) && tar -C \$d -xf - && QA_URL=http://127.0.0.1:3010 QA_COMMIT=$(git rev-parse HEAD 2>/dev/null) ~/stack/nightly/scripts/qa-post.sh visual $GAME \$d/summary.log \$d; r=\$?; rm -rf \$d; exit \$r"
 fi
 [ $failed -eq 0 ]

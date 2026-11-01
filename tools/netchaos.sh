@@ -259,7 +259,14 @@ cleanup
 python3 -I "$SHARED/netchaos_eval.py" "$OUT" --all ${PROFILES//,/ } || overall=1
 if ((POST)); then
 	# The /qa board's "suite" kind takes payload.json as written: failures are named "netchaos <profile>".
-	ssh dev01 "f=\$(mktemp) && cat >\$f && QA_URL=http://127.0.0.1:3010 QA_COMMIT=$(git rev-parse HEAD) ~/stack/nightly/scripts/qa-post.sh suite $GAME \$f; r=\$?; rm -f \$f; exit \$r" <"$OUT/payload.json" || say "qa post failed"
+	# "<name>.seq" frame dirs under $OUT/media (a client's DotShotSeq) go up as mp4 clips.
+	"$SHARED/seq_to_mp4.sh" "$OUT/media" "$OUT/clips"
+	python3 -I - "$OUT/payload.json" "$OUT/clips" <<'PY' | ssh dev01 "f=\$(mktemp) && cat >\$f && QA_URL=http://127.0.0.1:3010 QA_COMMIT=$(git rev-parse HEAD) ~/stack/nightly/scripts/qa-post.sh suite $GAME \$f; r=\$?; rm -f \$f; exit \$r" || say "qa post failed"
+import base64, glob, json, os, sys
+p = json.load(open(sys.argv[1]))
+p["attachments"] = [{"name": os.path.basename(f), "data": base64.b64encode(open(f, "rb").read()).decode()} for f in sorted(glob.glob(sys.argv[2] + "/*.mp4"))]
+print(json.dumps(p))
+PY
 fi
 say "outputs in $OUT"
 exit "$overall"
