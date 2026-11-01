@@ -28,7 +28,7 @@ func _run() -> void:
 	root.add_child(scene)
 	var menu: DotMenu = null
 	var prof: Object = null
-	for f in 600:
+	for f in 3000:
 		await process_frame
 		if f % 10 == 0 and f >= 30:
 			menu = _find_menu(root)
