@@ -59,7 +59,7 @@ shopt -s nullglob
 [ -n "$(echo "$work"/*.mp4)" ] || { echo "reviews: no clips produced" >&2; exit 1; }
 for it in "${want[@]}"; do
     f=("$work/${it}__reload.mp4"); [ -f "${f[0]}" ] || f=("$work/${it}__"*.mp4)
-    [ -f "${f[0]}" ] && bash addons/dot_core/tools/dot_filmstrip.sh "${f[0]}" "$work/$it" --cols 4 --rows 3 --width 320 >/dev/null
+    [ -f "${f[0]:-}" ] && bash addons/dot_core/tools/dot_filmstrip.sh "${f[0]}" "$work/$it" --cols 4 --rows 3 --width 320 >/dev/null
 done
 [ "$post" = 1 ] || { echo "reviews: clips in $work (not posted)"; exit 0; }
 
