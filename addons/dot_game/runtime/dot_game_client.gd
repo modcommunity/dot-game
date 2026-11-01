@@ -612,7 +612,7 @@ func _bind_latency() -> void:
 
 ## A sun that loads after startup (a map's) gets the shadow distance cap too.
 func _on_node_added_quality(node: Node) -> void:
-	if node is DirectionalLight3D and float(_RenderQuality.values[&"r_shadow_distance"]) > 0.0:
+	if node is DirectionalLight3D and (float(_RenderQuality.values[&"r_shadow_distance"]) > 0.0 or float(_RenderQuality.values[&"r_sun_shadow_splits"]) > 0.0):
 		_RenderQuality.cap_sun.call_deferred(node as DirectionalLight3D)
 
 
