@@ -15,10 +15,10 @@ import sys
 
 # Per profile: longest stretch (s) a client may go without a snapshot, longest first join (s),
 # worst single prediction correction (m), and the share of replays that needed a correction.
-GAP_S = {"clean": 1.0, "lossy100": 2.5, "jitter200": 4.0, "awful400": 8.0, "bwcap": 8.0, "blackout": 8.0}
-JOIN_S = {"clean": 20.0, "lossy100": 30.0, "jitter200": 35.0, "awful400": 45.0, "bwcap": 30.0, "blackout": 30.0}
-WORST_ERR_M = {"clean": 0.5, "lossy100": 1.0, "jitter200": 1.5, "awful400": 3.0, "bwcap": 3.0, "blackout": 3.0}
-CORRECTION_RATE = {"clean": 0.10, "lossy100": 0.25, "jitter200": 0.40, "awful400": 0.60, "bwcap": 0.30, "blackout": 0.30}
+GAP_S = {"clean": 1.0, "lossy100": 2.5, "lossy200": 4.0, "jitter200": 4.0, "awful400": 8.0, "bwcap": 8.0, "blackout": 8.0}
+JOIN_S = {"clean": 20.0, "lossy100": 30.0, "lossy200": 35.0, "jitter200": 35.0, "awful400": 45.0, "bwcap": 30.0, "blackout": 30.0}
+WORST_ERR_M = {"clean": 0.5, "lossy100": 1.0, "lossy200": 1.5, "jitter200": 1.5, "awful400": 3.0, "bwcap": 3.0, "blackout": 3.0}
+CORRECTION_RATE = {"clean": 0.10, "lossy100": 0.25, "lossy200": 0.40, "jitter200": 0.40, "awful400": 0.60, "bwcap": 0.30, "blackout": 0.30}
 # Settled (everyone idle for the settle time) distance to the server's truth.
 # The blackout's resume: the server ran the dark seconds on neutral input while each client
 # predicted its own, so the first snapshot after it is a correction of up to speed x blackout.
