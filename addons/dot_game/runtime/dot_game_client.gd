@@ -129,6 +129,8 @@ var pointer_fn: Callable = Callable()
 @export var escape_releases_pointer: bool = false
 ## Gate-only mode: [method setup] wires only the chat's keyboard and the input block, for a game that owns the rest.
 @export var gate_only: bool = false
+## Turn the period-key team menu on over the menu: Play and Spectate as a free-for-all when no rules are wired, the server's teams when connected. A game that calls `use_teams` itself keeps its own.
+@export var use_team_menu: bool = true
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
 
@@ -631,9 +633,19 @@ func _wire_menu() -> void:
 			var got: Variant = menu.get(&"scoreboard")
 			board = got if got is Object else null
 			_board_auto = board != null
+	_wire_team_menu()
 	DotGameClientMenu.wire_board(self)
 	DotGameClientStats.wire(self)
 	DotGameClientMenu.wire_maps(self)
+
+
+func _wire_team_menu() -> void:
+	# By name and only when unset: an older dot-menu has no team menu, and a game's own offer stays.
+	if not use_team_menu or menu == null or not menu.has_method(&"use_teams"):
+		return
+	if &"teams" in menu and menu.get(&"teams") != null:
+		return
+	var _teams: Variant = menu.call(&"use_teams")
 
 
 ## Opens the stats card for [param seconds] (0 keeps it): the end of a round. Nothing when the stats UI is off or the menu has no card.
