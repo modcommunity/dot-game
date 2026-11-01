@@ -41,6 +41,13 @@ func _run() -> void:
 		return
 	for f in 90:
 		await process_frame
+	var claimed := false
+	var con: Object = DotRegistry.get_service(&"dot_console")
+	if con != null and con.has_method(&"sources"):
+		for src: Object in con.call(&"sources"):
+			if src.has_method(&"claims") and bool(src.call(&"claims", "profiler_enabled")):
+				claimed = true
+	print("profiler_menu_shot: console claims profiler_enabled=%s" % claimed)
 	var started: Variant = prof.call(&"start_recording", 1.0)
 	var rec_seen: bool = prof.call(&"is_recording")
 	var guard := 0
