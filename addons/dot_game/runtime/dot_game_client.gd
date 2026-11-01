@@ -133,6 +133,8 @@ var pointer_fn: Callable = Callable()
 @export var gate_only: bool = false
 ## Turn the period-key team menu on over the menu: Play and Spectate as a free-for-all when no rules are wired, the server's teams when connected. A game that calls `use_teams` itself keeps its own.
 @export var use_team_menu: bool = true
+## False: with no teams wired and no server link, the period key says the game has no teams instead of offering Play and Spectate (`DotMenuTeams.default_when_unwired`). A connected server's own `mp_teamswitch_enabled` and `mp_teamswitch_spectate` still rule the connected menu.
+@export var team_menu_default_when_unwired: bool = true
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
 
@@ -703,7 +705,9 @@ func _wire_team_menu() -> void:
 		return
 	if &"teams" in menu and menu.get(&"teams") != null:
 		return
-	var _teams: Variant = menu.call(&"use_teams")
+	var teams: Variant = menu.call(&"use_teams")
+	if teams is Object and &"default_when_unwired" in (teams as Object):
+		(teams as Object).set(&"default_when_unwired", team_menu_default_when_unwired)
 
 
 ## Opens the stats card for [param seconds] (0 keeps it): the end of a round. Nothing when the stats UI is off or the menu has no card.
