@@ -37,6 +37,7 @@ const BINDINGS_SCRIPT := "res://addons/dot_menu/core/dot_menu_bindings.gd"
 const REASON_SPAWNED := &"spawned"
 const _Settings := preload("res://addons/dot_game/runtime/dot_game_client_settings.gd")
 const _Vis := preload("res://addons/dot_game/runtime/dot_game_client_vis.gd")
+const _RenderQuality := preload("res://addons/dot_game/runtime/dot_game_render_quality.gd")
 
 ## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
 signal input_blocked_changed(blocked: bool)
@@ -278,6 +279,11 @@ func _ready() -> void:
 	if use_locked_content:
 		_mount_locked_content(standalone)
 	_Vis.apply_cmdline(self)
+	_RenderQuality.apply_cmdline()
+	_RenderQuality.init_defaults()
+	_RenderQuality.apply(get_viewport(), get_tree().root)
+	if not get_tree().node_added.is_connected(_on_node_added_quality):
+		get_tree().node_added.connect(_on_node_added_quality)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
 
@@ -536,6 +542,9 @@ func add_console(manager: Object = null) -> Node:
 	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
 	console = built if built is Node else null
 	var _v := _Vis.add_console_var(self)
+	var quality := _Vis.local_source(self, &"r_msaa")
+	if quality != null:
+		_RenderQuality.add_client_vars(quality, func() -> void: _RenderQuality.apply(get_viewport(), get_tree().root))
 	DotGameClientStats.add_console_var(self)
 	if _latency_net != null:
 		_bind_latency()
@@ -585,6 +594,12 @@ func _bind_latency() -> void:
 					return DotResult.success(latency.requested)
 				return DotResult.fail(DotError.CODE_INVALID, "%s takes seconds, e.g. 0.1" % n))
 		return null)
+
+
+## A sun that loads after startup (a map's) gets the shadow distance cap too.
+func _on_node_added_quality(node: Node) -> void:
+	if node is DirectionalLight3D and float(_RenderQuality.values[&"r_shadow_distance"]) > 0.0:
+		_RenderQuality.cap_sun.call_deferred(node as DirectionalLight3D)
 
 
 ## Culls [param world] (a dot-map DotMapBspMesh) drawn as [param drawn] by [member vis_mode], under [param parent] (default [param drawn]); call on every map load. Null while off, without dot-map, or for a map with no visibility data.
