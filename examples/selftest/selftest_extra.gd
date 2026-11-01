@@ -682,6 +682,31 @@ class RenderStore:
 		return float(vals.get(key, d))
 
 
+func _test_sun_shadow_cvars() -> void:
+	_section("r_sun_shadow_size and r_sun_shadow_splits validate and cap a sun, never raising it")
+	var rq := load("res://addons/dot_game/runtime/dot_game_render_quality.gd")
+	var saved: Dictionary = rq.values.duplicate()
+	_check(rq.set_value(&"r_sun_shadow_splits", 3).ok == false, "3 splits is refused")
+	_check(rq.set_value(&"r_sun_shadow_size", 100).ok == false, "a 100 px sun map is refused")
+	_check(rq.web_defaults()[&"r_sun_shadow_size"] == 2048.0 and rq.web_defaults()[&"r_sun_shadow_splits"] == 2.0, "the web defaults are 2048 and 2 splits")
+	rq.values[&"r_shadow_distance"] = -1.0
+	rq.set_value(&"r_sun_shadow_splits", 2)
+	var sun := DirectionalLight3D.new()
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	rq.cap_sun(sun)
+	_check(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, "a 4-split sun drops to 2")
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	rq.cap_sun(sun)
+	_check(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "a 1-split sun is not raised")
+	rq.set_value(&"r_sun_shadow_splits", 1)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	rq.cap_sun(sun)
+	_check(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "1 split forces orthogonal")
+	sun.free()
+	rq.values = saved
+	_done()
+
+
 func _test_render_quality() -> void:
 	_section("every client applies render quality (dot-fx) from the menu's keys, no per-game wiring")
 	var c := DotGameClient.new()
