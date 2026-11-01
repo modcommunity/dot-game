@@ -224,6 +224,8 @@ func _sample() -> void:
 		"out_of_order": cnet.stats.out_of_order,
 		"corrections": _corrections + int(p.get("corrections", 0)) - _sess_base["corrections"],
 		"worst_error": _worst_error,
+		"snaps": int(p.get("snaps", 0)),
+		"worst_snap": float(str(p.get("worst_snap", "0")).trim_suffix(" m")),
 		"gap_max": snappedf(_max_gap, 0.01),
 		"fps": Engine.get_frames_per_second(),
 	})
