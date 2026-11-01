@@ -23,6 +23,8 @@ var _active := 30.0
 var _settle := 6.0
 var _out := "netchaos_report.json"
 var _fire := true
+var _transport := "udp"
+var _frames: PackedFloat32Array = PackedFloat32Array()
 
 var _keepalive: Variant = null
 var _link: DotClientLink = null
@@ -82,10 +84,35 @@ func _ready() -> void:
 			"--settle": _settle = float(args[i + 1])
 			"--out": _out = args[i + 1]
 			"--fire": _fire = args[i + 1] != "0"
+			"--transport": _transport = args[i + 1]
 	name = "Netchaos"  # RPC paths must match the server's root name
 	DotLog.set_level(DotLog.Level.WARN)
 	_keepalive = _prepare("netchaos_client_" + _name)
 	_run.call_deferred()
+
+
+func _process(delta: float) -> void:
+	if _client != null and _now() >= _start_at:
+		_frames.append(delta)
+
+
+## Frame times in ms of the whole run, so a network stall that holds the frame loop shows as a long frame.
+func _frame_stats() -> Dictionary:
+	var n := _frames.size()
+	if n < 10:
+		return {"count": n}
+	var sorted := _frames.duplicate()
+	sorted.sort()
+	var total := 0.0
+	var over50 := 0
+	var over100 := 0
+	for d in _frames:
+		total += d
+		over50 += int(d > 0.05)
+		over100 += int(d > 0.1)
+	return {"count": n, "mean_ms": snappedf(total / n * 1000.0, 0.01), "p50_ms": snappedf(sorted[n / 2] * 1000.0, 0.01),
+		"p99_ms": snappedf(sorted[int(n * 0.99)] * 1000.0, 0.01), "max_ms": snappedf(sorted[n - 1] * 1000.0, 0.01),
+		"over50": over50, "over100": over100, "fps_mean": snappedf(float(n) / total, 0.1)}
 
 
 func _now() -> float:
@@ -100,7 +127,7 @@ func _join() -> bool:
 	_link = DotClientLink.new()
 	_link.name = "Server"
 	_link.player_name = "nc_" + _name
-	_link.transport_preference = "udp"
+	_link.transport_preference = _transport
 	_link.udp_address = _server
 	add_child(_link)
 	_link.disconnected.connect(func(reason: String) -> void:
@@ -388,6 +415,7 @@ func _report(t0: float) -> void:
 					rows.append([str(d.property), int(d.audience), d.max_rate, d.interpolate])
 			out["vars_" + who.display_name] = rows
 	out["max_snapshot_gap_s"] = _max_gap
+	out["frames"] = _frame_stats()
 	var f := FileAccess.open(_out, FileAccess.WRITE)
 	f.store_string(JSON.stringify(out))
 	f.close()

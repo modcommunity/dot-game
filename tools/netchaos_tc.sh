@@ -52,7 +52,7 @@ apply)
 		[[ $port == sport=* ]] && match="sport" band=2
 		port=${port#*=}
 		if ! "${TC[@]}" filter add dev "$dev" protocol ip parent $MAJOR: prio 1 u32 \
-			match ip protocol 17 0xff match ip dst "$ip/32" match ip "$match" "$port" 0xffff flowid $MAJOR:$band; then
+			match ip protocol ${NC_PROTO:-17} 0xff match ip dst "$ip/32" match ip "$match" "$port" 0xffff flowid $MAJOR:$band; then
 			"${TC[@]}" qdisc del dev "$dev" root
 			exit 3
 		fi

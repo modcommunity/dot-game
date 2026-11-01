@@ -9,6 +9,7 @@
 #   tools/netchaos.sh selftest [staging|staging02]    the tc filter on one box with a harmless profile
 #   tools/netchaos.sh profiles                        list the profiles
 #
+# NC_TRANSPORT=ws runs the local clients over WebSocket (TCP) and impairs TCP instead of UDP; remote boxes stay UDP.
 # NC_SOLID=1 keeps mp_solidplayers on (the default is 0 here) and is held to the same limits, plus
 # a contact count: a game whose bumps only stop the mover collides at the mover's view tick on
 # both ends (dot-net docs/prediction.md), so bumping costs no corrections.
@@ -42,6 +43,7 @@ profile_netem() {
 		lossy100)  NETEM="delay 50ms 5ms loss 3%" ;;
 		jitter200) NETEM="delay 100ms 25ms distribution normal loss 8%" ;;
 		awful400)  NETEM="delay 200ms 40ms loss 15% reorder 25% 50% duplicate 3%" ;;
+		lossy200)  NETEM="delay 100ms 20ms loss 3%" ;;
 		bwcap)     NETEM="delay 50ms 5ms rate 256kbit limit 60" ;;
 		blackout)  NETEM="delay 50ms 5ms loss 1%"; BLACKOUT=$BLACKOUT_SECONDS ;;
 		*) echo "unknown profile $1" >&2; return 1 ;;
@@ -56,7 +58,7 @@ rssh() { local b=$1; shift; ssh "${SSH_OPTS[@]}" "$(box_host "$b")" "$@"; }
 box_ip() { getent hosts "$(box_host "$1" | cut -d@ -f2)" | awk '{print $1}'; }
 # tc on a box: the script is piped, so the box needs nothing installed but sudo and tc.
 tc_box() { local b=$1; shift; ssh "${SSH_OPTS[@]}" "$(box_host "$b")" "bash -s -- $(printf '%q ' "$@")" < "$SHARED/netchaos_tc.sh"; }
-tc_local() { bash "$SHARED/netchaos_tc.sh" "$@"; }
+tc_local() { NC_PROTO=$([[ ${NC_TRANSPORT:-udp} == ws ]] && echo 6 || echo 17) bash "$SHARED/netchaos_tc.sh" "$@"; }
 dev_for() { ip route get "$1" | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1; }
 dev_on() { rssh "$1" "ip route get $2" | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1; }
 src_to() { ip route get "$1" | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -1; }
@@ -211,7 +213,7 @@ for prof in ${PROFILES//,/ }; do
 		n="L$i"
 		NAMES+=("$n:local")
 		timeout $((LEAD + ACTIVE + SETTLE + 90)) "$GODOT" --headless --path "$ROOT" res://tools/netchaos_client.tscn -- \
-			--server "127.0.0.1:$PORT" --name "$n" --start-at "$START" --active "$ACTIVE" --settle "$SETTLE" --fire "${NC_FIRE:-1}" --out "$RUN/client-$n.json" \
+			--server "127.0.0.1:$PORT" --name "$n" --start-at "$START" --active "$ACTIVE" --settle "$SETTLE" --fire "${NC_FIRE:-1}" --transport "${NC_TRANSPORT:-udp}" --out "$RUN/client-$n.json" \
 			>"$RUN/client-$n.log" 2>&1 &
 		CLIENT_PIDS+=($!)
 	done
