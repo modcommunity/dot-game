@@ -81,8 +81,13 @@ static func add_client_vars(local: Object, reapply: Callable) -> void:
 				return res)
 
 
-## Applies `--r_msaa=2` style user arguments.
+## Applies `--r_msaa=2` style user arguments, and on the web the page's `?r_msaa=2` query.
 static func apply_cmdline() -> void:
+	if DotWeb.available():
+		for n: StringName in NAMES:
+			var q := DotWeb.query_param(n)
+			if q != "":
+				var _q := set_value(n, q)
 	for a in OS.get_cmdline_user_args():
 		for n: StringName in NAMES:
 			if a.begins_with("--%s=" % n):
