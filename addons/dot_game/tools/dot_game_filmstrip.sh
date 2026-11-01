@@ -15,7 +15,10 @@ box=${GPU_SHOT_BOXES:-staging02}
 host=gamedev@${box%%[ ,]*}.deacon.internal
 for clip in "${clips[@]}"; do
   GPU_SHOT_BOXES=$box ../gpu.sh shot "$proj" tools/filmstrip_run.sh "$clip" "${FPS:-30}"
+  # The report exists only when the clip had metrics, so it is pulled apart from the movie and sheet (rsync exits 23 on a missing file).
   rsync -az -e "ssh -i ${GPU_KEY:-$HOME/.ssh/gpu-laptop} -o BatchMode=yes" \
-    "$host:gpu/shot/$proj/$out/$clip.mp4" "$host:gpu/shot/$proj/$out/${clip}_sheet.png" "$host:gpu/shot/$proj/$out/${clip}_report.txt" "$out/" || true  # no report without metrics
+    "$host:gpu/shot/$proj/$out/$clip.mp4" "$host:gpu/shot/$proj/$out/${clip}_sheet.png" "$out/" || true
+  rsync -az -e "ssh -i ${GPU_KEY:-$HOME/.ssh/gpu-laptop} -o BatchMode=yes" \
+    "$host:gpu/shot/$proj/$out/${clip}_report.txt" "$out/" 2>/dev/null || true
 done
 echo "sheets in $out/"
