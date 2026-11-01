@@ -67,5 +67,6 @@ extends RefCounted
 # 40: DotGameClient.add_loadout_store / DotGameStoreEntitlements.wire_menu (locked store items in the loadout menu), DotGameStorePanel.default_store_url; attach sets the manager's store_url.
 # 41: DotGameModule.bind_stats_report / DotGameStatsReport (the family cvar stats_report, aliases for old names).
 # 42: DotGameClient.use_team_menu (the period-key Play/Spectate menu on by default).
-const LEVEL := 42
+# 43: DotGameRenderQuality (the r_msaa, r_scale, r_shadow_atlas, r_shadow_distance cvars; web defaults cheaper, ?r_msaa= style query overrides).
+const LEVEL := 43
 const OLDEST := 1
