@@ -43,7 +43,7 @@ extends "selftest/selftest_stats.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 569
+const CHECKS := 574
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -93,6 +93,7 @@ func _run() -> void:
 		await _test_store_panel()
 		await _test_loadout_store()
 		await _test_client_hooks_menu()
+		await _test_client_team_menu_default()
 		await _test_client_reports_cover()
 		await _test_client_page_guard()
 		await _test_client_user_tier()
@@ -1351,6 +1352,70 @@ class OwnMenu extends RefCounted:
 	func use_maps(_rows: Callable, _change: Callable) -> RefCounted:
 		maps_made += 1
 		return RefCounted.new()
+
+
+class TeamsStub extends RefCounted:
+	var default_when_unwired: bool = true
+
+
+class TeamsMenu extends OwnMenu:
+	var teams: RefCounted = null
+	var used: int = 0
+	func use_teams(_offer: Callable = Callable(), _choose: Callable = Callable()) -> RefCounted:
+		used += 1
+		teams = TeamsStub.new()
+		return teams
+
+
+func _team_menu_client(host: Node, menu: TeamsMenu, unwired: bool) -> DotGameClient:
+	var c := DotGameClient.new()
+	c.use_gate = false
+	c.use_console = false
+	c.capture_pointer = false
+	c.menu = menu
+	c.team_menu_default_when_unwired = unwired
+	c.board_snapshot_fn = func() -> Dictionary: return {}
+	c.maps_rows_fn = func() -> Array: return []
+	c.maps_change_fn = func(_id: StringName) -> DotResult: return DotResult.success(null)
+	c.hud = Control.new()
+	host.add_child(c)
+	var _r := c.setup()
+	return c
+
+
+func _test_client_team_menu_default() -> void:
+	_section("team_menu_default_when_unwired: on by default, and the unwired team menu honours it")
+	var host := Node.new()
+	add_child(host)
+	var fresh := DotGameClient.new()
+	_check(fresh.team_menu_default_when_unwired, "the Play and Spectate offer is on by default")
+	fresh.free()
+	var on_menu := TeamsMenu.new()
+	var _a := _team_menu_client(host, on_menu, true)
+	_check(on_menu.used == 1 and on_menu.teams.default_when_unwired, "default: the unwired team menu keeps its offer")
+	var off_menu := TeamsMenu.new()
+	var _b := _team_menu_client(host, off_menu, false)
+	_check(off_menu.used == 1 and not off_menu.teams.default_when_unwired, "false: the unwired team menu is told to say there are no teams")
+	var own_menu := TeamsMenu.new()
+	own_menu.teams = TeamsStub.new()
+	var _c := _team_menu_client(host, own_menu, false)
+	_check(own_menu.used == 0 and own_menu.teams.default_when_unwired, "a game's own team menu is left alone")
+	var no_teams := TeamsMenu.new()
+	var off := DotGameClient.new()
+	off.use_team_menu = false
+	off.use_gate = false
+	off.use_console = false
+	off.capture_pointer = false
+	off.menu = no_teams
+	off.hud = Control.new()
+	off.board_snapshot_fn = func() -> Dictionary: return {}
+	off.maps_rows_fn = func() -> Array: return []
+	off.maps_change_fn = func(_id: StringName) -> DotResult: return DotResult.success(null)
+	host.add_child(off)
+	var _d := off.setup()
+	_check(no_teams.used == 0, "use_team_menu off wires nothing")
+	host.queue_free()
+	_completed += 1
 
 
 class GuardLink extends RefCounted:
