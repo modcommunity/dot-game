@@ -51,6 +51,8 @@ if [ -z "$from" ]; then
             grep -m1 '^PERF ' "$work/$m.$i.log" | cut -c6- >"$work/$m.$i.json"
             [ -s "$work/$m.$i.json" ] || { echo "perf: $m run $i printed no PERF line, see $work/$m.$i.log" >&2; exit 2; }
         done
+        # A case that wrote ".godot/perf_media/<case>.seq" (client_bench --seq) on the box has its frames fetched for the post's clip.
+        ../gpu.sh pull "$GAME" ".godot/perf_media/$m.seq" "${out%.json}.media" >/dev/null 2>&1 || true
     done
 fi
 

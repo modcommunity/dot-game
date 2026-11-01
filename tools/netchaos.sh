@@ -4,7 +4,7 @@
 # under latency, jitter, loss, reordering, duplication and a blackout. Run it through heavy:
 #
 #   heavy -- tools/netchaos.sh [--profile clean,lossy100,awful400] [--remote 2] [--local 1]
-#                              [--boxes staging,staging02] [--active 30] [--settle 8] [--post] [--out DIR]
+#                              [--boxes staging,staging02] [--active 30] [--settle 8] [--clip] [--post] [--out DIR]
 #   (with --remote 0 the local clients' traffic on lo is impaired, for when the boxes are busy)
 #   tools/netchaos.sh selftest [staging|staging02]    the tc filter on one box with a harmless profile
 #   tools/netchaos.sh profiles                        list the profiles
@@ -31,6 +31,7 @@ REMOTE_N=2 LOCAL_N=1 ACTIVE=30 SETTLE=8 LEAD=${NC_LEAD:-50}
 BOXES=staging,staging02
 PROFILES=clean,lossy100,awful400
 OUT=
+CLIP=0
 POST=0
 BLACKOUT_SECONDS=3
 
@@ -94,6 +95,7 @@ while [[ $# -gt 0 ]]; do
 		--settle) SETTLE=$2; shift 2 ;;
 		--blackout) BLACKOUT_SECONDS=$2; shift 2 ;;
 		--out) OUT=$2; shift 2 ;;
+		--clip) CLIP=1; shift ;;
 		--port) PORT=$2; shift 2 ;;
 		--post) POST=1; shift ;;
 		*) die "unknown option $1" ;;
@@ -205,7 +207,10 @@ for prof in ${PROFILES//,/ }; do
 		n="R$i"
 		NAMES+=("$n:$b")
 		s_box=$(python3 -c "print(round($START + ${BOXOFF[$b]}, 3))")
-		rssh "$b" "flock -s -w 300 ~/gpu/.lock timeout $((LEAD + ACTIVE + SETTLE + 90)) ~/gpu/bin/godot --headless --path ~/gpu/godot/$GAME res://tools/netchaos_client.tscn -- --server ${BOXSRV[$b]}:$PORT --name $n --start-at $s_box --active $ACTIVE --settle $SETTLE --fire ${NC_FIRE:-1} --out /tmp/netchaos/$prof-$n.json" \
+		# --clip: the first remote client renders (xvfb, Vulkan) and leaves a "$prof-R0.seq" for the post's mp4 clip.
+		render=--headless seqarg="" xv=""
+		if ((CLIP && i == 0)); then render="--rendering-driver vulkan"; seqarg="--seq /tmp/netchaos/$prof-$n.seq"; xv='xvfb-run -a -s "-screen 0 1280x720x24"'; fi
+		rssh "$b" "flock -s -w 300 ~/gpu/.lock timeout $((LEAD + ACTIVE + SETTLE + 90)) $xv ~/gpu/bin/godot $render --path ~/gpu/godot/$GAME res://tools/netchaos_client.tscn -- --server ${BOXSRV[$b]}:$PORT --name $n --start-at $s_box --active $ACTIVE --settle $SETTLE --fire ${NC_FIRE:-1} --out /tmp/netchaos/$prof-$n.json $seqarg" \
 			>"$RUN/client-$n.log" 2>&1 &
 		CLIENT_PIDS+=($!)
 	done
@@ -249,6 +254,10 @@ for prof in ${PROFILES//,/ }; do
 	for entry in "${NAMES[@]}"; do
 		n=${entry%%:*} b=${entry#*:}
 		[[ $b == local ]] || rssh "$b" "cat /tmp/netchaos/$prof-$n.json" >"$RUN/client-$n.json" 2>/dev/null
+		if ((CLIP)) && [[ $b != local ]]; then
+			mkdir -p "$OUT/media"
+			rssh "$b" "tar -C /tmp/netchaos -cf - $prof-$n.seq" 2>/dev/null | tar -C "$OUT/media" -xf - 2>/dev/null || true
+		fi
 	done
 
 	NC_BLACKOUT_AT=$((ACTIVE / 2)) NC_BLACKOUT_S=$BLACKOUT python3 -I "$SHARED/netchaos_eval.py" "$RUN" "$prof" "${NAMES[@]}" || overall=1

@@ -20,6 +20,8 @@ var _server := "127.0.0.1:27210"
 var _name := "A"
 var _start_at := 0.0
 var _active := 30.0
+## `--seq DIR`: a rendered client (not --headless) saves a 16-frame "DIR" (ending .seq) from the middle of the active window.
+var _seq_dir := ""
 var _settle := 6.0
 var _out := "netchaos_report.json"
 var _fire := true
@@ -85,10 +87,19 @@ func _ready() -> void:
 			"--out": _out = args[i + 1]
 			"--fire": _fire = args[i + 1] != "0"
 			"--transport": _transport = args[i + 1]
+			"--seq": _seq_dir = args[i + 1]
 	name = "Netchaos"  # RPC paths must match the server's root name
 	DotLog.set_level(DotLog.Level.WARN)
 	_keepalive = _prepare("netchaos_client_" + _name)
 	_run.call_deferred()
+	if _seq_dir != "":
+		_record_seq.call_deferred()
+
+
+func _record_seq() -> void:
+	await get_tree().create_timer(maxf(_start_at + _active * 0.5 - _now(), 0.0)).timeout
+	OS.set_environment("DOT_SHOT_FRAMES", "16")
+	await DotShotSeq.new().record(get_tree(), _seq_dir.trim_suffix(".seq") + ".png")
 
 
 func _process(delta: float) -> void:
