@@ -4,7 +4,7 @@
 
 | | Default |
 | --- | --- |
-| Panel (F9, console `workbench`) | on in the editor, debug builds and for a listen host; off in a production build; never on a dedicated server |
+| Panel (`;` by default, rebindable as `bind_workbench`; console `workbench`) | on in the editor, debug builds and for a listen host; off in a production build; never on a dedicated server |
 | HTTP | off everywhere until `workbench: enabled: true` in `cfg/server.yml`; binds 127.0.0.1; the token is read from `token_file` (a random one is made at `user://workbench.token` when that file is missing) |
 | Who may edit | the panel's own actor only where `local_allowed` (editor, debug, listen host); everyone else through `permit_fn(actor, flag)`, the game's admin or console permit |
 
@@ -45,7 +45,7 @@ Flagged admins edit profiles from a connected client; nobody else even gets a pa
 
 - **Wire.** `DotGameWorkbenchMessage` (both directions, reliable, not required) carries ask, request, reply and access frames. `DotGameNetcode.build` serves it; a client's bridge calls `DotGameWorkbenchMessage.register(net)` (or `DotGameWorkbenchRemoteClient.attach(net)`) before the schema seals.
 - **Server.** `DotGameWorkbenchRemote` (found with `DotGameWorkbenchRemote.of(net)`; `wb.serve_remote(net)` binds it to the api, the console cvar and `DotServer.admins`). Every request is checked in order: cvar on, an identified account (a guest is never an admin), size (4096 bytes), rate (4/s, burst 8 per peer), then the flag the op needs, held now through `DotAdminManager.uid_has_permission`, so a revoked admin is refused on the next edit. Only then does the api see it, as the actor `remote:<uid>`, and the api's permit asks again. A refusal is a WARN with the uid and peer; an applied edit is an INFO `workbench edit` line with uid, peer, op, kind, id, key, old and new. Edits reach clients only if the game attached a `DotNetProfileLink` to the manager (before the seal, on both ends; `peer_joined` per ready peer, `release` on exit): that link is what sets the runtime's `broadcast`, nothing in `serve_remote` does.
-- **Client.** `DotGameWorkbenchRemoteClient` asks once connected and is told `allowed` and the flags; `poll()` on the server tells it again when the flags change, so a revoked admin's panel is freed. Set `wb.remote_client` before `start()`: no panel node is built until the server allows it (`panel_built` tells the host to mount it, `host_on` does), edits go to the local copy and are forwarded (`DotWorkbenchApi.forward`), and the server's reply or replicated row is the truth. F9 and `workbench` do nothing visible for anybody else (the console says `workbench: not allowed`).
+- **Client.** `DotGameWorkbenchRemoteClient` asks once connected and is told `allowed` and the flags; `poll()` on the server tells it again when the flags change, so a revoked admin's panel is freed. Set `wb.remote_client` before `start()`: no panel node is built until the server allows it (`panel_built` tells the host to mount it, `host_on` does), edits go to the local copy and are forwarded (`DotWorkbenchApi.forward`), and the server's reply or replicated row is the truth. The key and `workbench` do nothing visible for anybody else (the console says `workbench: not allowed`).
 - **No local trust against a remote server.** `local_allowed(editor, debug, listen, remote)`: set `wb.remote_fn` to "connected to somebody else's server"; only a listen host stays trusted then.
 - **Wired in** game-arena, game-zombie-zone, game-g2gfast, game-hide-n-seek, game-murder-mystery, mg-prop-hunt, mg-buses-from-hell, mg-dangerous-delivery, mg-wipeout, mg-deathrun, mg-smash-copter and mg-look-at-me and game-hungario, all with `sv_workbench_remote` at 0. Still open: game-playground.
 
@@ -53,7 +53,7 @@ Flagged admins edit profiles from a connected client; nobody else even gets a pa
 
 1. Server: make the workbench and the bridge's `ensure_runtime()` runtime before the netcode, call `DotGameWorkbenchRemote.serve(net)` and attach a `DotNetProfileLink` to that runtime (`peer_joined` for each ready peer, `release` on unload), all before the seal; after the seal call `wb.serve_remote(net)`.
 2. Client: before the seal create `DotGameWorkbenchRemoteClient.attach(net)` and its own `DotNetProfileLink` over the client's runtime; set `wb.remote_client` and `wb.remote_fn` before `wb.start(runtime)`, and call `ask()` once playing.
-3. Keep the local F9 workbench for offline play only; online, only the remote one is trusted.
+3. Keep the local workbench for offline play only; online, only the remote one is trusted.
 4. `examples/headless_net.gd` gets a section that registers both ends in that order and checks that an admin's edit applies and replicates, and that a guest, a non-admin, a revoked admin and the cvar off are refused.
 
 Test: `examples/headless_workbench_remote.tscn` (the real-api half needs `addons/dot_workbench` linked and is counted as skipped otherwise).

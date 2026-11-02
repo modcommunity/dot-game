@@ -1,7 +1,7 @@
 class_name DotGameWorkbench
 extends Node
 
-## Hosts dot-workbench in a game: the in-game panel (F9, or console `workbench`) and, when asked for,
+## Hosts dot-workbench in a game: the in-game panel (the `;` key, or console `workbench`) and, when asked for,
 ## the loopback HTTP page. The panel is on in the editor, debug builds and listen hosts; HTTP needs
 ## `workbench.enabled: true` in cfg/server.yml. Everything is reached by path. Use: `add_set`, `add_child`, `start`.
 
@@ -12,6 +12,7 @@ const HTTP_SCRIPT := "res://addons/dot_workbench/dot_workbench_http.gd"
 const EXPORT_SCRIPT := "res://addons/dot_workbench/dot_workbench_export.gd"
 ## The actor of whoever sits at this machine; allowed only where [method local_allowed] says so.
 const LOCAL_ACTOR := "workbench-local"
+const TOGGLE_ACTION := &"dot_workbench_toggle"
 const DEFAULT_TOKEN_FILE := "user://workbench.token"
 
 signal open_changed(open: bool)
@@ -20,7 +21,10 @@ signal panel_built(panel: Control)
 
 ## -1 follows [method default_panel], 0 never, 1 always.
 @export_enum("auto", "off", "on") var panel_mode: int = 0
-@export var toggle_key: Key = KEY_F9
+## The InputMap action that opens and closes the panel. dot-menu's Controls page lists and persists it (`bind_workbench`); [method ensure_action] gives it the semicolon when nothing registered it.
+@export var toggle_action: StringName = TOGGLE_ACTION
+## Callable() -> bool: the player is typing somewhere the focus owner does not show (the chat box, the console line). The key is ignored while it is true.
+var typing_fn: Callable = Callable()
 @export var layer: int = 125
 ## Callable() -> bool: this process hosts a listen game. Unset means no.
 var listen_host_fn: Callable = Callable()
@@ -131,6 +135,7 @@ func start(runtime: Object = null) -> DotResult:
 				add_set(lod, "NPC level of detail")
 	for s in _sets:
 		api.call("add_set", s)
+	ensure_action(toggle_action)
 	var editor := OS.has_feature("editor")
 	var debug := OS.is_debug_build()
 	var listen: bool = listen_host_fn.is_valid() and bool(listen_host_fn.call())
@@ -292,7 +297,7 @@ func _build_panel(actor: String = LOCAL_ACTOR) -> void:
 	add_child(_canvas)
 	_canvas.add_child(overlay)
 	overlay.connect(&"closed", func() -> void: open_changed.emit(false))
-	DotLog.info(CHANNEL, "workbench panel ready", {"key": OS.get_keycode_string(toggle_key)})
+	DotLog.info(CHANNEL, "workbench panel ready", {"action": String(toggle_action)})
 	panel_built.emit(overlay)
 
 
@@ -337,12 +342,39 @@ func _process(_d: float) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if (overlay == null and not _panel_pending) or not (event is InputEventKey):
+	if overlay == null and not _panel_pending:
 		return
-	var k := event as InputEventKey
-	if k.pressed and not k.echo and k.keycode == toggle_key:
-		toggle()
+	if handle_key(event, get_viewport().gui_get_focus_owner() if is_inside_tree() else null):
 		get_viewport().set_input_as_handled()
+
+
+## Toggles the panel when [param event] is the toggle action's press and nobody is typing. True when it did.
+func handle_key(event: InputEvent, focus_owner: Control = null) -> bool:
+	if not (event is InputEventKey) or not event.is_action_pressed(toggle_action, false, true):
+		return false
+	if text_has_focus(focus_owner) or (typing_fn.is_valid() and bool(typing_fn.call())):
+		return false
+	toggle()
+	return true
+
+
+## Gives [constant TOGGLE_ACTION] the semicolon unless something (dot-menu's bindings) already registered it.
+static func ensure_action(action: StringName = TOGGLE_ACTION) -> void:
+	if InputMap.has_action(action):
+		return
+	InputMap.add_action(action)
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SEMICOLON
+	InputMap.action_add_event(action, key)
+
+
+## Whether [param focus] is a text control the player is typing in: a LineEdit, TextEdit or CodeEdit that is editable (the chat and console lines, every dot-menu text field).
+static func text_has_focus(focus: Control) -> bool:
+	if focus is LineEdit:
+		return (focus as LineEdit).editable
+	if focus is TextEdit:
+		return (focus as TextEdit).editable
+	return false
 
 
 func is_open() -> bool:
@@ -415,6 +447,15 @@ static func host_on(c: DotGameClient, wb: Node) -> void:
 		if panel is Control and c.menu != null and c.menu.has_method(&"add_overlay"):
 			c.menu.call(&"add_overlay", panel)
 	mount.call(wb.get(&"overlay"))
+	wb.set(&"typing_fn", func() -> bool:
+		for node: Variant in [c.chat, c.console]:
+			if node != null and is_instance_valid(node):
+				var n: Object = node
+				if n.has_method(&"is_typing") and bool(n.call(&"is_typing")):
+					return true
+				if n.has_method(&"is_open") and bool(n.call(&"is_open")):
+					return true
+		return false)
 	wb.connect(&"panel_built", mount)
 	wb.connect(&"open_changed", func(open: bool) -> void:
 		if open and c.menu != null and is_instance_valid(c.menu) and c.menu.has_method(&"overlay_opened"):

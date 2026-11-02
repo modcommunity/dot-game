@@ -367,6 +367,57 @@ func _test_workbench_hosting() -> void:
 	_done()
 
 
+func _test_workbench_key() -> void:
+	_section("the workbench key: the semicolon by default, ignored while typing, a toggle otherwise")
+	if InputMap.has_action(DotGameWorkbench.TOGGLE_ACTION):
+		InputMap.erase_action(DotGameWorkbench.TOGGLE_ACTION)
+	DotGameWorkbench.ensure_action()
+	var ev := InputMap.action_get_events(DotGameWorkbench.TOGGLE_ACTION)
+	_check(ev.size() == 1 and (ev[0] as InputEventKey).physical_keycode == KEY_SEMICOLON, "the default binding is the semicolon")
+	var wb := DotGameWorkbench.new()
+	var stub := GDScript.new()
+	stub.source_code = "extends Control\nfunc open() -> void:\n\tvisible = true\nfunc close() -> void:\n\tvisible = false\n"
+	var _r := stub.reload()
+	var panel: Control = stub.new()
+	panel.visible = false
+	wb.overlay = panel
+	add_child(wb)
+	add_child(panel)
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SEMICOLON
+	key.pressed = true
+	var line := LineEdit.new()
+	add_child(line)
+	line.grab_focus()
+	_check(DotGameWorkbench.text_has_focus(get_viewport().gui_get_focus_owner()), "a focused LineEdit counts as typing")
+	_check(not wb.handle_key(key, get_viewport().gui_get_focus_owner()) and not wb.is_open(), "the key is ignored with a LineEdit focused")
+	var edit := TextEdit.new()
+	_check(DotGameWorkbench.text_has_focus(edit) and DotGameWorkbench.text_has_focus(CodeEdit.new()), "TextEdit and CodeEdit count too")
+	line.release_focus()
+	var chatting := [true]
+	wb.typing_fn = func() -> bool: return chatting[0]
+	_check(not wb.handle_key(key, null) and not wb.is_open(), "the key is ignored while the chat or console is open")
+	chatting[0] = false
+	_check(wb.handle_key(key, null) and wb.is_open(), "otherwise the key opens it")
+	_check(wb.handle_key(key, get_viewport().gui_get_focus_owner()) and not wb.is_open(), "and closes it again")
+	var other := InputEventKey.new()
+	other.physical_keycode = KEY_BACKSLASH
+	other.pressed = true
+	_check(not wb.handle_key(other, null), "another key does nothing")
+	InputMap.action_erase_events(DotGameWorkbench.TOGGLE_ACTION)
+	var moved := InputEventKey.new()
+	moved.physical_keycode = KEY_BACKSLASH
+	InputMap.action_add_event(DotGameWorkbench.TOGGLE_ACTION, moved)
+	_check(wb.handle_key(other, null) and not wb.handle_key(key, null), "a rebound action follows the new key and not the semicolon")
+	line.queue_free()
+	edit.free()
+	panel.queue_free()
+	wb.overlay = null
+	wb.queue_free()
+	InputMap.erase_action(DotGameWorkbench.TOGGLE_ACTION)
+	_done()
+
+
 func _test_class_immunity() -> void:
 	_section("class immunity: a class that lists fall takes none and breaks no legs; respawn clears it")
 	var combat_path := "res://addons/dot_combat/dot_combat_manager.gd"
