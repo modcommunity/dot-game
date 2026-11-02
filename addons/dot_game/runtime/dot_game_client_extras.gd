@@ -178,3 +178,11 @@ static func map_changed(c: DotGameClient, map_id: String) -> void:
 		c.map_config.get_fn = c.map_config_get_fn
 		c.map_config.set_fn = c.map_config_set_fn
 	c.map_config.apply(map_id)
+
+
+## The sound, landing, render-quality and latency parts a client adds after its menu.
+static func add_late_parts(c: DotGameClient) -> void:
+	add_slide_sounds(c)
+	add_landing(c)
+	add_render_quality(c)
+	watch_latency_net(c)

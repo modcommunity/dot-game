@@ -361,7 +361,6 @@ func setup() -> DotResult:
 	if _set_up:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
 	_set_up = true
-
 	DotGameClientExtras.wire_chat(self)
 	_wire_pointer_modals()
 	if gate_only:
@@ -374,10 +373,7 @@ func setup() -> DotResult:
 	DotGameClientExtras.add_profiler(self)
 	_wire_menu()
 	DotGameClientLook.build(self)
-	DotGameClientExtras.add_slide_sounds(self)
-	DotGameClientExtras.add_landing(self)
-	DotGameClientExtras.add_render_quality(self)
-	DotGameClientExtras.watch_latency_net(self)
+	DotGameClientExtras.add_late_parts(self)
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
