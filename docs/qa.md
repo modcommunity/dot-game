@@ -20,4 +20,4 @@ A real dedicated server on this machine and two remote clients plus one local, w
 
 See dot-ci. It is the other half: what to run after an edit to an addon.
 
-Nothing schedules netchaos yet: dev01's nightly runs only the `Perf budget` shebang job (`~/stack/nightly/README.md`, "Perf budget"), so a scheduled netchaos run is a new shebang prompt plus a schedule there, ending in `tools/netchaos.sh --post`.
+Netchaos runs on dev01's nightly: `Netchaos arena` and `Netchaos ZZ` nightly with the default profiles, and `Netchaos full weekly` (Sundays 02:00) with all six. The jobs are rows in the nightly database, documented in `~/stack/nightly/README.md`; each ends in `tools/netchaos.sh --post`.
