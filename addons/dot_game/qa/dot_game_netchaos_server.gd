@@ -47,6 +47,11 @@ func _players() -> Array:
 	return []
 
 
+## Override when the player has no `is_alive()` (a game with no health); default true.
+func _alive(p: Object) -> bool:
+	return p.is_alive() if p.has_method(&"is_alive") else true
+
+
 ## Override: whether the net replicates the player as alive, or null when unknown.
 func _net_alive(_p: Object) -> Variant:
 	return null
@@ -115,7 +120,7 @@ func _truth() -> Dictionary:
 	var players := Dictionary()
 	for p in _players():
 		var pos: Vector3 = p.controller.state.position
-		players[p.display_name] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001), p.is_alive(), _net_alive(p)]
+		players[p.display_name] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001), _alive(p), _net_alive(p)]
 	return {"unix": Time.get_unix_time_from_system(), "players": players}
 
 

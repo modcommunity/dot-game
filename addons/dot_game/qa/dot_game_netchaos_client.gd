@@ -263,7 +263,7 @@ func _watch_corrections() -> void:
 	var c := cnet.clock.describe()
 	var player = _client.get("player")
 	_spikes.append({"t": snappedf(_now() - _start_at, 0.01), "error_m": snappedf(e, 0.001),
-		"replayed": p.get("last_replay_ticks"), "snaps": p.get("snaps"), "alive": player != null and player.is_alive(),
+		"replayed": p.get("last_replay_ticks"), "snaps": p.get("snaps"), "alive": player != null and _alive(player),
 		"tick": c.get("tick"), "received_tick": c.get("received_tick"), "lead": c.get("lead"),
 		"catch_ups": c.get("catch_ups"), "clock_snaps": c.get("snaps"), "lost_ms": c.get("lost_ms"),
 		"snap_lost": cnet.stats.snapshots_lost, "out_of_order": cnet.stats.out_of_order,
@@ -280,6 +280,11 @@ func _net_behaviour(who) -> Variant:
 			if b.get("player") == who:
 				return b
 	return null
+
+
+## Override when the player has no `is_alive()` (a game with no health); default true.
+func _alive(p: Object) -> bool:
+	return p.is_alive() if p.has_method(&"is_alive") else true
 
 
 ## Override when the game's roster is not `game.players()` (an Array of players).
@@ -401,14 +406,14 @@ func _report(t0: float) -> void:
 		out["clock_synced"] = cnet != null and cnet.clock.is_synced()
 		if player != null:
 			var pos: Vector3 = player.controller.state.position
-			out["self"] = {"pos": [pos.x, pos.y, pos.z], "alive": player.is_alive(), "name": player.display_name}
+			out["self"] = {"pos": [pos.x, pos.y, pos.z], "alive": _alive(player), "name": player.display_name}
 		var others := {}
 		if game != null:
 			for who in _roster():
 				if who != player:
 					var gp: Vector3 = who.global_position
 					var nb = _net_behaviour(who)
-					others[who.display_name] = [gp.x, gp.y, gp.z, who.is_alive(),
+					others[who.display_name] = [gp.x, gp.y, gp.z, _alive(who),
 						nb != null and nb.get("net_alive") != false, nb.get("net_health") if nb != null else -1, true,
 						nb.get("last_state_tick") if nb != null else -2, nb.identity.is_authoritative if nb != null and nb.identity != null else null]
 				out["others"] = others
@@ -451,7 +456,8 @@ class Pilot extends Node:
 
 	func _exit_tree() -> void:
 		for a: StringName in [&"dot_fps_forward", &"dot_fps_left", &"dot_fps_right", &"dot_fps_jump", fire_action]:
-			Input.action_release(a)
+			if a != &"":
+				Input.action_release(a)
 
 	func _process(delta: float) -> void:
 		_t += delta
