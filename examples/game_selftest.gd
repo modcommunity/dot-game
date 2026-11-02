@@ -850,6 +850,9 @@ func _test_server_threads_reach_the_netcode() -> void:
 		"a value the game set is kept")
 
 	var nat := DotNetConfig.new()
+	# Both default to true in dot-net; the game's own true would mask the cvar.
+	nat.native = false
+	nat.native_interest = false
 	sc.net_native = false
 	sc.net_native_interest = false
 	DotGameNetcode.follow_server_threads(nat, sc)
