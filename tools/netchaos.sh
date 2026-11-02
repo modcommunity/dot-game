@@ -23,7 +23,10 @@ SHARED=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 ROOT=$PWD
 GAME=$(basename "$ROOT")
 [[ -f tools/netchaos_server.tscn ]] || { echo "netchaos: no tools/netchaos_server.tscn in $ROOT" >&2; exit 2; }
+# A scheduled run has no ~/.local/bin on PATH; "godot: command not found" failed every profile of two nights.
+PATH="$HOME/.local/bin:$PATH"
 GODOT=${GODOT:-godot}
+command -v "$GODOT" >/dev/null || { echo "netchaos: $GODOT not found" >&2; exit 2; }
 KEY=${GPU_KEY:-$HOME/.ssh/gpu-laptop}
 SSH_OPTS=(-i "$KEY" -o BatchMode=yes -o ConnectTimeout=6)
 PORT=${NC_PORT:-27210}
