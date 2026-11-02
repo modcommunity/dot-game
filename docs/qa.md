@@ -19,3 +19,5 @@ A real dedicated server on this machine and two remote clients plus one local, w
 ## Which suites a change needs: `dot-ci/scripts/affected.sh`
 
 See dot-ci. It is the other half: what to run after an edit to an addon.
+
+Nothing schedules netchaos yet: dev01's nightly runs only the `Perf budget` shebang job (`~/stack/nightly/README.md`, "Perf budget"), so a scheduled netchaos run is a new shebang prompt plus a schedule there, ending in `tools/netchaos.sh --post`.
