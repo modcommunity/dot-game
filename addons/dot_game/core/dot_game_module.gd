@@ -4,19 +4,7 @@ extends DotModule
 
 ## The order a server game is built in, written once: game object, netcode and bridge, identity, services, roster, one tick, then the reverse on unload.
 ##
-## Subclass it and fill in the classes and numbers that are yours. It holds no rules (those are dot-match's and dot-objective's); something belongs here only if every game would write it the same way.
-## [codeblock]
-## extends DotGameModule
-## func _module_name() -> String: return "mygame"
-## func _game_service() -> StringName: return MyGame.SERVICE
-## func _net_config() -> DotNetConfig:
-##     var c := DotNetConfig.new()
-##     c.tick_rate = game.tick_rate
-##     return c
-## func _make_bridge() -> Node: return MyBridge.new()
-## [/codeblock]
-##
-## Nothing optional is named: dot-map, dot-vote, dot-platform and a game's services are reached by duck-typing or path, because a script naming an absent class fails to parse.
+## Subclass it and fill in the classes and numbers that are yours; it holds no rules, only what every game would write the same way. Nothing optional is named (dot-map, dot-vote, dot-platform, a game's services): they are reached by duck-typing or path, because a script naming an absent class fails to parse.
 
 const CHANNEL := "game.module"
 

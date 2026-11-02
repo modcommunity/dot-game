@@ -1,24 +1,9 @@
 class_name DotGameClient
 extends Node
 
-## The client's half of [DotGameModule]: the platform layer every game client wires, once.
-## [codeblock]
-## # First thing in the client root's _ready():
-## platform = DotGameClient.new()
-## platform.spawned_fn = func() -> bool: return player != null
-## add_child(platform)                 # the cover is up; link and offline are known
-## # ... build the world, the HUD, the audio ...
-## platform.hud = hud_root
-## platform.chat = chat                   # DotGameChatClient, a DotChatWindow, or null
-## platform.setup()                    # settings, menu, console, theme, Tab, M, pointer
-## platform.input_blocked_changed.connect(_suspend_input)
-## [/codeblock]
+## The client's half of [DotGameModule]: the platform layer every game client wires, once (usage in docs/client-migration.md).
 ##
-## A child the client root adds, never a base class: roots are Node, Node2D and Node3D. [method _ready] puts the cover up before the game builds anything; [method setup] builds the settings and menu after the game made what they bind to.
-##
-## dot-menu and dot-console are looked up by path and driven by `call` and `set`, so a build without either still parses. Each piece switches off ([member use_gate], [member use_settings], [member use_console], [member capture_pointer], [member sync_on_exit], an empty [member scoreboard_action]); override [method _make_settings] or [method _make_gate] to build one differently.
-##
-## A HUD or chat built after setup goes through [method set_hud] and [method set_chat]; a game with its own menu assigns [member menu] or calls [method adopt_menu]; [member gate_only] takes only the gate, link, input block and web flush.
+## A child the client root adds, never a base class. [method _ready] puts the cover up before the game builds; [method setup] builds settings and menu after. dot-menu and dot-console are looked up by path, and each piece has a `use_*` switch; a HUD or chat built later goes through [method set_hud] and [method set_chat].
 
 const CHANNEL := "game.client"
 

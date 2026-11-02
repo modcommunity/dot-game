@@ -2,14 +2,7 @@ extends DotGameModule
 
 ## A whole server game's wiring, in the thirty lines dot-game leaves you.
 ##
-## This is the point of the addon stated as a file: everything that used to be two
-## hundred lines of identical prose per game -- the netcode manager and its four
-## load-bearing constants, the bridge, the seal, the identity layer, the platform
-## module, the services layer and its link, the roster, the tick, and a teardown in the
-## reverse order -- is in [DotGameModule]. What is left is what is actually this game's.
-##
-## Loaded by PATH, because [method DotModuleHost.load_module] constructs the module
-## itself: that is the shape that lets an operator name one in a config file.
+## Everything else is in [DotGameModule]. Loaded by PATH, because [method DotModuleHost.load_module] constructs the module itself.
 
 const TestGame := preload("test_game.gd")
 const TestBridge := preload("test_bridge.gd")

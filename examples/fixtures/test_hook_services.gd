@@ -2,10 +2,7 @@ extends DotGameServices
 
 ## [DotGameServices] with the hooks a subclass answers, for the suite's "hooks" section.
 ##
-## This project has none of dot-chat, dot-voice or dot-moderation, so the layers the hooks
-## reach are stand-ins: [FakeChat] answers `backlog_for` the way dot-chat's router does and
-## [FakeLink] records what the base's fan-out sends. What is under test is the base's
-## decision — whether the backlog goes at seating or waits for the game — not dot-chat.
+## The layers the hooks reach are stand-ins ([FakeChat], [FakeLink]); under test is the base's decision, whether the backlog goes at seating or waits for the game.
 
 ## What [method _peer_can_receive] answers.
 var receive := true

@@ -2,8 +2,7 @@ extends Node
 
 ## The bridge between a game and its netcode, reduced to the interface dot-game uses.
 ##
-## Duck-typed by [DotGameNetcode] and [DotGameModule] on purpose: this is the game's own
-## class in a real game, and this addon must not name it.
+## Duck-typed by [DotGameNetcode] and [DotGameModule]: in a real game this is the game's own class.
 
 var game: Object = null
 var net: DotNetManager = null

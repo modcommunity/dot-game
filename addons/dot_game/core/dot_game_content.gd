@@ -3,39 +3,7 @@ extends RefCounted
 
 ## The map packs a SERVER names for the running game, fetched and found on the disk.
 ##
-## [codeblock]
-## # in a module's _game_load(), or wherever the catalogue is (re)built:
-## for root in await DotGameContent.map_dirs(server, "courses"):
-##     catalogue.add_directory(root)
-## [/codeblock]
-##
-## [b]Why the server names them and the game does not.[/b] A game's `game.yml` travels in
-## its pack and is replaced by each release's, so a map the game named there could only
-## change with a release of the game -- and a server owner had no say at all. The server's
-## own list (dot-server-deploy's `cfg/content.yml`, or any host that fills
-## [member DotGameDescriptor.maps]) is now where maps come from; a game ships its own test
-## maps in its pack and reads everything else through here. A map pack may hold one map or
-## a hundred: it is a pack, and the game scans the same subdirectory in it that it scans in
-## its own tree.
-##
-## [b]The four copies this replaces.[/b] Three games read `current_server_dependencies()`
-## for a `courses/` or `maps/` directory and a fourth read its client dependencies the same
-## way, each written out by hand. They differed only in the subdirectory name, and two of
-## the three forgot to call it again after a catalogue reload, which dropped every
-## delivered course on the first `wo_reload`. One function, and a game passes its
-## subdirectory.
-##
-## [b]The packs are fetched here, because dot-server does not fetch them.[/b] A game's
-## `maps` are not prefetched at load -- for a game with one large pack per map that would
-## be a gigabyte before the first player -- so a game whose maps are small documents asks
-## for all of them at once, and a game with large maps fetches one when it changes to it
-## ([method ensure_one]). Both go through dot-cloud's `ensure`, which is idempotent and
-## returns at once for a pack already mounted.
-##
-## [b]`server_dependencies` are read too[/b], because that is where a map pack used to be
-## named and a server that has not moved its list to the host's config must keep working.
-## Everything is duck-typed: a dot-server without `current_maps`, or a build with no
-## dot-cloud at all, gets an empty list rather than a parse error.
+## The server names them, not the game, because a game's `game.yml` is replaced by each release's. Packs are fetched here (via dot-cloud's `ensure`, idempotent) since dot-server does not fetch them; [method ensure_one] fetches one on a map change. Everything is duck-typed, so a missing dot-server or dot-cloud gives an empty list, not a parse error.
 
 const CHANNEL := "game.content"
 

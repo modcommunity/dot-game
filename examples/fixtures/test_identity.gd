@@ -2,10 +2,7 @@ extends Node
 
 ## An identity layer, reduced to what [DotGameModule] asks of it.
 ##
-## `setup` SUSPENDS on purpose. Every real one reaches a network -- a content source, a
-## profile store, an avatar store -- so every real one is a coroutine, and a skeleton
-## that only works with an identity layer which happens to finish synchronously would
-## pass a suite and fail on the first deployment.
+## `setup` SUSPENDS on purpose: every real one reaches a network, and a skeleton that only works with a synchronous one would fail on first deployment.
 
 var backbone: Object = null
 var setup_calls: int = 0

@@ -4,37 +4,7 @@ extends Node
 
 ## Chat, a website relay, moderation and voice, in the one order that works.
 ##
-## [b]Five games wrote this and they wrote the same thing.[/b] 557, 559, 635, 716 and 718
-## lines, and a diff of any two of them is renamed preloads, a different set of channels
-## and a different voice range. The relay is identical in all five, including the comments;
-## so is the admission check, the peer fan-out, the punishment subject, and — most
-## importantly — the ORDER, which is the part that has a bug behind it:
-##
-## [b]Moderation is built FIRST because it publishes `dot_mute_source`, and both routers
-## look that name up when they start.[/b] A chat router started first finds nothing, warns
-## once, and then enforces no gag for the life of the server. The relay is built after chat
-## because it wraps the router, and voice last because it is the only one that is optional
-## per deployment.
-##
-## [codeblock]
-## extends DotGameServices
-##
-## func _chat_channels() -> Array:
-##     return [DotChatChannel.make(&"all", "All", DotChatChannel.Scope.EVERYONE)]
-##
-## func _position_of(peer_id: int) -> Vector3:
-##     var player := _player_of(peer_id)
-##     return player.controller.state.position if player != null else Vector3.ZERO
-## [/codeblock]
-##
-## [b]Nothing here names dot-chat, dot-voice or dot-moderation.[/b] They are not
-## dependencies of this addon and must not become them — a game with no chat is a
-## legitimate game, and a script that so much as mentions an absent `class_name` fails to
-## parse and takes everything referencing it down. So each layer is loaded BY PATH and
-## driven through `set()` and `call()`, exactly as [DotGameModule] loads dot-platform's
-## module, and a missing addon is a layer that is skipped with a line rather than a server
-## that will not boot. What a subclass hands back — channels, rules, a voice config — it
-## may name freely, because a game that configures chat is a game that has dot-chat.
+## Moderation is built FIRST because it publishes `dot_mute_source`, which both routers look up at start (else no gag is ever enforced); the relay follows chat because it wraps the router; voice is last as the optional one. Nothing here names dot-chat, dot-voice or dot-moderation: each is loaded BY PATH and driven through `set()` and `call()`, and a missing addon is a skipped layer.
 
 const CHANNEL := "game.services"
 
@@ -55,10 +25,7 @@ const CHAT_SERVICE := &"dot_chat_router"
 
 ## Where the relay reads its own settings when the host assigned no config.
 ##
-## `user://` rather than `res://`: it is an operator's file on a running server, and an
-## exported build cannot be written to. Absent is the normal case and costs nothing — the
-## file layer is skipped and the environment and command line still apply, which is how a
-## container turns the relay on with no file at all.
+## `user://`, an operator's file on a running server. Absent is normal: the environment and command line still apply.
 const RELAY_CONFIG_PATH := "user://chat_relay.json"
 
 
@@ -114,8 +81,7 @@ var mod_commands: Object = null
 
 ## The backbone client the relay posts through. Assigned by a host BEFORE setup, or found.
 ##
-## An [Object] rather than a named class, so that dot-chat need not depend on dot-auth and
-## this addon need not depend on either.
+## An [Object], so neither dot-chat nor this addon depends on dot-auth.
 var backbone: Object = null
 
 ## Distinguishes two of these in one process — a server and a client, or a test.
@@ -126,23 +92,9 @@ var punishments_loaded: bool = false
 var _started: bool = false
 
 
-# --- The sequence ----------------------------------------------------------
-
 ## Builds all four, in the order the class note sets out.
 ##
-## [b]Not a coroutine, and that is enforced by its caller.[/b] [DotGameModule] awaits this
-## — but dot-moderation's `load_all` is a coroutine only because a store MAY be an HTTP
-## one, and the file store is not, so it runs to completion without suspending.
-##
-## [b][param p_server] may be null[/b] — a game played offline, with the real chat router,
-## moderation manager and voice router and no [DotServer] (a game's `--offline`). Until
-## 2026-09-25 this refused a null server, and it was the only line in the file that
-## needed one: so one game carried a copy of this whole sequence minus that
-## guard, which is exactly the duplication this class exists to end. With no server, only
-## what is bound TO a server is skipped — the live tools' console commands, the relay's
-## "tell the clients", the admin and audit seams — and each of those already answers "no
-## server" on its own. A subclass that wants no live tools offline sets
-## [member mod_tools_enabled] false first.
+## Not a coroutine: dot-moderation's `load_all` runs to completion for the file store. [param p_server] may be null (an offline game); only what is bound TO a server is skipped then. A subclass that wants no live tools offline sets [member mod_tools_enabled] false first.
 func setup(p_server: DotServer, p_game: Object, p_link: Object) -> DotResult:
 	if _started:
 		return DotResult.fail(DotError.CODE_STATE, "Already set up.")
@@ -219,11 +171,7 @@ func _build_moderation() -> DotResult:
 
 ## The live tools and their commands.
 ##
-## [b]By path, like the manager.[/b] dot-moderation is not a dependency of this addon, and
-## `DotModToolCommands` binds to the console duck-typed so neither side names the other.
-## What every ability does is [method _mod_abilities]; the rest — immunity, the audit
-## record, who has what toggled on, clearing it on a respawn — is the tools' own, which is
-## the reason a game gets it from here rather than writing it a sixth time.
+## By path, like the manager; `DotModToolCommands` binds to the console duck-typed. What each ability does is [method _mod_abilities]; the rest (immunity, audit, respawn clearing) is the tools' own.
 func _build_mod_tools() -> DotResult:
 	var made := _instance(MOD_TOOLS_SCRIPT, "the mod tools")
 
@@ -369,18 +317,9 @@ func _build_voice() -> DotResult:
 	return DotResult.success(voice)
 
 
-# --- The website relay -----------------------------------------------------
-
 ## Joins this server's chat to its room on the website.
 ##
-## [b]Every seam points at something that already existed.[/b] The backbone client is
-## dot-auth's. The permission answer is dot-server's admin manager, through
-## `uid_has_permission` — the method written for exactly this, deciding what somebody may
-## do when they are not connected. The command runner is `DotServer.run_command_as_uid`,
-## which builds a context with that uid's OWN flags rather than RCON's root.
-##
-## Nothing here is a new policy. A relayed command is checked against the same file, by the
-## same flags, as the same person typing it in game.
+## Every seam is existing code: dot-auth's backbone client, dot-server's `uid_has_permission`, and `DotServer.run_command_as_uid` (that uid's OWN flags, not RCON's root). A relayed command is checked like the same person typing it in game.
 func _build_relay() -> DotResult:
 	if chat == null:
 		return DotResult.success(null)
@@ -393,15 +332,9 @@ func _build_relay() -> DotResult:
 		if relay_config == null:
 			return DotResult.success(null)
 
-		# LAYERED, and in one game it was not: a `DotConfig` that is merely `new()`d has
-		# only its exported defaults, so `DOT_CHAT_RELAY_ENABLED=1` and
-		# `--chat-relay-enabled` both did nothing and the whole addon was unreachable from
-		# every documented route, with nothing erroring, because a disabled relay is a
-		# legitimate configuration.
-		#
-		# Only on the config this builds. A config a host handed over is the host's, and
-		# re-layering it would overwrite a deliberate choice with an environment variable
-		# somebody set for a different server.
+				# LAYERED: a bare `DotConfig.new()` has only defaults, so the environment and command
+				# line did nothing and nothing errored. Only on the config built here; a host's own
+				# config is not re-layered over a deliberate choice.
 		var layered: Variant = relay_config.call("load_layered", RELAY_CONFIG_PATH)
 
 		if layered is DotResult and not (layered as DotResult).ok:
@@ -491,9 +424,7 @@ func _on_site_command(uid: String, command: String, allowed: bool) -> void:
 
 ## What this server accepts, for the site's menu.
 ##
-## A method rather than a lambda because the relay re-reads it on every publish: the table
-## changes when a module loads, and a callable that closed over a list would publish the
-## table as it was at boot, for ever.
+## A method, not a lambda: the relay re-reads it on every publish and the table changes when a module loads.
 func _relay_command_document() -> Array[Dictionary]:
 	if server == null or server.console == null or relay_config == null:
 		return []
@@ -501,13 +432,9 @@ func _relay_command_document() -> Array[Dictionary]:
 	return server.console.command_document(int(relay_config.get("command_source")))
 
 
-# --- What a subclass fills in ----------------------------------------------
-
 ## The channels this game talks on. An [Array] of `DotChatChannel`.
 ##
-## [b]There is no sensible default and there must not be one.[/b] A deathmatch has a team
-## channel and a sandbox has a proximity one; a game given channels it did not choose is a
-## game whose players can hear a conversation the designer meant to be private.
+## No default on purpose: channels the designer did not choose can expose a private conversation.
 func _chat_channels() -> Array:
 	return []
 
@@ -529,51 +456,30 @@ func _voice_default_channel() -> int:
 
 ## Where somebody is standing, for a proximity channel.
 ##
-## [b]The simulated state, not the node, in every game that has ever implemented this.[/b]
-## A player riding a vehicle is reparented into the seat, so the node's global position is
-## the seat's — right for a camera and wrong for everything asking where the *person* is.
+## The simulated state, not the node: a player in a vehicle is reparented into the seat.
 func _position_of(_peer_id: int) -> Vector3:
 	return Vector3.ZERO
 
 
-## Whether [param listener] can hear [param speaker] through the world, once the distance
-## test has already said they are in range. Both routers ask this one function — chat for a
-## proximity line, voice for a proximity frame — so a player cannot read somebody they
-## could not hear. The positions are the ones [method _position_of] just produced.
+## Whether [param listener] can hear [param speaker] through the world, once the distance test passed.
 ##
-## [b]The level's question, not the addons'.[/b] dot-chat and dot-voice know a radius and
-## nothing about walls, and must not learn: what blocks sound is where the walls are.
-## True, the default, is "the radius is the whole answer", which is what both routers did
-## before this was wired. It is only asked of listeners already in range on a proximity
-## channel, so the default costs one call per such listener and nothing anywhere else.
+## Both routers ask it, for chat and voice, so nobody reads what they could not hear. The level's question, not the addons': they know a radius, not walls. True (the radius is the whole answer) is the default.
 func _can_hear(
 	_listener_peer: int, _speaker_peer: int, _listener_at: Vector3, _speaker_at: Vector3
 ) -> bool:
 	return true
 
 
-## Whether a peer can receive a message yet, asked by [method add_peer] before it sends the
-## chat backlog.
+## Whether a peer can receive a message yet, asked by [method add_peer] before it sends the chat backlog.
 ##
-## [b]True by default, and a game whose clients build their scene AFTER they are seated
-## answers false.[/b] dot-server's signon finishes and then the client builds the node the
-## chat RPC lands on, so a backlog sent at seating is one "Node not found" per line and a
-## newcomer who joins a silence. Answering false leaves the backlog unsent, and the game
-## calls [method send_backlog] when the peer says it is ready.
+## True by default. A game whose clients build their scene AFTER seating answers false (else one "Node not found" per line) and calls [method send_backlog] when the peer is ready.
 func _peer_can_receive(_peer_id: int) -> bool:
 	return true
 
 
 ## What each live admin ability does in this game: `{DotModTools.ACTION_*: Callable}`.
 ##
-## Each callable is `func(id: StringName, args: Dictionary) -> DotResult`, where `id` is
-## the player's userid as a string — the id [method _mod_session] resolves. The keys are
-## plain strings (`"noclip"`, `"slay"`) so a subclass need not name dot-moderation either.
-## Empty is a game with no live tools but the teleport verbs, and every command then
-## answers with [method _mod_unsupported]'s reason.
-##
-## [b]Called once, at setup.[/b] A handler that reaches the world should look the player up
-## each time, not capture one — the player a handler was built next to may have left.
+## Each is `func(id: StringName, args: Dictionary) -> DotResult` with `id` the userid string; keys are plain strings (`"noclip"`). Empty means no live tools but teleport. Called once; look the player up per call, not capture one.
 func _mod_abilities() -> Dictionary:
 	return {}
 
@@ -585,9 +491,7 @@ func _mod_unsupported() -> Dictionary:
 
 ## Whether [method _mod_position] and [method _mod_teleport] mean anything here.
 ##
-## Off by default, and deliberately: a services layer that set both callables to the
-## defaults below would answer "cannot find where you are" to every bring, which reads as
-## a bug rather than as a game with no positions.
+## Off by default: the defaults would answer "cannot find where you are" to every bring.
 func _mod_can_teleport() -> bool:
 	return false
 
@@ -607,13 +511,9 @@ func _mod_configure_commands(_commands: Object) -> void:
 	pass
 
 
-## A last chance to configure the tools themselves — `goto_standoff`,
-## `persist_on_respawn` and anything else on a `DotModTools` — after the handlers and the
-## refusals are in and before the tools enter the tree or any command is bound.
+## A last chance to configure the tools themselves (`goto_standoff`, `persist_on_respawn`) before they enter the tree or any command is bound.
 ##
-## [b]Named [Object] rather than `DotModTools`[/b], for the reason every layer here is
-## loaded by path: dot-moderation is not a dependency of this addon. A subclass that
-## configures the tools has dot-moderation and may cast.
+## An [Object] rather than `DotModTools`, since dot-moderation is loaded by path; a subclass that configures it may cast.
 func _mod_configure_tools(_tools: Object) -> void:
 	pass
 
@@ -637,14 +537,9 @@ func _services_name() -> String:
 	return "game"
 
 
-# --- The seams a subclass rarely needs to touch ----------------------------
-
 ## Who a peer is, for a PUNISHMENT: the durable account uid.
 ##
-## [b]Deliberately not the same answer [method _key_of] gives dot-chat.[/b] A punishment is
-## against a person who will come back, so it is keyed by something that survives a
-## reconnect — otherwise a gag lasts until the gagged player presses reconnect, which is
-## the first thing anybody who has been gagged tries.
+## Not what [method _key_of] gives dot-chat: a punishment must survive a reconnect, or a gag ends when the player reconnects.
 func _subject_for_peer(peer_id: int) -> String:
 	var session := _session_for(peer_id)
 
@@ -662,9 +557,7 @@ func _subject_for_peer(peer_id: int) -> String:
 
 ## The key a chat line is attributed to. The session's userid, as a string.
 ##
-## [b]Not the account uid.[/b] Two guests behind one device id share a uid, so keying by
-## that puts the second person's words under the first person's name — found with two
-## clients in one process, and every count matched throughout.
+## Not the account uid: two guests behind one device id share it, putting one's words under the other's name.
 func _key_of(peer_id: int) -> String:
 	var session := _session_for(peer_id)
 	return str(session.userid) if session != null else ""
@@ -695,9 +588,7 @@ func _chat_peers() -> PackedInt32Array:
 
 ## One accepted line, to whoever may hear it.
 ##
-## Through the game's own link, because chat rides the game's wire: a client that has a
-## chat box has a bridge, and a second path through dot-server's chat manager would be a
-## second set of rules to keep in step.
+## Through the game's own link, since chat rides the game's wire; a second path would be a second set of rules.
 func _send_chat(wire: Dictionary, recipients: PackedInt32Array) -> void:
 	if link == null or not link.has_method("send_chat"):
 		return
@@ -733,12 +624,8 @@ func _on_message_accepted(message: Object, _recipients: PackedInt32Array) -> voi
 	said.emit(int(message.get("sender_peer")), wire if wire is Dictionary else {})
 
 
-# --- What the module and the bridge call -----------------------------------
-
-## Whether this person may join at all. dot-server's admission runs first; this is the
-## second gate, and it is checked HERE rather than at connect because dot-server's own mute
-## is two booleans on a session — and a session dies with its connection, so a muted player
-## reconnects and talks.
+## Whether this person may join at all. dot-server's admission runs first; this is the second gate.
+## Checked HERE, not at connect, because dot-server's mute dies with the session and a muted player would reconnect and talk.
 func check_admission(session: DotClientSession) -> DotResult:
 	if moderation == null or session == null:
 		return DotResult.success(null)
@@ -752,9 +639,7 @@ func check_admission(session: DotClientSession) -> DotResult:
 
 ## A voice frame from the wire. What [DotGameModule] wires the bridge's relay to.
 ##
-## [b]The speaker is stamped here, from the peer the transport reported.[/b] A speaker id
-## inside the payload is a claim, and without this any client can put words in any other
-## player's mouth.
+## The speaker is stamped here from the transport's peer: an id inside the payload is a claim any client could forge.
 func relay_voice(speaker_peer: int, bytes: PackedByteArray) -> void:
 	if voice != null:
 		voice.call("relay", speaker_peer, bytes)
@@ -779,13 +664,9 @@ func add_peer(peer_id: int) -> void:
 		send_backlog(peer_id)
 
 
-## The chat backlog, to one peer: the difference between joining a conversation and joining
-## a silence. dot-chat keeps it per channel and only for channels that asked for one, and
-## computes it per peer — a proximity channel's lines are not replayed to a stranger.
+## The chat backlog, to one peer, so a newcomer joins a conversation, not a silence.
 ##
-## What [method add_peer] calls when [method _peer_can_receive] says yes, and what a game
-## that answered no calls itself once the peer is ready. Once per seating: a second call
-## sends the backlog twice.
+## Called by [method add_peer] when [method _peer_can_receive] says yes, or by the game once the peer is ready. Once per seating: a second call sends it twice.
 func send_backlog(peer_id: int) -> void:
 	if chat == null:
 		return
@@ -827,13 +708,9 @@ func _exit_tree() -> void:
 	mod_commands = null
 
 
-# --- Building things this addon may not name -------------------------------
-
 ## Loads a script by path and instances it as a [Node], or null with a line.
 ##
-## [b]Absent is a configuration, not a failure.[/b] A project without dot-voice is a
-## project whose players do not talk, and refusing to load over it would cost them the game
-## they came for.
+## Absent is a configuration, not a failure: a project without dot-voice has players who do not talk.
 func _instance(path: String, what: String) -> Node:
 	if not ResourceLoader.exists(path):
 		DotLog.info(CHANNEL, "%s is not installed in this build, so it is skipped" % what, {
@@ -870,8 +747,6 @@ func _instance_refcounted(path: String, what: String, args: Array) -> Object:
 
 	return (script as GDScript).callv("new", args)
 
-
-# --- Reporting -------------------------------------------------------------
 
 func describe() -> Dictionary:
 	return {

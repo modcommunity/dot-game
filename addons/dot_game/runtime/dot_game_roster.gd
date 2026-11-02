@@ -4,36 +4,12 @@ extends RefCounted
 
 ## Who is actually in the game, as opposed to who is connected.
 ##
-## [b]Every game in this family wrote this twice and one of them wrote it wrong for its
-## whole life.[/b] A player joining is not one step: the bridge has to add them to the
-## match AND register them as a replicated entity, chat has to learn their peer, the map
-## sync has to start waiting on them, and a vote has to be told when they leave. Miss any
-## one of those and the failure is silent and specific -- a player the server simulates
-## alone, a map change that waits out five minutes for somebody who left, a tally that
-## never shrinks.
-##
-## [codeblock]
-## roster = DotGameRoster.new()
-## roster.server = server
-## roster.add_fn = func(s): return bridge.add_player(s.peer_id, s.userid, s.display_name)
-## roster.remove_fn = func(s): bridge.remove_peer(s.peer_id)
-## roster.follow(services)      # anything with add_peer / remove_peer / forget_voter / forget_player
-## roster.follow(maps)
-## roster.follow(vote)
-## [/codeblock]
-##
-## [b]Keyed on the userid, never on the peer id.[/b] A peer id is reassigned the moment
-## somebody reconnects, so everything hung off it -- a scoreboard row, a combat entity,
-## damage attribution -- is handed to the next player to join. dot-server's userid is
-## stable for the life of the session, and the peer id is what the connection-shaped
-## things (chat, voice, a map sync) are keyed on because all three are about a socket.
+## A join is several steps (match, replicated entity, chat peer, map sync, vote); missing one fails silently. Keyed on the userid, never the peer id, which is reassigned on reconnect. Wire it with `add_fn`, `remove_fn` and `follow(subsystem)`.
 
 const CHANNEL := "game.roster"
 
-## The envelope kind a client sends when its loading cover goes up or comes down:
-## [code]{"covered": bool}[/code], client to server, reliable. [DotGameClient] sends it on its
-## gate's [code]opened[/code] and [code]closed[/code]; [method DotGameClient.report_cover] is
-## the same send for a client that is not on it. [DotGameModule] handles it.
+## The envelope kind a client sends when its loading cover goes up or comes down: [code]{"covered": bool}[/code], reliable.
+## [DotGameClient] sends it; [method DotGameClient.report_cover] is the same send for other clients.
 const COVER_KIND := &"game.cover"
 
 ## A seat became loading (joined, or a map change began) or stopped being (its cover lifted,
@@ -51,20 +27,12 @@ var server: DotServer = null
 
 ## How a userid becomes a session. Defaults to [member server].
 ##
-## [b]Injectable so the one line that has been wrong twice can be asserted.[/b] The bug
-## this file exists to prevent is reading the wrong FIELD off the spawn event, and a
-## test that cannot substitute the lookup cannot tell the difference between "read the
-## right field" and "found nothing either way" -- which is exactly what the two games
-## that shipped the bug looked like from outside. A game with its own session source
-## (a lobby that seats people who never connected) gets the same hook for free.
+## Injectable so a test can tell "read the right field off the spawn event" from "found nothing either way"; a lobby seating people who never connected uses it too.
 var session_fn: Callable = Callable()
 
 ## Puts a player into the game. Returns a [DotResult]; a failure leaves them out.
 ##
-## Normally the bridge's `add_player`, because adding them to the match without
-## registering them as a replicated entity gives the server a player nothing is ever
-## sent about: the manager builds snapshots only for peers it knows, so it simulates
-## them perfectly and alone.
+## Normally the bridge's `add_player`: a player not registered as a replicated entity is simulated but never sent anything.
 var add_fn: Callable = Callable()
 
 ## Takes a player out again. The bridge's `remove_peer`, which also releases their
@@ -80,22 +48,16 @@ var leaves: int = 0
 
 ## Subsystems told when somebody arrives or goes.
 ##
-## Duck-typed, and the reason is the family rule: dot-map, dot-vote and a game's own
-## services layer are all optional, and a script that so much as mentions an absent
-## [code]class_name[/code] fails to parse and takes everything referencing it down.
+## Duck-typed: dot-map, dot-vote and a game's services are optional, and naming an absent class fails to parse.
 var followers: Array[Object] = []
-
-# --- Still loading -------------------------------------------------------------------
 
 ## Seconds a seat may stay loading before it counts as loaded anyway, with a warning. What
 ## releases a client that never says (one built before [constant COVER_KIND]), and the bound
 ## on how long anybody is unharmable: a client cannot extend it.
 var load_timeout_sec: float = 30.0
 
-## After a server-driven map change ([method mark_reloading]), seconds to wait for the
-## client to say its cover went up again. A client that does not re-cover for this change
-## (or predates the kind) counts as loaded once it passes, rather than sitting out the whole
-## timeout in plain view.
+## After a server-driven map change ([method mark_reloading]), seconds to wait for the client's cover to go up again.
+## A client that does not re-cover (or predates the kind) counts as loaded after this.
 var reload_grace_sec: float = 5.0
 
 ## [code]func() -> int[/code], milliseconds. [method Time.get_ticks_msec] when unset; the
@@ -125,9 +87,7 @@ var _shown_early: Dictionary = {}
 
 ## Adds a subsystem to be told about arrivals and departures.
 ##
-## Whichever of [code]add_peer(peer)[/code], [code]remove_peer(peer)[/code] and
-## [code]forget_voter(name)[/code] it has are called; the ones it does not have are not
-## an error, because none of the three subsystems this exists for has all three.
+## Whichever of `add_peer(peer)`, `remove_peer(peer)` and `forget_voter(name)` it has are called; missing ones are not an error.
 func follow(subsystem: Object) -> void:
 	if subsystem == null or followers.has(subsystem):
 		return
@@ -140,14 +100,7 @@ func unfollow(subsystem: Object) -> void:
 
 ## The handler for dot-server's [code]client_spawn[/code] event.
 ##
-## [b]`client_spawn` carries `userid` and `name`. It does NOT carry `peer_id`.[/b] Two
-## games in this family read `event.get_int("peer_id")` here, got 0 on every event, and
-## looked up a session that does not exist -- so **nobody ever joined**, silently, for
-## as long as those modules existed. A null session is a legitimate thing to find, so
-## nothing errored, and a dedicated-server suite passes without noticing because it
-## never connects a client.
-##
-## The lookup is in this file now so that it is written once and is right.
+## The event carries `userid` and `name` but NOT `peer_id`; reading it gave 0 and nobody joined, silently. The lookup lives here so it is right once.
 func on_client_spawn(event: DotEvent) -> void:
 	var session := session_of(event.get_int("userid"))
 
@@ -179,10 +132,8 @@ func add(session: DotClientSession) -> DotResult:
 	if add_fn.is_valid():
 		var added: Variant = add_fn.call(session)
 
-		# A Callable that returns nothing is allowed -- a game whose add cannot fail
-		# should not have to invent a result -- but one that returns a FAILURE is
-		# obeyed, because the alternative is a roster that thinks somebody is playing
-		# and a game that has never heard of them.
+				# A Callable returning nothing is allowed; one returning a FAILURE is obeyed, or the
+				# roster thinks somebody is playing and the game has never heard of them.
 		if added is DotResult and not (added as DotResult).ok:
 			DotLog.warn(CHANNEL, "could not add a player to the game", {
 				"userid": session.userid,
@@ -273,10 +224,7 @@ func count() -> int:
 
 ## Empties the roster without telling anybody, for an unload.
 ##
-## [b]Not the same as removing everyone.[/b] A module being torn down is not a room
-## emptying: the subsystems being notified are going away in the same breath, and
-## calling `remove_peer` on a freed one is the crash this whole addon's teardown order
-## exists to avoid.
+## Not the same as removing everyone: the subsystems are going away too, and `remove_peer` on a freed one crashes.
 func clear() -> void:
 	joined.clear()
 	followers.clear()
@@ -286,8 +234,6 @@ func clear() -> void:
 	_shown_early.clear()
 	_local.clear()
 
-
-# --- Still loading -------------------------------------------------------------------
 
 ## Whether this seat's client is still behind its loading cover. False for anybody not in
 ## the game, a bot, and a seat whose timeout has passed.
@@ -326,12 +272,9 @@ func mark_reloading() -> void:
 	_covered_at.clear()
 
 
-## A client's report, by peer: [param covered] true when its cover went up, false when it
-## lifted.
+## A client's report, by peer: [param covered] true when its cover went up, false when it lifted.
 ##
-## [b]A cover going up never makes a loaded seat loading.[/b] Only the server starts a
-## loading state (a join, [method mark_reloading]); the client can confirm one or end it. A
-## client allowed to start one could make itself unharmable whenever it liked.
+## A cover going up never makes a loaded seat loading: only the server starts that (a join, [method mark_reloading]), or a client could make itself unharmable.
 func report_cover(peer_id: int, covered: bool) -> void:
 	if not _peer_seat.has(peer_id):
 		if not covered:

@@ -2,47 +2,10 @@ extends "selftest/selftest_hooks.gd"
 
 ## dot-game: the sequence, the roster, the tick, and every way it has to unwind.
 ##
-## [b]What this suite is really for.[/b] The skeleton it exercises was extracted from
-## five games that each wrote it by hand, and the reason to extract it is that two of
-## them wrote it slightly wrong: one read a field off an event that the event does not
-## carry, so nobody ever joined its dedicated servers, silently, for the life of the
-## module. A base class only helps if the base class is the one that is right, which
-## means the base class is the one that has to be tested.
-##
-## Sections:
-##
-##   1. It refuses to load without a game object, and says which one it wanted.
-##   2. The whole sequence, in order, with a real [DotServer] and a real module host.
-##   3. The roster: a spawn event, an admission refusal, a disconnect.
-##   4. The tick reaches the bridge before the game.
-##   5. Unload tears down in the reverse order, and nothing is left ticking.
-##   6. Every failure path unwinds what it had already built.
-##   7. The services layer's hooks: no server, the backlog held, the ear.
-##   3b. Still loading: a joined seat is loading until its client reports, the timeout
-##      releases one that never does (with a warning), a map change re-marks, bots never are.
-##   9. DotGameLink: a link under the server node survives two reloads as exactly one, and a
-##      whole server tree torn down logs no engine ERROR.
-##   8. DotGameClient: the cover first, then the settings, menu, console, Tab, M, the chat's
-##      keyboard and the input block, driven through stand-ins; and the same client in a build
-##      with neither dot-menu nor dot-console.
-##
-## [b]Errors this suite prints on purpose.[/b] Three "module refused to load" lines,
-## which are sections 1 and 6 doing their job -- and, from section 3, an engine-level
-## [code]Attempt to call RPC with unknown peer ID: 3[/code]. That last one is the
-## admission refusal reaching [method DotServer.kick], which sends a disconnect RPC to a
-## peer that does not exist because this suite's sessions are built by hand rather than
-## connected. It is the fixture's shape, not a failure; a suite whose deliberate errors
-## are not written down is a suite whose real ones get scrolled past.
-##
-## Run:
-## [codeblock]
-## godot --headless --path . res://examples/game_selftest.tscn
-## [/codeblock]
+## Sections 1-9: refusal without a game, the full sequence, the roster, tick order, reverse teardown, failure unwinding, the services hooks, still-loading seats, DotGameLink and DotGameClient. Deliberate errors: three "module refused to load" lines (sections 1 and 6) and an engine `Attempt to call RPC with unknown peer ID: 3` from section 3's admission refusal, since sessions are built by hand.
 
-## Every check this suite runs, the section guard's own included. The total the section
-## counter cannot be: a runtime error inside a section aborts that function after the
-## section has announced itself, so the counter is satisfied and the checks after the
-## error simply never happen. See docs/testing.md.
+## Every check this suite runs, the section guard's own included.
+## A runtime error aborts a section after it announced itself, so the section counter alone misses lost checks. See docs/testing.md.
 const CHECKS := 586
 
 func _ready() -> void:
@@ -163,10 +126,8 @@ func _boot() -> bool:
 	# then be asserting against whatever that file contains.
 	config.startup_config = ""
 	config.autoexec_config = ""
-	# A thread blocked in a read the engine cannot cancel keeps the process alive after
-	# `quit()`, which turns a half-second suite into one that has to be killed.
-	# Kept after dot-server 5f46687, which no longer reads a pipe unless `stdin_console_pipes`
-	# is on: a terminal is still read, and a suite takes no commands from either.
+		# A thread blocked in a read the engine cannot cancel keeps the process alive after
+		# `quit()`; a terminal is still read, and a suite takes no commands from either.
 	config.stdin_console_enabled = false
 
 	_server = DotServer.new()
@@ -187,7 +148,7 @@ func _boot() -> bool:
 	return true
 
 
-# --- 1. No game ------------------------------------------------------------
+# 1. No game
 
 func _test_it_refuses_without_a_game() -> void:
 	_section("it refuses to load without a game object")
@@ -219,7 +180,7 @@ func _test_it_refuses_without_a_game() -> void:
 	_done()
 
 
-# --- 2. The sequence -------------------------------------------------------
+# 2. The sequence
 
 func _test_the_sequence() -> bool:
 	_section("the whole sequence, in order")
@@ -306,7 +267,7 @@ func _test_the_sequence() -> bool:
 	return true
 
 
-# --- 3. The roster ---------------------------------------------------------
+# 3. The roster
 
 func _test_the_roster() -> void:
 	_section("the roster, driven by the events a real server fires")
@@ -320,10 +281,8 @@ func _test_the_roster() -> void:
 	_module.roster.session_fn = func(userid: int) -> DotClientSession:
 		return _sessions.get(userid)
 
-	# [b]The regression guard this addon exists for.[/b] `client_spawn` carries `userid`
-	# and `name` and does NOT carry `peer_id`. Two games in this family read `peer_id`
-	# here, looked up session 0, found null and returned -- so nobody ever joined, and
-	# nothing errored, because a null session is a legitimate thing to find.
+		# [b]The regression guard.[/b] `client_spawn` carries `userid` and `name` but NOT `peer_id`;
+		# reading it found session 0, and nobody joined with nothing erroring.
 	var event := DotEvent.new(
 		"client_spawn",
 		{"userid": session.userid, "name": session.display_name}
@@ -333,11 +292,8 @@ func _test_the_roster() -> void:
 
 	_check(_module.roster.has(session.userid), "a spawn event puts a player in")
 
-	# [b]The guard proper.[/b] An event carrying only `peer_id` -- which is what the two
-	# broken games were reading -- must add nobody, because `peer_id` is not a userid and
-	# is not even on this event. With the lookup substituted, "found nothing" and "read
-	# the wrong field" are finally distinguishable: a handler reading `peer_id` would find
-	# session 2 here and seat them.
+		# [b]The guard proper.[/b] An event carrying only `peer_id` must add nobody; with the
+		# lookup substituted, a handler reading `peer_id` would find session 2 and seat them.
 	_sessions[2] = _fake_session(2, 2, "Wrong")
 	var peer_only := DotEvent.new("client_spawn", {"peer_id": 2, "name": "Wrong"})
 	_module._on_client_spawn(peer_only)
@@ -405,7 +361,7 @@ func _test_the_roster() -> void:
 	_done()
 
 
-# --- 3b. Still loading ------------------------------------------------------
+# 3b. Still loading
 
 var _warnings: Array[Dictionary] = []
 
@@ -509,7 +465,7 @@ func _test_still_loading() -> void:
 	_done()
 
 
-# --- 4. The tick -----------------------------------------------------------
+# 4. The tick
 
 func _test_the_tick() -> void:
 	_section("the tick reaches the bridge, and the game after it")
@@ -555,7 +511,7 @@ func _test_the_tick() -> void:
 	_done()
 
 
-# --- 4b. Hibernation -------------------------------------------------------
+# 4b. Hibernation
 
 func _test_hibernation() -> void:
 	_section("the server's hibernation reaches every clock under the module, and the game")
@@ -582,7 +538,7 @@ func _test_hibernation() -> void:
 	_done()
 
 
-# --- 5. Teardown -----------------------------------------------------------
+# 5. Teardown
 
 func _test_the_teardown() -> void:
 	_section("unloading takes it all down, in reverse")
@@ -624,10 +580,8 @@ func _test_the_teardown() -> void:
 		"a command whose handler points at a freed module crashes the server when "
 		+ "somebody types it"
 	)
-	# [b]Read off the reference taken before the unload.[/b] `module.roster` after the
-	# module has been freed is an access on a previously freed object, which aborts the
-	# section -- and a section that aborts takes the rest of its checks with it while the
-	# section counter goes on saying it ran.
+		# [b]Read off the reference taken before the unload.[/b] `module.roster` after the free
+		# aborts the section while the counter still says it ran.
 	_check(
 		not _server.client_disconnected.is_connected(
 			Callable(roster, "on_client_disconnected")
@@ -645,7 +599,7 @@ func _test_the_teardown() -> void:
 	_done()
 
 
-# --- 6. Unwinding ----------------------------------------------------------
+# 6. Unwinding
 
 class NoblockBody:
 	extends RefCounted
@@ -746,7 +700,7 @@ func _test_a_refused_attach_unwinds() -> void:
 	_done()
 
 
-# --- Harness ---------------------------------------------------------------
+# Harness
 
 func _caps(game_values: Dictionary, ceiling: Dictionary, tick := 64) -> DotNetConfig:
 	var c := DotNetConfig.new()
@@ -893,23 +847,9 @@ func _test_operator_ceiling_reaches_the_netcode() -> void:
 	_done()
 
 
-## A session the server did not make, because this suite connects no clients.
-##
-## The roster only reads `userid`, `peer_id` and `display_name`, and building one here
-## keeps every roster check deterministic -- a real connection would make the section
-## about the transport instead.
 ## [DotGameServices] in a project that has none of the three addons it drives.
 ##
-## [b]This is the path most deployments are NOT on, and it is the only one this addon can
-## test.[/b] dot-chat, dot-voice and dot-moderation are deliberately not dependencies here
-## — a game with no chat is a legitimate game, and naming an absent class fails to parse —
-## so the base loads each layer by path and skips what is missing. What has to be true is
-## that skipping is *quiet and complete*: setup succeeds, admission passes, the peer
-## fan-out is a no-op rather than a crash, and asking it to carry a line is refused in a
-## way a caller can act on.
-##
-## The other half — chat actually routing, a gag actually silencing somebody — is asserted
-## in a game that has the addons: `game-buses-from-hell/examples/headless_net.tscn`.
+## Skipping must be quiet and complete: setup succeeds, admission passes, the fan-out is a no-op, and a line is refused in a way a caller can act on. Chat routing proper is asserted in a game that has the addons.
 func _test_services_without_the_addons() -> void:
 	_section("the services layer, in a build with none of its addons")
 
@@ -1550,7 +1490,7 @@ func _test_client_without_the_addons() -> void:
 	await get_tree().process_frame
 	_done()
 
-# --- 9. DotGameLink --------------------------------------------------------
+# 9. DotGameLink
 
 ## Catches every engine-level error while attached. A deliberate error elsewhere in this suite
 ## cannot reach it: it is attached only for this section.

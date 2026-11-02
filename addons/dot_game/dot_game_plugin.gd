@@ -3,9 +3,7 @@ extends EditorPlugin
 
 ## Editor entry point for dot-game. Registers inspector types only.
 ##
-## No autoloads. A module belongs to a server, and a process running two servers -- or
-## a server and a client -- has two of them. That is the family rule and it is also the
-## reason this addon exists as a base class rather than as a singleton that games call.
+## No autoloads: a process running two servers, or a server and a client, has two modules.
 
 const _TYPES := [
 	[

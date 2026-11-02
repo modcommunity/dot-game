@@ -3,39 +3,7 @@ extends Node
 
 ## The client's half of [DotGameServices]: the chat box and the microphone.
 ##
-## [b]Five games had a copy of this file each[/b], two hundred lines apiece and different in
-## nothing but the names of their own classes. What is a game's own is three lists — the
-## channels the box offers, the colour of each channel a line can arrive on, and the voice
-## format — and a bridge to send through. Everything else is here.
-##
-## [b]Built whether or not there is a server, and offline it echoes what you type.[/b] A box
-## that only appeared on a connected client is a box nobody can test alone, and a box that did
-## nothing at all reads as broken rather than as absent.
-##
-## [b]Nothing here decides anything about a line.[/b] What crosses the wire is a channel id and
-## a string; who said it, whether they are gagged, how fast they are talking and who hears it
-## are all the server's chat router. That separation is why a client cannot put somebody
-## else's name on a line.
-##
-## [b]The bridge is duck-typed[/b], for the reason the rest of dot-game is: a game's bridge is
-## its own class, and a delivered pack cannot name one. It is asked for `ask_say(channel,
-## text)` and `send_voice(bytes)`, and connected to `chat_received(wire)`,
-## `voice_arrived(payload)` and, if it has one, `hello_received(id)`.
-##
-## [b]The server's own lines arrive on a second wire, and this reads both.[/b] What players say
-## crosses the game's bridge, routed by dot-game's services. What the SERVER says — a vote
-## between games, "Ada joined the game.", an admin's `say`, the reply to a chat command — is
-## dot-server's chat manager, sent as a `chat.line` envelope on the client link the shell
-## owns, and lands on `DotClientLink.chat_received`. Eight games read only the bridge, so a
-## player in any of them never saw the server's vote announce itself or an admin speak. The
-## link is found in the registry by itself (`dot_client_link`), so a game passes nothing and
-## the next one gets it too. Only the server's own kinds (`system`, `admin`) are drawn from
-## it: what players say is the bridge's to deliver, and drawing it from both is how a line
-## would show twice ([method draw_server_line]).
-##
-## [b]dot-ui and dot-voice are found by path[/b], as [DotGameServices] finds dot-chat. A game
-## without dot-voice has a chat box and no microphone, and one without dot-ui has a
-## microphone and no box; neither fails to parse.
+## A game supplies its channels, colours, voice format and a bridge (duck-typed: `ask_say`, `send_voice`, signals `chat_received`, `voice_arrived`, optional `hello_received`). It decides nothing about a line. dot-server's `system` and `admin` lines come over `DotClientLink.chat_received` ([method draw_server_line]); player lines only over the bridge, or they show twice. dot-ui and dot-voice are loaded by path.
 
 const CHANNEL := "game.chat_client"
 
@@ -245,8 +213,7 @@ func _build_voice() -> void:
 
 ## Joins this box to a bridge, or to nothing at all.
 ##
-## [param p_bridge] null is the offline case and is not an error: the box still opens, takes a
-## line and shows it.
+## [param p_bridge] null is the offline case: the box still opens, takes a line and shows it.
 func attach(p_bridge: Object) -> DotResult:
 	bridge = p_bridge
 
@@ -276,11 +243,9 @@ func attach(p_bridge: Object) -> DotResult:
 		if bridge != null and bridge.has_method(voice_method):
 			bridge.call(voice_method, bytes))
 
-	# [b]No microphone yet.[/b] It opens on the first press of the talk key ([method
-	# _process], dot-voice's update_talk): that press is the player agreeing, and in a
-	# browser it is the moment the permission prompt appears, attached to the key they just
-	# pressed. This used to call start_capture here, which in a browser would have asked for
-	# the microphone the moment a game loaded.
+		# [b]No microphone yet.[/b] It opens on the first press of the talk key ([method _process]):
+		# that press is the player agreeing, and in a browser it is when the permission prompt
+		# should appear, not at game load.
 
 	# The server's sv_voice_enable, replicated on the shell's link.
 	var cvar_source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
@@ -311,15 +276,9 @@ func _on_server_line(payload: Dictionary) -> void:
 	var _drawn := draw_server_line(window, payload, server_colour, line_colours.get(&"admin", server_colour))
 
 
-## Draws one of dot-server's own chat payloads in [param box] (a `DotChatWindow`, or anything
-## with `add_text` and `add_said`), and says whether it was a line at all.
+## Draws one of dot-server's own chat payloads in [param box] (a `DotChatWindow`, or anything with `add_text` and `add_said`), and says whether it was a line at all.
 ##
-## Static, so a game with its own chat box draws them the same way: buses, playground and
-## any client that reads `DotClientLink.chat_received` itself. Only `system` and `admin` are
-## drawn: what PLAYERS say (`all`, `team`) a game routing its chat delivers over its own wire,
-## and on a server whose module also lets dot-server's own player chat through, drawing it
-## here too would be every line twice. `state` is not a line (it says what is carrying chat),
-## and a payload with no `text` is dot-chat's. All of those come back false.
+## Static, so a game with its own chat box draws them the same way. Only `system` and `admin` are drawn (player lines come over the bridge, so drawing them here shows each twice); `state` and a payload with no `text` return false.
 static func draw_server_line(
 	box: Object,
 	payload: Dictionary,
@@ -426,8 +385,7 @@ func is_talking() -> bool:
 
 ## Push to talk. Held, never toggled.
 ##
-## A held key and not an event, because talking is held: an event queue is sampled per frame
-## and a frame is not a tick; what matters is whether the key is down right now.
+## Polled, not evented: a frame is not a tick, and what matters is whether the key is down now.
 func _process(_delta: float) -> void:
 	if voice == null or talk_key == KEY_NONE:
 		return

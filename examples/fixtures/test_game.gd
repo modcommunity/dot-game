@@ -2,9 +2,7 @@ extends Node
 
 ## The smallest thing that counts as a game object.
 ##
-## A game registers itself in [DotRegistry] under a name its module knows, because
-## there are no autoloads in this family: a process running a server and a client has
-## two of everything, and a global would be one.
+## Registers itself in [DotRegistry] under a name its module knows; there are no autoloads, so a global would be shared by a server and a client.
 
 const SERVICE := &"test_game"
 

@@ -4,50 +4,14 @@ extends Object
 
 ## Builds a server's [DotNetManager] and attaches the game's bridge to it.
 ##
-## [b]Five games wrote this function and they wrote it the same way.[/b] A manager with
-## [code]is_server[/code], [code]local_peer_id = 1[/code], [code]auto_tick = false[/code]
-## and [code]config_file = ""[/code]; a [DotNetConfig] the game supplies; [method
-## DotNetManager.setup]; a bridge; [code]attach(game, net)[/code];
-## [code]open_link(server)[/code]; [method DotNetMessageRegistry.seal]; [method
-## DotNetManager.start]. The only parts that differ between them are the config numbers
-## and the bridge's class, and both are arguments here.
-##
-## [b]Four of those constants are load-bearing and each one has a failure behind it.[/b]
-##
-## [code]auto_tick = false[/code] -- the game's tick has to happen INSIDE the netcode's,
-## between applying each peer's inputs and building the snapshot, which is what the
-## bridge's [code]server_tick[/code] arranges. A manager ticking itself as well moves
-## every player twice, and what that looks like is a game running at double speed only
-## when somebody is connected.
-##
-## [code]config_file = ""[/code] -- the manager reads a JSON file by default, so a
-## server with a stale [code]user://dot_net.json[/code] runs at a tick rate the game did
-## not choose and nothing says so. A game's netcode settings are the game's.
-##
-## [code]local_peer_id = 1[/code] -- the authority's id in Godot's multiplayer is 1, and
-## the bridge routes by it.
-##
-## [method DotNetMessageRegistry.seal] LAST, after the bridge has registered its message
-## types: wire ids are assigned from a sort of the registered names, so a type
-## registered after the seal renumbers every id above it and silently reinterprets every
-## message. The seal is what turns that from a mystery into a refusal.
-##
-## [codeblock]
-## var built := DotGameNetcode.build(self, server, game, config, MyBridge.new())
-## if not built.ok:
-##     return built.wrap("the netcode could not start")
-## net = built.value["net"]
-## bridge = built.value["bridge"]
-## [/codeblock]
+## `auto_tick = false` because the game's tick runs inside the netcode's (a second ticker doubles speed), `config_file = ""` so a stale user file cannot change the game's rates, `local_peer_id = 1` as the authority. [method DotNetMessageRegistry.seal] runs LAST: a type registered after it renumbers every wire id.
 
 const CHANNEL := "game.netcode"
 
 const _Relevance := preload("res://addons/dot_game/net/dot_game_relevance.gd")
 
-## The [DotServer] meta an operator tool sets to a [Dictionary] of [DotNetConfig] property
-## -> number, read by [method DotGameModule._net_ceiling]. Meta on the server, not a
-## registry entry or a static: a process may hold a server and a client (or two servers),
-## and the ceiling belongs to the one whose operator wrote it.
+## The [DotServer] meta an operator tool sets to a [Dictionary] of [DotNetConfig] property -> number, read by [method DotGameModule._net_ceiling].
+## Meta rather than a static: a process may hold two servers, and the ceiling belongs to its operator's.
 const CEILING_META := &"dot_net_ceiling"
 
 ## Properties where the operator's number is a ceiling (0 on either side = no limit from
@@ -69,14 +33,7 @@ const RADIUS_CEILING_KEYS: PackedStringArray = ["interest_radius"]
 
 ## Builds the manager, attaches the bridge, seals the schema and starts.
 ##
-## [param parent] is the node both are added under -- normally the module, so they go
-## away with it. [param bridge] is duck-typed on purpose: it is the game's own class,
-## this addon must not know its name, and what is required of it is
-## [code]attach(game, net) -> DotResult[/code] and [code]open_link(server)[/code].
-##
-## Returns a [Dictionary] with [code]net[/code] and [code]bridge[/code], so a caller
-## gets both halves from one call and cannot end up holding a manager whose bridge
-## failed to attach.
+## [param parent] is what both are added under. [param bridge] is duck-typed (this addon cannot know its class): it needs `attach(game, net) -> DotResult` and `open_link(server)`. Returns a [Dictionary] with [code]net[/code] and [code]bridge[/code].
 static func build(
 	parent: Node,
 	server: DotServer,
@@ -144,19 +101,14 @@ static func build(
 		_drop(parent, net)
 		return (attached as DotResult).wrap("the bridge would not attach")
 
-	# Under the DotServer node, whose name is the first half of the RPC routing: the
-	# client parents its copy under DotClientLink, which is named to match. A bridge
-	# opened anywhere else is addressed by a path the other end does not have, and every
-	# message lands nowhere with no error on either side.
+		# Under the DotServer node: its name is half the RPC route, and the client parents its
+		# copy under a matching DotClientLink. Elsewhere, messages land nowhere with no error.
 	if server != null and bridge.has_method("open_link"):
 		bridge.call("open_link", server)
 
-	# [b]A client whose message schema cannot work with this one is dropped, in words.[/b]
-	# dot-net compares the two tables when the client's arrives and refuses a pair where
-	# either lacks a type the other REQUIRES -- but it owns no socket, so it can only say
-	# so. Without this the client would sit in the game with nothing it sends decoded and
-	# nothing it is sent understood; with it, it is disconnected with the sentence dot-net
-	# chose, which says who has to update.
+		# [b]A client whose message schema cannot work with this one is dropped, in words.[/b]
+		# dot-net only compares the tables and owns no socket; without this the client would sit
+		# in the game with nothing decoded.
 	if server != null:
 		net.peer_schema_refused.connect(func(peer_id: int, error: DotError) -> void:
 			refuse_peer(server, peer_id, error))
@@ -193,15 +145,9 @@ static func build(
 	return DotResult.success({"net": net, "bridge": bridge})
 
 
-## Copies the server's snapshot worker count ([method DotServerConfig.net_snapshot_workers],
-## cvars [code]sv_threads_net[/code] and [code]sv_worker_threads[/code]) into
-## [member DotNetConfig.snapshot_workers], unless the game set one itself.
+## Copies the server's snapshot worker count ([method DotServerConfig.net_snapshot_workers]) into [member DotNetConfig.snapshot_workers], unless the game set one itself.
 ##
-## [b]An explicit value in the game's config wins, and 0 is "not set"[/b]: dot-net's default is
-## off, so a game that wrote a number meant it and an operator's switch must not undo it. Returns
-## whether [param config] follows the server (the caller calls this again each tick so the
-## cvars stay live, and only for a config that does). [param server_config] is duck-typed so
-## this addon does not need dot-server's class to parse.
+## An explicit game value wins (0 is "not set"). Returns whether [param config] follows the server, so the caller re-calls it each tick only for a config that does. [param server_config] is duck-typed.
 static func follow_server_threads(config: DotNetConfig, server_config: Object) -> bool:
 	if config == null:
 		return false
@@ -252,16 +198,9 @@ static func follow_map_threads(console: DotConsole) -> void:
 const THREADS_FOLLOW_META := &"dot_game_follows_server_threads"
 
 
-## Applies an operator's [param ceiling] to the game's [param config], in place.
+## Applies an operator's [param ceiling] to the game's [param config], in place; returns one line per change, for the caller to log.
 ##
-## [b]Effective value = min(game, operator), and 0 on either side means no limit from that
-## side[/b] (dot-net reads [code]<= 0[/code] as unlimited for the budget, the packet rate
-## and the entity cap), so a game that is unlimited takes the operator's number and an
-## operator who wrote 0 leaves the game's. Keys absent from the ceiling are untouched.
-## The snapshot rate is further forced to a divisor of the tick rate, because
-## [method DotNetConfig.validate] refuses a rate above the tick and warns on an uneven one.
-##
-## Returns one line per thing changed, for the caller to log.
+## Effective value is min(game, operator) and 0 on either side means no limit from that side. The snapshot rate is forced to a divisor of the tick rate, which [method DotNetConfig.validate] requires.
 static func cap(config: DotNetConfig, ceiling: Dictionary) -> PackedStringArray:
 	var changes := PackedStringArray()
 
@@ -346,8 +285,7 @@ static func adapt_snapshot_rate(config: DotNetConfig, slots: int) -> String:
 
 ## Disconnects a peer whose message schema this server cannot play with.
 ##
-## Public for a game on dot-game that builds its own [DotNetManager]. The four games
-## that do not link dot-game carry the same three lines in their modules.
+## Public for a game that builds its own [DotNetManager].
 static func refuse_peer(server: DotServer, peer_id: int, error: DotError) -> void:
 	if server == null:
 		return
@@ -362,11 +300,7 @@ static func refuse_peer(server: DotServer, peer_id: int, error: DotError) -> voi
 
 ## Removes and frees a node this builder put in the tree.
 ##
-## [b]Every failure path unwinds what it built.[/b] A half-built netcode left parented is
-## a manager that ticks, a bridge with an open link, or both, under a module that
-## reported it could not load -- and the module is then unloaded while its children go on
-## running. `queue_free` rather than `free`, because the failing call above may still be
-## on the stack.
+## Every failure path unwinds what it built, so a failed load leaves no ticking manager. `queue_free`, because the failing call may still be on the stack.
 static func _drop(parent: Node, child: Node) -> void:
 	if child == null or not is_instance_valid(child):
 		return
