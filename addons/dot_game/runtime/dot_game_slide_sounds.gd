@@ -25,6 +25,8 @@ var controller_fn: Callable = Callable()
 var surf: Node = null
 ## The `DotAudioSurfRules` behind [member surf] and its replicated `sv_surf_*` cvars; shared with [DotGameLanding] to mute landings.
 var surf_rules: RefCounted = null
+## Specs read once when the rules are built, so the per-frame bind never loads.
+var _surf_specs: Array = []
 ## The server's switch, from [constant CVAR].
 var enabled: bool = true
 
@@ -97,6 +99,7 @@ func _start_surf() -> void:
 	surf = node as Node
 	surf.name = "Surf"
 	surf_rules = load(SURF_RULES_SCRIPT).new() as RefCounted
+	_surf_specs = surf_cvar_specs()
 	surf.set(&"rules", surf_rules)
 	add_child(surf)
 
@@ -181,7 +184,7 @@ func _bind() -> void:
 			if held != "":
 				enabled = held != "0"
 			if surf_rules != null:
-				for spec: Dictionary in surf_cvar_specs():
+				for spec: Dictionary in _surf_specs:
 					var v := String(l.call(&"replicated_cvar", String(spec["name"]), ""))
 					if v != "":
 						surf_rules.call(&"apply_cvar", String(spec["name"]), v)

@@ -19,6 +19,7 @@ var _ready_for := -1.0
 var _time := 0.0
 var _prev := -1.0
 var _held: Dictionary = {}
+var _wanted: Dictionary = {}
 var _started := false
 
 
@@ -54,7 +55,7 @@ func _process(delta: float) -> bool:
 	if not _started:
 		_waited += delta
 		if _waited > 120.0:
-			printerr("filmstrip: client never became playable (property '%s')" % _ready_property)
+			printerr("filmstrip: client never became playable (property '", _ready_property, "')")
 			quit(3)
 			return true
 		if _ready_property != "" and not is_instance_valid(_client.get(_ready_property)):
@@ -73,7 +74,7 @@ func _process(delta: float) -> bool:
 			_client.call(event.substr(5))
 	_prev = _time
 	if _time >= _clip.duration:
-		print("FILMSTRIP_CLIP start_frame=%d frames=%d" % [_start_frame, _all - _start_frame])
+		print("FILMSTRIP_CLIP start_frame=", _start_frame, " frames=", _all - _start_frame)
 		_drive({"move": [0.0, 0.0], "buttons": []})
 		return true
 	return false
@@ -81,7 +82,8 @@ func _process(delta: float) -> bool:
 
 func _drive(state: Dictionary) -> void:
 	var move: Array = state["move"]
-	var wanted := {}
+	var wanted := _wanted
+	wanted.clear()
 	wanted[_moves[0]] = float(move[1]) < -0.1
 	wanted[_moves[1]] = float(move[1]) > 0.1
 	wanted[_moves[2]] = float(move[0]) < -0.1
@@ -98,4 +100,5 @@ func _drive(state: Dictionary) -> void:
 			Input.action_press(action)
 		else:
 			Input.action_release(action)
-	_held = wanted.duplicate()
+	_held.clear()
+	_held.merge(wanted)
