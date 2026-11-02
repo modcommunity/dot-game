@@ -18,6 +18,9 @@ class SyncBridge extends Object:
 	func force_fs_sync() -> void:
 		syncs += 1
 
+	func get_interface(_name: String) -> Variant:
+		return null
+
 
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.FATAL)
