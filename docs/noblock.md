@@ -15,3 +15,7 @@ After `DotGameClient.setup()`: `client.add_noblock(game, Callable(game, "team_of
 The config is dot-team's `DotTeamBlockConfig`, run through a `DotGameConfigBinder` with `profile_kind` and `profile_id` both `noblock` (the binder's new `profile_kind` lets a game carry a second profile set beside its `config` one). Layers, weakest first: code defaults, `cfg/game/<game>/noblock/noblock.yml`, `cfg/server/game/<game>/noblock/noblock.yml`, `--profile.noblock/noblock.<key>=`, `DOT_TEAM_BLOCK_*` env, `--team-block-*` argv. Strict on a dedicated server: an unknown key or bad value makes the module refuse to load. The cvars start at the config's values; a cvar edit changes the config, and a workbench edit of the `noblock` kind writes the cvar. A yml file is a flat mapping, for example `team_block: true`.
 
 Test: `examples/headless_noblock.tscn`; the module wiring is a section of `examples/game_selftest.tscn` (the dot-team half only runs when the addon is linked).
+
+## Opting out
+
+`use_noblock = false` on the module (an `@export`, so a scene or the module's `_game_load` can set it) skips all of the above for a game that wires its own rules; a game that sets `block_rules` itself is skipped as well. `_noblock_runtime()` defaults to the runtime of the game's started `workbench` (when the game declares one), so the `noblock` kind shows up in the workbench with no override. A game that needs the rules before the module loads (a strict cfg check at server boot) can call `DotGameNoblock.create` itself and set `block_rules`; the module then leaves them alone.

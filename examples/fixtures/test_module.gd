@@ -20,6 +20,7 @@ const TestClock := preload("test_clock.gd")
 ## Set by a suite before loading, to drive the paths that have to unwind.
 static var refuse_game_load := false
 static var refuse_attach := false
+static var no_noblock := false
 static var skip_identity := false
 static var skip_services := false
 
@@ -101,6 +102,7 @@ func _make_services() -> Node:
 
 func _game_load() -> DotResult:
 	game_loaded += 1
+	use_noblock = not no_noblock
 
 	if refuse_game_load:
 		return DotResult.fail(DotError.CODE_STATE, "refusing on purpose")

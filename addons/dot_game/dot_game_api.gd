@@ -69,5 +69,6 @@ extends RefCounted
 # 42: DotGameClient.use_team_menu (the period-key Play/Spectate menu on by default).
 # 43: DotGameRenderQuality (the r_msaa, r_scale, r_shadow_atlas, r_shadow_distance cvars; web defaults cheaper, ?r_msaa= style query overrides).
 # 44: r_sun_shadow_size and r_sun_shadow_splits (web: 2048 sun shadow map, at most 2 splits).
-const LEVEL := 44
+# 45: DotGameModule.use_noblock (opt out of the default noblock wiring); _noblock_runtime defaults to the game's started workbench.
+const LEVEL := 45
 const OLDEST := 1

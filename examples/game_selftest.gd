@@ -43,7 +43,7 @@ extends "selftest/selftest_stats.gd"
 ## counter cannot be: a runtime error inside a section aborts that function after the
 ## section has announced itself, so the counter is satisfied and the checks after the
 ## error simply never happen. See docs/testing.md.
-const CHECKS := 574
+const CHECKS := 577
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -672,9 +672,20 @@ func _test_noblock_wired() -> void:
 		(surf_cvar != null and surf_cvar.has_flag(DotConVar.FLAG_REPLICATED)) == (not surf_specs.is_empty()),
 		"the module binds the replicated sv_surf_* cvars exactly when dot-audio is in the build"
 	)
+	var stub_rt := RefCounted.new()
+	_check(module != null and module._noblock_runtime() == null, "no workbench on the game: no runtime for the noblock kind")
 	_unload_module()
-	_game.set("body_rules", null)
 	_check(module == null or module.noblock == null, "and is gone after the unload")
+
+	TestModule.no_noblock = true
+	var opted := await _load_module()
+	var opted_module: DotGameModule = _server.modules.get_module("testgame") if opted.ok else null
+	_check(opted.ok and opted_module != null and opted_module.noblock == null, "use_noblock = false opts out: nothing built")
+	_check(not body.pair_fn.is_valid() or not wired, "and the body's pair_fn is left alone")
+	_unload_module()
+	TestModule.no_noblock = false
+	_game.set("body_rules", null)
+	stub_rt = null
 
 	_done()
 

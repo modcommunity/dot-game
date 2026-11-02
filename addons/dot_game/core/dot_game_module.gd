@@ -42,6 +42,8 @@ const _Profiler := preload("res://addons/dot_game/runtime/dot_game_profiler.gd")
 @export var load_timeout_sec: float = 30.0
 ## Place dot-profiler with sv_profiler_* on the console; `--no-profiler` or DOT_GAME_PROFILER=0 turns it off.
 @export var use_profiler: bool = true
+## Wire dot-team's block rules (teammates pass through, enemies stop) when the game has a `body_rules`; false is the one-line opt-out.
+@export var use_noblock: bool = true
 
 ## After a map change, seconds to wait for a client's cover to go up again before counting it loaded.
 @export var reload_grace_sec: float = 5.0
@@ -740,7 +742,7 @@ func _advertise_avatar_content() -> void:
 
 ## Whether to wire dot-team's block rules. A game with its own `block_rules` wired by hand is left alone.
 func _noblock_enabled() -> bool:
-	return game != null and "body_rules" in game and game.get("body_rules") != null \
+	return use_noblock and game != null and "body_rules" in game and game.get("body_rules") != null \
 		and not ("block_rules" in game and game.get("block_rules") != null)
 
 
@@ -752,9 +754,11 @@ func _noblock_side(id: Variant) -> Variant:
 	return str(team) if team > 0 else ""
 
 
-## The game's `DotProfileRuntime`, so the workbench lists the `noblock` kind; null for none.
+## The game's `DotProfileRuntime`, so the workbench lists the `noblock` kind; the started `game.workbench`'s by default, null for none.
 func _noblock_runtime() -> Object:
-	return null
+	var wb: Variant = game.get("workbench") if game != null and "workbench" in game else null
+	var api: Variant = wb.get("api") if wb is Object else null
+	return api.get("runtime") if api is Object else null
 
 
 func _build_noblock() -> DotResult:
