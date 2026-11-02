@@ -10,8 +10,8 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 
-func _find_menu(n: Node) -> DotMenu:
-	if n is DotMenu:
+func _find_menu(n: Node) -> Node:
+	if n.get_script() != null and n.get_script().get_global_name() == &"DotMenu":
 		return n
 	for c in n.get_children():
 		var m := _find_menu(c)
@@ -26,7 +26,7 @@ func _run() -> void:
 	var scene_path: String = args[1] if args.size() > 1 else str(ProjectSettings.get_setting("application/run/main_scene"))
 	var scene := (load(scene_path) as PackedScene).instantiate()
 	root.add_child(scene)
-	var menu: DotMenu = null
+	var menu: Node = null
 	var prof: Object = null
 	for f in 3000:
 		await process_frame
