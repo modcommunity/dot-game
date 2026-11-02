@@ -3,7 +3,6 @@ extends RefCounted
 
 ## The stats half of [DotGameClient]'s board wiring: lifetime columns on the Tab board and a card for the player's own figures, both from dot-menu by path, both off with `cl_stats_ui 0`. Needs a server whose module has a stats board.
 
-const CHANNEL := "game.client_stats"
 const CVAR := "cl_stats_ui"
 const COLUMNS_SCRIPT := "res://addons/dot_menu/ui/dot_menu_stats.gd"
 const PANEL_SCRIPT := "res://addons/dot_menu/ui/dot_menu_stats_panel.gd"
