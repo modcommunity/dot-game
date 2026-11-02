@@ -182,3 +182,115 @@ static func bind_movement_cvars(m: DotGameModule, targets: Array) -> Array:
 	var made: Array = binder.call(&"bind_cvars", Callable(m, "add_cvar"), DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
 	DotLog.debug(CHANNEL, "movement cvars bound", {"count": made.size()})
 	return made
+
+
+## Builds the identity layer and loads dot-platform beside it.
+static func build_identity(m: DotGameModule) -> DotResult:
+	m.identity = m._make_identity()
+
+	if m.identity == null:
+		return DotResult.success(null)
+
+	m.identity.name = "Identity"
+	m.add_child(m.identity)
+
+	if not m.identity.has_method("setup"):
+		m._drop(m.identity)
+		m.identity = null
+		return DotResult.fail(
+			DotError.CODE_UNSUPPORTED,
+			"The identity layer has no setup()."
+		)
+
+	# Awaited and typed: an un-awaited coroutine returns at its first suspension.
+	var ready: Variant = await m.identity.call("setup")
+
+	if not (ready is DotResult) or not (ready as DotResult).ok:
+		m._drop(m.identity)
+		m.identity = null
+		return ready if ready is DotResult else DotResult.fail(
+			DotError.CODE_INTERNAL, "The identity layer's setup() returned no result."
+		)
+
+	if m._wants_platform_module() and m.server != null and m.server.modules != null:
+		if not m.server.modules.has_module("platform"):
+			# Awaited: a module's `_module_load` may be a coroutine, and dot-platform's is.
+			var loaded: DotResult = await m.server.modules.load_module(
+				m.PLATFORM_MODULE_PATH
+			)
+
+			m._loaded_platform = loaded.ok
+
+			if not loaded.ok:
+				# Reported, not fatal: without the platform module everybody is a guest.
+				DotLog.result(CHANNEL, "the platform module", loaded)
+
+	return DotResult.success(m.identity)
+
+
+## Builds the services layer over whatever link the bridge opened.
+static func build_services(m: DotGameModule) -> DotResult:
+	m.services = m._make_services()
+
+	if m.services == null:
+		return DotResult.success(null)
+
+	m.services.name = "Services"
+
+	# Before `setup`: the services build their relay inside it.
+	if m.identity != null and "backbone" in m.identity and "backbone" in m.services:
+		m.services.set("backbone", m.identity.get("backbone"))
+
+	m.add_child(m.services)
+
+	if not m.services.has_method("setup"):
+		m._drop(m.services)
+		m.services = null
+		return DotResult.fail(
+			DotError.CODE_UNSUPPORTED, "The services layer has no setup()."
+		)
+
+	var link: Object = m.bridge.get("link") if m.bridge != null else null
+	var ready: Variant = await m.services.call("setup", m.server, m.game, link)
+
+	if not (ready is DotResult) or not (ready as DotResult).ok:
+		m._drop(m.services)
+		m.services = null
+		return ready if ready is DotResult else DotResult.fail(
+			DotError.CODE_INTERNAL, "The services layer's setup() returned no result."
+		)
+
+	# The bridge is the only thing that names both ends of the voice path, so it is set here.
+	if m.bridge != null and "voice_relay_fn" in m.bridge and m.services.has_method("relay_voice"):
+		m.bridge.set("voice_relay_fn", Callable(m.services, "relay_voice"))
+
+	# Voice enable/mode on the router, replicated so clients hide the talk key; read back so content.yml wins. Duck-typed.
+	var router: Variant = m.services.get("voice") if "voice" in m.services else null
+	if router is Object and (router as Object).has_method("bind_cvars"):
+		var _voice_cvars: Variant = (router as Object).call(
+			"bind_cvars", Callable(m, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+		)
+
+		var look_script := load(m.LOOK_MUTE_SCRIPT) if ResourceLoader.exists(m.LOOK_MUTE_SCRIPT) else null
+		if look_script is Script and (look_script as Script).has_method("cvar_specs"):
+			for spec in (look_script as Object).call("cvar_specs"):
+				var _made := m.add_cvar(
+					String(spec["name"]), String(spec["value"]), String(spec["description"]),
+					DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
+				)
+
+	return DotResult.success(m.services)
+
+
+## Lowers the snapshot rate on a server of many slots, unless the operator turned `net_snapshot_auto` off.
+static func adapt_snapshot_rate(m: DotGameModule, config: Object) -> void:
+	if m.console == null or m.server == null:
+		return
+	var auto_cv: DotConVar = m.console.find_cvar("net_snapshot_auto")
+	if auto_cv == null:
+		auto_cv = m.console.cvar("net_snapshot_auto", "1", "Lower the snapshot rate on a server of many slots (0 keeps the game's rate).", DotConVar.FLAG_ARCHIVE).with_range(0, 1)
+	if auto_cv.get_int() == 0:
+		return
+	var tiered := DotGameNetcode.adapt_snapshot_rate(config, m.server.config.max_players)
+	if tiered != "":
+		DotLog.info(CHANNEL, "snapshot rate adapted to the server size", {"module": String(m._module_name()), "change": tiered})

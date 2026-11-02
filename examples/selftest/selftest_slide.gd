@@ -1,4 +1,4 @@
-extends "selftest_extra.gd"
+extends "selftest_cvars.gd"
 
 ## The slide-sound and landing sections of game_selftest.gd.
 

@@ -30,7 +30,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_game/runtime/` helpers | `DotGameClient` delegates to static helpers taking the client: `DotGameClientLook` (look and mute), `DotGameUserCfg` (the user cfg tier), `DotGameClientAvatars`, `DotGamePageGuard` (browser leave guard); `DotGameAvatarActionSupport` holds the action client's row building and optional-script cache |
 | `addons/dot_game/qa/`, `tools/` | `DotGameNetchaosServer` and `DotGameNetchaosClient` (tool-only: a pack never calls them, so no API level) and the shared perf, visual and netchaos scripts. [qa](docs/qa.md) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
-| `examples/game_selftest.tscn` | the suite (sections inherit through `examples/selftest/selftest_{base,avatar,extra}.gd`); `examples/fixtures/` the module, bridge, identity and services it loads |
+| `examples/game_selftest.tscn` | the suite (sections inherit through `examples/selftest/selftest_{base,avatar,extra,cvars,slide,stats,hooks}.gd`); `examples/fixtures/` the module, bridge, identity and services it loads |
 
 ## Running and testing
 

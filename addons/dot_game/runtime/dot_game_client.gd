@@ -362,7 +362,7 @@ func setup() -> DotResult:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
 	_set_up = true
 
-	_wire_chat()
+	DotGameClientExtras.wire_chat(self)
 	_wire_pointer_modals()
 	if gate_only:
 		_refresh_blocked()
@@ -371,13 +371,13 @@ func setup() -> DotResult:
 		_build_settings()
 	if use_console:
 		add_console()
-	_add_profiler()
+	DotGameClientExtras.add_profiler(self)
 	_wire_menu()
 	DotGameClientLook.build(self)
-	_add_slide_sounds()
-	_add_landing()
-	_add_render_quality()
-	_watch_latency_net()
+	DotGameClientExtras.add_slide_sounds(self)
+	DotGameClientExtras.add_landing(self)
+	DotGameClientExtras.add_render_quality(self)
+	DotGameClientExtras.watch_latency_net(self)
 
 	if capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -389,83 +389,6 @@ func setup() -> DotResult:
 ## Adds `slide_volume` to a settings schema a game builds itself (a game on dot-menu's node through `setup()` gets it without this).
 static func declare_slide_setting(schema: Object) -> void:
 	preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").declare(schema)
-
-
-func _add_profiler() -> void:
-	if not use_profiler:
-		return
-	profiler = _Profiler.add(self)
-	if profiler == null:
-		return
-	if not _bind_profiler_console():
-		# A game that builds its own console registers it later; bind then (deferred, so its own commands are on it).
-		DotRegistry.signals().service_registered.connect(_on_console_registered)
-
-
-func _on_console_registered(service: StringName, _instance: Object) -> void:
-	if service == &"dot_console":
-		_bind_profiler_console.call_deferred()
-
-
-func _bind_profiler_console() -> bool:
-	if _profiler_bound or profiler == null or not is_instance_valid(profiler):
-		return _profiler_bound
-	var con: Object = console if console != null and is_instance_valid(console) else DotRegistry.get_service(&"dot_console")
-	if con == null or not con.has_method(&"sources"):
-		return false
-	var local: Object = null
-	for s: Object in con.call(&"sources"):
-		if s.has_method(&"add_var"):
-			if s.has_method(&"claims") and bool(s.call(&"claims", "profiler_enabled")):
-				_profiler_bound = true
-				return true
-			local = s
-	if local == null:
-		return false
-	_Profiler.bind_client_console(profiler, local)
-	_profiler_bound = true
-	return true
-
-
-func _add_render_quality() -> void:
-	if not use_render_quality or gate_only:
-		return
-	var store: Object = null
-	if settings != null and is_instance_valid(settings):
-		store = settings.get(&"settings")
-	render_quality = preload("res://addons/dot_game/runtime/dot_game_client_render.gd").add(self, store)
-
-
-func _add_landing() -> void:
-	if not use_landing:
-		return
-	var node: Node = preload("res://addons/dot_game/runtime/dot_game_landing.gd").new()
-	node.name = "Landing"
-	node.set(&"surf_rules_fn", func() -> Object: return slide_sounds.get(&"surf_rules") if slide_sounds != null and is_instance_valid(slide_sounds) else null)
-	add_child(node)
-	if node.call(&"start"):
-		landing = node
-		if console != null and is_instance_valid(console):
-			var _bound: Variant = node.call(&"bind_console", console)
-	else:
-		node.queue_free()
-
-
-func _add_slide_sounds() -> void:
-	if not use_slide_sounds:
-		return
-	var node: Node = preload("res://addons/dot_game/runtime/dot_game_slide_sounds.gd").new()
-	node.name = "SlideSounds"
-	node.set(&"link_fn", func() -> Object: return link)
-	node.set(&"settings_fn", func() -> Object:
-		if slide_settings != null:
-			return slide_settings
-		return settings.get(&"settings") if settings != null and is_instance_valid(settings) else null)
-	add_child(node)
-	if node.call(&"start"):
-		slide_sounds = node
-	else:
-		node.queue_free()
 
 
 ## Hands over a HUD built after [method setup]: it follows the menu's theme and HUD size. Safe before setup() too; replaces an earlier HUD.
@@ -495,19 +418,8 @@ func set_chat(box: Node) -> void:
 				chat.disconnect(signal_name, _refresh_blocked)
 	chat = box
 	if _set_up:
-		_wire_chat()
+		DotGameClientExtras.wire_chat(self)
 		_refresh_blocked()
-
-
-func _wire_chat() -> void:
-	if chat == null:
-		return
-	if not chat.is_inside_tree():
-		add_child(chat)
-	# typing_changed(bool) on DotGameChatClient, opened(channel) / closed() on dot-ui's box.
-	for signal_name: StringName in [&"typing_changed", &"opened", &"closed"]:
-		if chat.has_signal(signal_name):
-			chat.connect(signal_name, _refresh_blocked)
 
 
 ## The stock settings node, by path, when the game assigned none. Override to build your own.
@@ -557,43 +469,18 @@ func restore_map_config() -> void:
 
 ## The map changed on this client: applies the map's settings and puts the last map's back. Call it on every map load (a map's own load, a round's new layout); a no-op until [member map_config_keys] or its defaults and both functions are set.
 func map_changed(map_id: String) -> void:
-	if map_config == null:
-		if (map_config_keys.is_empty() and map_config_defaults.is_empty()) \
-				or not map_config_get_fn.is_valid() or not map_config_set_fn.is_valid():
-			return
-		map_config = DotGameMapConfig.new()
-		map_config.game_id = map_config_game if map_config_game != "" else DotAddonConfig.game
-		map_config.keys = map_config_keys
-		map_config.defaults = map_config_defaults
-		map_config.get_fn = map_config_get_fn
-		map_config.set_fn = map_config_set_fn
-	map_config.apply(map_id)
+	DotGameClientExtras.map_changed(self, map_id)
 
 
 ## Builds the console now, over [param manager] and the menu. [method setup] calls it; a game that builds its menu first turns [member use_console] off and calls this. The first console stays.
 func add_console(manager: Object = null) -> Node:
 	if console != null and is_instance_valid(console):
 		return console
-	if not ResourceLoader.exists(console_kit_path):
-		DotLog.info(CHANNEL, "dot-console is not in this build: no console")
-		return null
-	var kit: Variant = load(console_kit_path)
-	if not (kit is GDScript):
-		DotLog.warn(CHANNEL, "dot-console's kit would not load", {"path": console_kit_path})
-		return null
-	if manager == null and settings != null:
-		var got: Variant = settings.get(&"settings")
-		manager = got if got is Object else null
-	var built: Variant = (kit as GDScript).call(&"build", self, manager, menu)
-	console = built if built is Node else null
-	var _v := _Vis.add_console_var(self)
-	var quality := _Vis.local_source(self, &"r_msaa")
-	if quality != null:
-		_RenderQuality.add_client_vars(quality, func() -> void: _RenderQuality.apply(get_viewport(), get_tree().root))
-	DotGameClientStats.add_console_var(self)
-	if _latency_net != null:
-		_bind_latency()
-	return console
+	return DotGameClientExtras.build_console(self, manager)
+
+
+func _on_latency_service(service_name: StringName, instance: Object) -> void:
+	DotGameClientExtras.on_latency_service(service_name, instance, self)
 
 
 ## Makes `cl_latency_baseline <seconds>` typable in the console (artificial lag for testing) and follows the server's replicated `sv_allow_client_latency`, which at 0 forces it to 0. [method setup] calls it with the client's registered [DotNetManager]; safe to call again.
@@ -601,44 +488,7 @@ func add_latency(manager: DotNetManager) -> void:
 	if manager == null or (manager == _latency_bound and _latency_net == manager):
 		return
 	_latency_net = manager
-	_bind_latency()
-
-
-## Finds the client's DotNetManager in the registry now or when it registers (a server's is skipped).
-func _watch_latency_net() -> void:
-	var bus := DotRegistry.signals()
-	if not bus.service_registered.is_connected(_on_latency_service):
-		bus.service_registered.connect(_on_latency_service)
-	for service_name in DotRegistry.names():
-		_on_latency_service(service_name, DotRegistry.get_service(service_name))
-
-
-func _on_latency_service(service_name: StringName, instance: Object) -> void:
-	if not String(service_name).begins_with(String(DotNetManager.SERVICE)) or not (instance is DotNetManager):
-		return
-	if (instance as DotNetManager).is_server:
-		return
-	add_latency(instance as DotNetManager)
-
-
-func _bind_latency() -> void:
-	if _latency_net == null or _latency_net.latency == null or _latency_bound == _latency_net:
-		return
-	var latency := _latency_net.latency
-	var source: Object = link if link != null else DotRegistry.get_service(LINK_SERVICE)
-	var _followed := latency.follow_cvars(source)
-	var local := _Vis.local_source(self, StringName(latency.CVAR_BASELINE))
-	if local == null:
-		return
-	_latency_bound = _latency_net
-	var _bound := latency.bind_client_cvar(func(n: String, _d: String, help: String, _f: int) -> Object:
-		local.call(&"add_var", StringName(n), help,
-			func() -> Variant: return latency.requested,
-			func(v: Variant) -> Variant:
-				if latency.set_cvar(n, str(v)):
-					return DotResult.success(latency.requested)
-				return DotResult.fail(DotError.CODE_INVALID, "%s takes seconds, e.g. 0.1" % n))
-		return null)
+	DotGameClientExtras.bind_latency(self)
 
 
 ## A sun that loads after startup (a map's) gets the shadow distance cap too.
@@ -693,21 +543,10 @@ func _wire_menu() -> void:
 			var got: Variant = menu.get(&"scoreboard")
 			board = got if got is Object else null
 			_board_auto = board != null
-	_wire_team_menu()
+	DotGameClientExtras.wire_team_menu(self)
 	DotGameClientMenu.wire_board(self)
 	DotGameClientStats.wire(self)
 	DotGameClientMenu.wire_maps(self)
-
-
-func _wire_team_menu() -> void:
-	# By name and only when unset: an older dot-menu has no team menu, and a game's own offer stays.
-	if not use_team_menu or menu == null or not menu.has_method(&"use_teams"):
-		return
-	if &"teams" in menu and menu.get(&"teams") != null:
-		return
-	var teams: Variant = menu.call(&"use_teams")
-	if teams is Object and &"default_when_unwired" in (teams as Object):
-		(teams as Object).set(&"default_when_unwired", team_menu_default_when_unwired)
 
 
 ## Opens the stats card for [param seconds] (0 keeps it): the end of a round. Nothing when the stats UI is off or the menu has no card.

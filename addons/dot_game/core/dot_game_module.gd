@@ -229,14 +229,7 @@ func _module_load() -> DotResult:
 				"module": String(_module_name()), "changes": "; ".join(capped),
 			})
 
-		if console != null and server != null:
-			var auto_cv := console.find_cvar("net_snapshot_auto")
-			if auto_cv == null:
-				auto_cv = console.cvar("net_snapshot_auto", "1", "Lower the snapshot rate on a server of many slots (0 keeps the game's rate).", DotConVar.FLAG_ARCHIVE).with_range(0, 1)
-			if auto_cv.get_int() != 0:
-				var tiered := DotGameNetcode.adapt_snapshot_rate(config, server.config.max_players)
-				if tiered != "":
-					DotLog.info(CHANNEL, "snapshot rate adapted to the server size", {"module": String(_module_name()), "change": tiered})
+		DotGameModuleWiring.adapt_snapshot_rate(self, config)
 
 		DotGameNetcode.follow_server_threads(config, server.config if server != null else null)
 		DotGameNetcode.follow_map_threads(console)
@@ -316,100 +309,12 @@ func _detach_board() -> void:
 
 ## Builds the identity layer and loads dot-platform beside it.
 func _build_identity() -> DotResult:
-	identity = _make_identity()
-
-	if identity == null:
-		return DotResult.success(null)
-
-	identity.name = "Identity"
-	add_child(identity)
-
-	if not identity.has_method("setup"):
-		_drop(identity)
-		identity = null
-		return DotResult.fail(
-			DotError.CODE_UNSUPPORTED,
-			"The identity layer has no setup()."
-		)
-
-				# Awaited and typed: an un-awaited coroutine returns at its first suspension.
-	var ready: Variant = await identity.call("setup")
-
-	if not (ready is DotResult) or not (ready as DotResult).ok:
-		_drop(identity)
-		identity = null
-		return ready if ready is DotResult else DotResult.fail(
-			DotError.CODE_INTERNAL, "The identity layer's setup() returned no result."
-		)
-
-	if _wants_platform_module() and server != null and server.modules != null:
-		if not server.modules.has_module("platform"):
-						# Awaited: a module's `_module_load` may be a coroutine, and dot-platform's is.
-			var loaded: DotResult = await server.modules.load_module(
-				PLATFORM_MODULE_PATH
-			)
-
-			_loaded_platform = loaded.ok
-
-			if not loaded.ok:
-								# Reported, not fatal: without the platform module everybody is a guest.
-				DotLog.result(CHANNEL, "the platform module", loaded)
-
-	return DotResult.success(identity)
+	return await DotGameModuleWiring.build_identity(self)
 
 
 ## Builds the services layer over whatever link the bridge opened.
 func _build_services() -> DotResult:
-	services = _make_services()
-
-	if services == null:
-		return DotResult.success(null)
-
-	services.name = "Services"
-
-				# Before `setup`: the services build their relay inside it.
-	if identity != null and "backbone" in identity and "backbone" in services:
-		services.set("backbone", identity.get("backbone"))
-
-	add_child(services)
-
-	if not services.has_method("setup"):
-		_drop(services)
-		services = null
-		return DotResult.fail(
-			DotError.CODE_UNSUPPORTED, "The services layer has no setup()."
-		)
-
-	var link: Object = bridge.get("link") if bridge != null else null
-	var ready: Variant = await services.call("setup", server, game, link)
-
-	if not (ready is DotResult) or not (ready as DotResult).ok:
-		_drop(services)
-		services = null
-		return ready if ready is DotResult else DotResult.fail(
-			DotError.CODE_INTERNAL, "The services layer's setup() returned no result."
-		)
-
-		# The bridge is the only thing that names both ends of the voice path, so it is set here.
-	if bridge != null and "voice_relay_fn" in bridge and services.has_method("relay_voice"):
-		bridge.set("voice_relay_fn", Callable(services, "relay_voice"))
-
-				# Voice enable/mode on the router, replicated so clients hide the talk key; read back so content.yml wins. Duck-typed.
-	var router: Variant = services.get("voice") if "voice" in services else null
-	if router is Object and (router as Object).has_method("bind_cvars"):
-		var _voice_cvars: Variant = (router as Object).call(
-			"bind_cvars", Callable(self, "add_cvar"), DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
-		)
-
-		var look_script := load(LOOK_MUTE_SCRIPT) if ResourceLoader.exists(LOOK_MUTE_SCRIPT) else null
-		if look_script is Script and (look_script as Script).has_method("cvar_specs"):
-			for spec in (look_script as Object).call("cvar_specs"):
-				var _made := add_cvar(
-					String(spec["name"]), String(spec["value"]), String(spec["description"]),
-					DotConVar.FLAG_ARCHIVE | DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED
-				)
-
-	return DotResult.success(services)
+	return await DotGameModuleWiring.build_services(self)
 
 
 ## Wires the roster to the bridge and to whatever else wants to know.
