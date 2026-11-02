@@ -259,8 +259,8 @@ var _wired_signal: StringName = &""
 var _blocked: bool = false
 var _menu_open: bool = false
 
-## Test seam: when valid, the page-guard JavaScript goes here and the client acts as if on the web.
-var web_eval_fn: Callable = Callable()
+## Test seam: when valid, the page-guard commands ("install", "arm", "disarm") go here and the client acts as if on the web.
+var web_guard_fn: Callable = Callable()
 var _guard_armed: bool = false
 var _guard_installed: bool = false
 

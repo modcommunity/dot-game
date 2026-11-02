@@ -1507,21 +1507,19 @@ func _test_client_page_guard() -> void:
 	var client := DotGameClient.new()
 	client.use_gate = false
 	client.link = link
-	client.web_eval_fn = func(code: String) -> void: sent.append(code)
+	client.web_guard_fn = func(code: String) -> void: sent.append(code)
 	host.add_child(client)
-	_check(sent.size() == 1 and "fullscreenchange" in sent[0] and "beforeunload" in sent[0]
-			and "if (!window.__dotTabGuard)" in sent[0],
-		"the listeners are installed once, behind a page flag")
+	_check(sent.size() == 1 and sent[0] == "install", "the guard is installed once")
 	client._process(0.0)
 	_check(sent.size() == 1 and not client.describe()["leave_guard"], "a disconnected link does not arm it")
 	link.up = true
 	client._process(0.0)
-	_check(sent.size() == 2 and "armed = true" in sent[1] and client.describe()["leave_guard"],
+	_check(sent.size() == 2 and "arm" == sent[1] and client.describe()["leave_guard"],
 		"a connected link arms the prompt")
 	client._process(0.0)
 	_check(sent.size() == 2, "and a steady state sends nothing")
 	client.clear_leave_guard()
-	_check(sent.size() == 3 and "armed = false" in sent[2] and not client.describe()["leave_guard"],
+	_check(sent.size() == 3 and "disarm" == sent[2] and not client.describe()["leave_guard"],
 		"a deliberate navigation can clear it")
 	client._process(0.0)
 	link.up = false
@@ -1532,7 +1530,7 @@ func _test_client_page_guard() -> void:
 	client._process(0.0)
 	client.queue_free()
 	await get_tree().process_frame
-	_check("armed = false" in sent[sent.size() - 1], "leaving the tree disarms it")
+	_check("disarm" == sent[sent.size() - 1], "leaving the tree disarms it")
 
 	var offline := DotGameClient.new()
 	offline.use_gate = false
@@ -1540,10 +1538,10 @@ func _test_client_page_guard() -> void:
 	offline.link.up = true
 	offline.force_offline = true
 	var off_sent: Array = []
-	offline.web_eval_fn = func(code: String) -> void: off_sent.append(code)
+	offline.web_guard_fn = func(code: String) -> void: off_sent.append(code)
 	host.add_child(offline)
 	offline._process(0.0)
-	_check(off_sent.size() == 2 and "armed = true" in off_sent[1] and not offline.is_in_live_game(),
+	_check(off_sent.size() == 2 and "arm" == off_sent[1] and not offline.is_in_live_game(),
 		"a solo game (offline) arms the prompt too")
 	host.queue_free()
 	await get_tree().process_frame
