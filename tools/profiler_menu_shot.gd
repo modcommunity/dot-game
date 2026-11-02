@@ -1,9 +1,8 @@
 extends SceneTree
 
 ## Any game's real client (project main scene, or the first user arg) with the menu opened on Advanced,
-## scrolled to the Performance card, after a short recording; prints the checks and saves a PNG.
+## scrolled to the Performance card, after a short recording; prints the checks and saves a PNG. Needs a renderer; exit 0 only when the card exists and a recording was written.
 ##   xvfb-run -a godot --path ~/godot/<game> --resolution 1280x720 --script ~/godot/dot-game/tools/profiler_menu_shot.gd -- out.png [scene.tscn]
-## Needs a renderer (xvfb-run or a GPU box). Exit 0 only when the card exists and a recording was written.
 
 
 func _initialize() -> void:

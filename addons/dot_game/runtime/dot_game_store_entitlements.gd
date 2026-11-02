@@ -2,9 +2,7 @@ class_name DotGameStoreEntitlements
 extends RefCounted
 
 ## Adds what the site store says a player owns to a dot-loadout manager's entitlements, with no per-game code.
-##
-## dot-loadout is named nowhere: its classes are found through the global class list, and a
-## project without it (or without a `dot_backbone_client`) is left exactly as it was.
+## dot-loadout is optional and reached through the global class list; without it (or a `dot_backbone_client`) nothing changes.
 
 const CHANNEL := "game.store"
 const META := &"dot_game_store_entitlements"

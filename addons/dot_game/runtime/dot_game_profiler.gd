@@ -1,7 +1,7 @@
 extends RefCounted
 
 ## Places dot-profiler for a game, client and server, from one spot so no game wires it.
-## No class_name: callers preload it. dot-profiler is optional and found by path, so a build without it parses and runs.
+## No class_name: callers preload it. dot-profiler is optional and located by path, so a build without it parses and runs.
 
 const CHANNEL := "game.profiler"
 const SCRIPT := "res://addons/dot_profiler/runtime/dot_profiler.gd"

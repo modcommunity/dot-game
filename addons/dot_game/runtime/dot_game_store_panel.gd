@@ -41,7 +41,7 @@ static func owned_from(body: Dictionary) -> Array:
 	return out
 
 
-## Adds a "Store" page to a dot-menu (found by duck typing: null or no `add_page` does nothing) that shows a fresh panel each time it opens. [param player_key_fn] returns the player key; [param client_fn] the backbone client (default: the registry's `dot_backbone_client`). Returns the page, or null.
+## Adds a "Store" page to a dot-menu (located by duck typing: null or no `add_page` does nothing) that shows a fresh panel each time it opens. [param player_key_fn] returns the player key; [param client_fn] the backbone client (default: the registry's `dot_backbone_client`). Returns the page, or null.
 static func add_to_menu(menu: Object, player_key_fn: Callable, client_fn: Callable = Callable(), before: StringName = &"") -> Object:
 	if menu == null or not menu.has_method(&"add_page"):
 		return null
