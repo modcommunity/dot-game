@@ -75,5 +75,7 @@ func _on_seated(session: DotClientSession) -> void:
 	var key := feed.key_for(session)
 	var userid := session.userid
 	var got: Variant = await (store as Object).call(&"values_for", key)
+	if got is DotResult and not (got as DotResult).ok:
+		DotLog.warn(CHANNEL, "could not read a player's lifetime stats; the board shows no baseline", {"userid": userid, "code": (got as DotResult).code()})
 	if got is DotResult and (got as DotResult).ok and (got as DotResult).value is Object and not _baseline.has(userid):
 		_baseline[userid] = (got as DotResult).value
