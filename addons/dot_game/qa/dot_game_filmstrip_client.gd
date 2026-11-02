@@ -1,11 +1,8 @@
 extends SceneTree
 
-## Plays one clip of tools/filmstrip_scenarios.json through the game's real offline client for `--write-movie`.
-## Run by dot_game_filmstrip_run.sh with user args `<clip> [game args]`. The file's "defaults" or a clip's "fields" set:
-## `client` (res:// script of the client root), `client_props` (set before it enters the tree, e.g. force_offline),
-## `ready_property` (client property that is non-null once playable, default "player"; "" waits only `warmup`),
-## `warmup` (seconds after ready before the clip, default 2), `move_actions` [forward, back, left, right] input actions.
-## Steps: `move` [x, y] and `buttons` (input action names held), `event` "call:<method>" calls it on the client.
+## Plays one clip of tools/filmstrip_scenarios.json through the game's offline client for `--write-movie`.
+## Scenario fields: `client`, `client_props`, `ready_property` (default "player"), `warmup`, `move_actions`.
+## Steps: `move` [x, y], `buttons` (held actions), `event` "call:<method>" on the client.
 
 var _clip: DotScenario = null
 var _client: Node = null
