@@ -6,7 +6,7 @@ extends "selftest/selftest_hooks.gd"
 
 ## Every check this suite runs, the section guard's own included.
 ## A runtime error aborts a section after it announced itself, so the section counter alone misses lost checks. See docs/testing.md.
-const CHECKS := 586
+const CHECKS := 588
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -76,7 +76,7 @@ func _run_wiring() -> void:
 	await _test_chat_client_server_lines()
 	await _test_map_content()
 	_test_auto_update_wiring()
-	_test_profiler_placement()
+	await _test_profiler_placement()
 	await _test_client_platform()
 	await _test_look_mute()
 	_test_store_entitlements_absent()
@@ -953,7 +953,21 @@ func _test_profiler_placement() -> void:
 		_check(placed == null and host.get_child_count() == 0, "a build without dot-profiler places nothing")
 	prof.install_server(null)
 	host.queue_free()
+	await _late_console_after_free()
 	_done()
+
+
+## The registry outlives a client: a late console registration for a freed client must find nothing, not a freed capture.
+func _late_console_after_free() -> void:
+	var c := DotGameClient.new()
+	var id := c.get_instance_id()
+	c.free()
+	DotGameClientExtras._bind_if_alive(id)
+	_check(instance_from_id(id) == null, "a profiler hook for a freed client resolves to nothing and raises no error")
+	var live := DotGameClient.new()
+	add_child(live)
+	_check(not DotGameClientExtras.bind_profiler_console(live), "a live client with no profiler binds nothing")
+	live.queue_free()
 
 
 ## DotGameContent, against a stand-in manager: the keys a server names, where each mounts,
