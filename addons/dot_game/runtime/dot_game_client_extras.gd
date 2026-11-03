@@ -16,18 +16,28 @@ static func add_profiler(c: DotGameClient) -> void:
 		return
 	if not bind_profiler_console(c):
 		# A game that builds its own console registers it later; bind then (deferred, so its own commands are on it).
-		var id := c.get_instance_id()
-		DotRegistry.signals().service_registered.connect(
-			func(service: StringName, _instance: Object) -> void:
-				if service == &"dot_console":
-					_bind_if_alive.call_deferred(id))
+		DotRegistry.signals().service_registered.connect(c._on_console_service)
 
 
-## The registry outlives a client, so the connection holds its instance id: a captured freed object makes the lambda itself error.
+## Drops the client's connections to the registry's static bus, which outlives it; called on exit tree.
+static func disconnect_registry_bus(c: DotGameClient) -> void:
+	var bus := DotRegistry.signals()
+	if bus.service_registered.is_connected(c._on_console_service):
+		bus.service_registered.disconnect(c._on_console_service)
+	if bus.service_registered.is_connected(c._on_latency_service):
+		bus.service_registered.disconnect(c._on_latency_service)
+
+
+## The registry outlives a client, so a deferred bind holds its instance id: a freed object as an argument errors.
 static func _bind_if_alive(id: int) -> void:
 	var c := instance_from_id(id) as DotGameClient
 	if c != null:
 		bind_profiler_console(c)
+
+
+static func on_console_service(service: StringName, c: DotGameClient) -> void:
+	if service == &"dot_console":
+		bind_profiler_console.call_deferred(c)
 
 
 static func bind_profiler_console(c: DotGameClient) -> bool:

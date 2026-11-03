@@ -460,6 +460,10 @@ func add_console(manager: Object = null) -> Node:
 	return DotGameClientExtras.build_console(self, manager)
 
 
+func _on_console_service(service_name: StringName, _instance: Object) -> void:
+	DotGameClientExtras.on_console_service(service_name, self)
+
+
 func _on_latency_service(service_name: StringName, instance: Object) -> void:
 	DotGameClientExtras.on_latency_service(service_name, instance, self)
 
@@ -764,6 +768,7 @@ func release_pointer(key: Variant) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_EXIT_TREE:
 		restore_map_config()
+		DotGameClientExtras.disconnect_registry_bus(self)
 	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
 		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
 		user_tier_on = false
