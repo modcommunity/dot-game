@@ -32,3 +32,14 @@ No assertion shows that the HUD is readable. `addons/dot_game/tools/dot_game_pho
 ## HUD text placement
 
 Three things went wrong on a phone that never did on a desktop. Labels placed in the bottom-right, such as ammo, the tool name or a hint, end up under the FIRE circle, which is the biggest button and the one a thumb covers; keep the bottom-right for buttons and put such text bottom-left or at the top. Role labels (hider, runner, murderer) placed top-right sit under the Menu button, so either move the menu button to the other corner or anchor role text to the top centre. And a label that is readable at 1280x720 shrinks to a smudge at 844x390, so check the phone frame, not the desktop one. Size HUD fonts from the viewport height rather than a fixed pixel count; no shipped touch HUD does this yet, so treat it as advice.
+
+## Rollout checklist
+
+Lessons from rolling touch controls across the games; walk it for each one.
+
+1. A `DotTouchButtons` offset is measured from the margin-inset corner, so a button's centre is at `size - margin - offset * scale`, not `size - offset`. Compute layouts and expected positions from that, or every button sits closer to the edge than planned.
+2. Hide keyboard-only hint lists and labels when `DotPlatform.has_touch()`, and give touch a button for every key-only action (the loadout menu, for one). A hint for a key nobody can press is noise, and an action with no button is unreachable.
+3. Move HUD text (status lines, role labels, money plates) away from the button clusters. Render at 844x390, 667x375 and 932x430 and Read the PNG; the desktop frame hides every collision.
+4. `headless_touch` checks fit inside the screen, a minimum button size of 44 px, a gap of at least 4 px between buttons, that touch-off hides the buttons, and that the buttons are freed.
+5. A button-up must always be delivered, even when a menu or chat cover opened while the button was held. Route releases past any "UI is open" guard, or the action sticks on (a held fire, a scoreboard that never closes).
+6. When the HUD can be rebuilt, guard stored references with `is_instance_valid(node)`, not `!= null`: a freed node is not null, and the next call on it errors.
