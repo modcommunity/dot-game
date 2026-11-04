@@ -271,7 +271,8 @@ func _ready() -> void:
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
 	var standalone: Node = null
-	if offline and use_standalone_content:
+	# Headless is a test run: a cold cache would hold the cover on a real download and fail every cover check.
+	if offline and use_standalone_content and DisplayServer.get_name() != "headless":
 		standalone = DotGameStandaloneContent.install(self, gate)
 	if locked_content_wanted(use_locked_content, offline, DisplayServer.get_name() == "headless", locked_content_offline or DotGameLockedContent.cmdline_value() not in ["", "0"]):
 		_mount_locked_content(standalone)
