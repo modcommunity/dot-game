@@ -58,3 +58,16 @@ static func click_captures(c: DotGameClient, event: InputEvent) -> void:
 	if c.is_menu_open() or c._chat_typing() or c._busy() or not c.is_shown() or not c._pointer_wanted():
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## The menu opened or closed: frees the mouse, or captures it again where a browser allows.
+static func menu_state(c: DotGameClient, any_open: bool) -> void:
+	c._menu_open = any_open
+	if c.capture_pointer:
+		if any_open:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		elif not DotPlatform.is_web() and not c._busy() and c._pointer_wanted():
+			# A browser refuses a capture that is not a click; _unhandled_input takes it.
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	c.menu_state_changed.emit(any_open)
+	c._refresh_blocked()

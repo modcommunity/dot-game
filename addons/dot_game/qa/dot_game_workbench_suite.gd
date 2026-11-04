@@ -52,6 +52,23 @@ func _run_suite() -> void:
 	_check(wb.console_command(PackedStringArray(["close"])) == "workbench closed", "the console command closes it")
 	_wb_finished += 1
 	_wb_entered += 1
+	var edits := _section_edit(wb, binder, config)
+	_wb_finished += 1
+	_wb_entered += 1
+	var root := "user://cfgtest_%s_export" % binder.game_id
+	var written := _section_export(wb, binder, edits, root)
+	_wb_finished += 1
+	_wb_entered += 1
+	_section_reload(binder, edits, root, written)
+	_wb_finished += 1
+	_wb_entered += 1
+	_section_permit(wb, binder, edits)
+	wb.free()
+	_wb_finished += 1
+	_report_sections(_wb_entered, _wb_finished, _SECTIONS, 7 + 3 * count)
+
+
+func _section_edit(wb: DotGameWorkbench, binder: DotGameConfigBinder, config: Object) -> Dictionary:
 	var edits := {}
 	for set: DotProfileSet in binder.profile_sets():
 		var entry := _pick(binder, set)
@@ -63,10 +80,11 @@ func _run_suite() -> void:
 		var res: DotResult = wb.api.handle(DotGameWorkbench.LOCAL_ACTOR, {"op": "set", "kind": set.rel_path, "id": binder.profile_id, "key": key, "value": value})
 		_check(res.ok and str(config.get(key)) == str(value), "%s: an edit of %s reaches the live config" % [set.rel_path, key], "" if res.ok else res.error.message)
 		edits[set.rel_path] = {"key": key, "value": value}
-	_wb_finished += 1
-	_wb_entered += 1
+	return edits
+
+
+func _section_export(wb: DotGameWorkbench, binder: DotGameConfigBinder, edits: Dictionary, root: String) -> PackedStringArray:
 	var files: Dictionary = wb.exporter.call("collect")
-	var root := "user://cfgtest_%s_export" % binder.game_id
 	var written := PackedStringArray()
 	for set: DotProfileSet in binder.profile_sets():
 		var edit: Dictionary = edits.get(set.rel_path, {})
@@ -81,8 +99,10 @@ func _run_suite() -> void:
 		out.store_string(text)
 		out.close()
 		written.append(dir.path_join("%s.yml" % binder.profile_id))
-	_wb_finished += 1
-	_wb_entered += 1
+	return written
+
+
+func _section_reload(binder: DotGameConfigBinder, edits: Dictionary, root: String, written: PackedStringArray) -> void:
 	var again := _make_config()
 	var reload := _make_binder(again)
 	reload.roots = PackedStringArray([root])
@@ -95,8 +115,9 @@ func _run_suite() -> void:
 		_check(loaded.ok and str(again.get(edit["key"])) == str(edit["value"]), "%s: the cfg file loads back as the default of %s" % [set.rel_path, edit["key"]], "" if loaded.ok else loaded.error.message)
 	for f in written:
 		DirAccess.remove_absolute(f)
-	_wb_finished += 1
-	_wb_entered += 1
+
+
+func _section_permit(wb: DotGameWorkbench, binder: DotGameConfigBinder, edits: Dictionary) -> void:
 	var first: Dictionary = edits.values()[0] if not edits.is_empty() else {}
 	var kind: String = edits.keys()[0] if not edits.is_empty() else ""
 	if first.is_empty():
@@ -107,9 +128,6 @@ func _run_suite() -> void:
 		_check(not other.ok, "another actor is refused without a permit")
 		wb.permit_fn = func(actor: Variant, _flag: String) -> bool: return actor == _PERMIT_ID
 		_check(wb.api.handle(_PERMIT_ID, {"op": "set", "kind": kind, "id": binder.profile_id, "key": first["key"], "value": first["value"]}).ok, "a permitted actor edits")
-	wb.free()
-	_wb_finished += 1
-	_report_sections(_wb_entered, _wb_finished, _SECTIONS, 7 + 3 * count)
 
 
 ## The first field of [param set] a test can change: numbers, then bool, then enum or string.

@@ -1,19 +1,9 @@
 class_name DotGameClientBench
 extends Node
 
-## Measures a connected client's prediction: replays, skipped reconciles, mismatches by variable and
-## frame rate, against a real server in a second process with a latency relay between them. A game
-## extends it in `tools/client_bench.gd` (scene: one Node with that script) and overrides the hooks.
-##
-## [codeblock]
-## godot --headless --path . res://tools/client_bench.tscn -- --bots 8 --delay 40 --burn 14 --seconds 20 --mismatches
-## ... -- --play       a pilot runs, strafes, jumps and shoots instead of standing
-## ... -- --timeline   a line every 2 s ; --raw-input predicts on the sampled command, not the wire's
-## [/codeblock]
-##
-## [code]--delay[/code] is milliseconds each way. [code]--burn MS[/code] spends MS of wall time in every
-## frame before the client runs: a slow device, where a slow frame can make the next one cost more.
-## The server is this scene again with [code]--role server[/code], killed at the end. Run it through heavy.
+## Measures a connected client's prediction (replays, skipped reconciles, mismatches) against a real
+## server in a second process behind a latency relay. A game extends it in `tools/client_bench.gd`;
+## flags, hooks and the command are in docs/qa.md.
 
 ## The game's client scene, instanced once the link plays.
 var client_scene := ""

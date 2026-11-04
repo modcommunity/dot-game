@@ -585,15 +585,7 @@ func _look_target() -> int:
 
 
 func _on_menu_state(any_open: bool) -> void:
-	_menu_open = any_open
-	if capture_pointer:
-		if any_open:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif not DotPlatform.is_web() and not _busy() and _pointer_wanted():
-						# A browser refuses a capture that is not a click; _unhandled_input takes it.
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	menu_state_changed.emit(any_open)
-	_refresh_blocked()
+	DotGameClientPointer.menu_state(self, any_open)
 
 
 func _input(event: InputEvent) -> void:
