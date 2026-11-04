@@ -1,6 +1,6 @@
 # QA tools shared by every game
 
-Four tools that every game wants and that were one game's copy until 2026-10-25. Each is a script in `tools/` that a game's own `tools/<name>.sh` reaches with `cd "$(dirname "$0")/.." && exec ../dot-game/tools/<name>.sh "$@"`, and the game-specific part is a small file. Nothing here is delivered in a pack, so none of it bumps the API level.
+Five tools that every game wants and that were one game's copy until 2026-10-25. Each is a script in `tools/` that a game's own `tools/<name>.sh` reaches with `cd "$(dirname "$0")/.." && exec ../dot-game/tools/<name>.sh "$@"`, and the game-specific part is a small file. Nothing here is delivered in a pack, so none of it bumps the API level.
 
 ## Perf budget: `tools/perf_budget.sh`
 
@@ -15,6 +15,10 @@ Renders each case's shots and compares them with `tests/golden/<case>_<shot>.png
 ## Netchaos: `tools/netchaos.sh`, `netchaos_tc.sh`, `netchaos_eval.py`
 
 A real dedicated server on this machine and two remote clients plus one local, with only the game's UDP port impaired by `tc netem` (clean, lossy100, jitter200, awful400, bwcap, blackout; limits per profile in `netchaos_eval.py`). The game supplies `tools/netchaos_server.tscn` and `tools/netchaos_client.tscn` whose scripts extend `DotGameNetchaosServer` and `DotGameNetchaosClient` (`addons/dot_game/qa/`) and override a handful of hooks: `_configure`, `_prepare`, `_boot_world`, `_players`, `_net_alive` on the server; `client_scene`, `fire_action`, `_roster` on the client. `NC_SOLID=1` keeps `mp_solidplayers` on. Each direction has its own netem (dport matches to band 3, sport to band 2), so with `--remote 0`, where both directions cross `lo`, bwcap is still 256 kbit each way; one shared queue halved it and tail-dropped inputs behind snapshots, which read as 3.5 m wall mispredictions. In blackout the first snapshot after the dark seconds corrects by up to speed times their length (the server ran them on neutral input): the eval reports that resume correction per client and judges the worst-correction limit on the rest (`RESUME_S`, `NC_BLACKOUT_AT`/`NC_BLACKOUT_S` from `netchaos.sh`). Never edit the rig's scripts or the `.gd` files while a run is in progress (bash reads a script as it runs, and a run that dies leaves netem armed: `netchaos_tc.sh clear <dev>` on each box).
+
+## Client prediction bench: `DotGameClientBench`
+
+`addons/dot_game/qa/dot_game_client_bench.gd`: the real client scene in one process, the game's dedicated server in a second, dot-net's latency relay between them, and a printout of replays, skipped reconciles, mismatches by variable (`--mismatches`), replayed ticks, fps and the clock. It found arena's float32 rewind bug, which made browser clients replay on nearly every snapshot. A game adds `tools/client_bench.tscn` (one Node) with a script extending the class and overriding `_configure` (`client_scene`, the pilot's actions), `_prepare` (scratch settings) and `_boot_server` (build the server under the node, add the bots, return its `DotNetManager`; `make_server_config` helps). Run `heavy -- timeout 600 godot --headless --path . res://tools/client_bench.tscn -- --play --bots 8 --delay 40 --burn 14 --seconds 20 --mismatches`; `--timeline`, `--raw-input`, `--jitter`, `--tick` too. game-playground's `tools/client_bench.gd` is the smallest example.
 
 ## Which suites a change needs: `dot-ci/scripts/affected.sh`
 
