@@ -169,6 +169,11 @@ func _test_client_user_tier() -> void:
 	_check(not out.user_tier_on and not DotAddonConfig.user_tier_enabled, "user_cfg = false opts out")
 
 	_check(not DotGameClient.user_tier_allowed(true, true, true, true), "a dedicated server never has it")
+	_check(DotGameClient.locked_content_wanted(true, false, false, false)
+			and not DotGameClient.locked_content_wanted(true, true, false, false)
+			and not DotGameClient.locked_content_wanted(true, false, true, false)
+			and DotGameClient.locked_content_wanted(true, true, true, true)
+			and not DotGameClient.locked_content_wanted(false, false, false, true), "offline or headless skips the lock unless opted in")
 	_check(DotGameClient.user_tier_allowed(true, false, true, false)
 			and not DotGameClient.user_tier_allowed(true, false, false, false)
 			and not DotGameClient.user_tier_allowed(false, true, false, false), "the rule table")

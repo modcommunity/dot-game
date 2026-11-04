@@ -43,6 +43,8 @@ signal menu_state_changed(any_open: bool)
 @export var use_gate: bool = true
 ## Mount what `content.lock.json` pins ([DotGameLockedContent]) once at start. No lock file means nothing happens; `--locked_content=0` or `DOT_PACKS_FROM=none` switch it off.
 @export var use_locked_content: bool = true
+## Also mount the lock when offline, forced offline or headless. Off by default: a standalone client fetching its own pack holds the gate with reason `locked_content`, which hangs suites. `--locked_content=PATH` still opts in.
+@export var locked_content_offline: bool = false
 ## Hold the cover until a current camera exists in the game. Off for a game with none.
 @export var require_camera: bool = true
 ## Compile what the first frame draws under the cover before lifting it. Never headless, where the warm-up would only wait out its timeout.
@@ -271,7 +273,7 @@ func _ready() -> void:
 	var standalone: Node = null
 	if offline and use_standalone_content:
 		standalone = DotGameStandaloneContent.install(self, gate)
-	if use_locked_content:
+	if locked_content_wanted(use_locked_content, offline, DisplayServer.get_name() == "headless", locked_content_offline or DotGameLockedContent.cmdline_value() not in ["", "0"]):
 		_mount_locked_content(standalone)
 	_Vis.apply_cmdline(self)
 	_RenderQuality.apply_cmdline()
@@ -290,6 +292,11 @@ func _mount_locked_content(standalone: Node) -> void:
 		cloud = standalone
 	var lock_result: DotResult = await DotGameLockedContent.run(cloud, gate)
 	locked_content = lock_result.value if lock_result.ok else null
+
+
+## Whether the lock is mounted: switched on, and not an offline or headless client unless it opted in.
+static func locked_content_wanted(enabled: bool, is_offline: bool, headless: bool, opt_in: bool) -> bool:
+	return enabled and (opt_in or not (is_offline or headless))
 
 
 ## Whether the player's cfg tier may be on: solo or listen host, never a dedicated server or a guest.
