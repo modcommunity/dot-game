@@ -47,3 +47,4 @@ What each `DotGameApi.LEVEL` added. The bump rule is on `DotAddonApi`.
 - 43: DotGameRenderQuality (the r_msaa, r_scale, r_shadow_atlas, r_shadow_distance cvars; web defaults cheaper, ?r_msaa= style query overrides).
 - 44: r_sun_shadow_size and r_sun_shadow_splits (web: 2048 sun shadow map, at most 2 splits).
 - 45: DotGameModule.use_noblock (opt out of the default noblock wiring); _noblock_runtime defaults to the game's started workbench.
+- 46: DotGameClient.tune_replay (default on: sets DotNetConfig.reconcile_once_per_frame and skip_matching_replays on the client's netcode).

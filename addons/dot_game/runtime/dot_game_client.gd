@@ -231,6 +231,8 @@ var _feel_crosshair: Control = null
 var _feel_arsenal_fn: Callable = Callable()
 var _feel_camera_fn: Callable = Callable()
 var _feel_console_bound: bool = false
+## Sets [member DotNetConfig.reconcile_once_per_frame] and [member DotNetConfig.skip_matching_replays] on the client's netcode; off, or set them after, to opt out. Default false in dot-net would rewind and replay the whole input lead on every snapshot.
+var tune_replay: bool = true
 var _latency_net: DotNetManager = null
 var _latency_bound: DotNetManager = null
 var _hit_flinch: DotGameHitFlinch = null
@@ -473,6 +475,9 @@ func add_latency(manager: DotNetManager) -> void:
 	if manager == null or (manager == _latency_bound and _latency_net == manager):
 		return
 	_latency_net = manager
+	if tune_replay and manager.config != null:
+		manager.config.reconcile_once_per_frame = true
+		manager.config.skip_matching_replays = true
 	DotGameClientExtras.bind_latency(self)
 
 

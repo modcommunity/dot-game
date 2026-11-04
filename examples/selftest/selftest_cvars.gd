@@ -256,6 +256,7 @@ func _test_client_latency() -> void:
 	c.use_gate = false
 	add_child(c)
 	var net := DotNetManager.new()
+	net.config = DotNetConfig.new()
 	var link := LatencyLink.new()
 	c.link = link
 	var local := VisLocal.new()
@@ -263,6 +264,7 @@ func _test_client_latency() -> void:
 	con.list = [local]
 	c.console = con
 	c.add_latency(net)
+	_check(net.config.reconcile_once_per_frame and net.config.skip_matching_replays, "the client turns on reconcile_once_per_frame and skip_matching_replays")
 	_check(local.vars.has(&"cl_latency_baseline"), "the client console gets cl_latency_baseline")
 	var res: Variant = (local.vars[&"cl_latency_baseline"][1] as Callable).call("0.2")
 	_check(res is DotResult and (res as DotResult).ok and is_equal_approx(net.latency.requested, 0.2) and is_equal_approx(net.latency.effective(), 0.2), "typing seconds sets the baseline")
