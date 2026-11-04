@@ -306,6 +306,7 @@ func _test_client_latency() -> void:
 
 
 func _test_client_replay_tuning() -> void:
+	await get_tree().process_frame
 	_section("a client that never calls setup() still tunes its netcode's replay settings, and tune_replay off opts out")
 	var c := DotGameClient.new()
 	c.use_gate = false

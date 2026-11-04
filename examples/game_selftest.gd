@@ -99,7 +99,7 @@ func _run_wiring() -> void:
 	_test_map_load_threads()
 	_test_client_vis_mode()
 	await _test_client_latency()
-	_test_client_replay_tuning()
+	await _test_client_replay_tuning()
 	_test_render_quality()
 	_test_sun_shadow_cvars()
 	_test_relevance_cvars()
