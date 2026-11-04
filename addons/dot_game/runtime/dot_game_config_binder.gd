@@ -419,6 +419,19 @@ func diff_files() -> Dictionary:
 	return out
 
 
+## Writes [method template_files] under `root` and reads each file back; the failure names the first file whose content is not what was written.
+func write_templates(root: String = "res://") -> DotResult:
+	var files := template_files()
+	for path: String in files:
+		var target := root.path_join(path)
+		var res := DotPaths.write_text(target, files[path])
+		if not res.ok:
+			return res
+		if FileAccess.get_file_as_string(target) != files[path]:
+			return DotResult.failure(DotError.make(DotError.CODE_IO, "'%s' differs from what was written" % target))
+	return DotResult.success(files.size())
+
+
 ## Path (`cfg/game/<game>/<kind>/<id>.yml`) -> a template for every profile set: each key commented out at its code default, with its group, bounds and first doc line. Nothing changes until a line is uncommented; ship them as the game's cfg/ files.
 func template_files() -> Dictionary:
 	var out := {}

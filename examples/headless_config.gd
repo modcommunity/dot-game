@@ -4,7 +4,7 @@ extends Node
 
 const TestConfig := preload("fixtures/test_config.gd")
 const ROOT := "res://examples/fixtures/config/"
-const CHECKS := 58
+const CHECKS := 60
 
 var _passed := 0
 var _failed := 0
@@ -33,6 +33,7 @@ func _run() -> void:
 	_diff()
 	_workbench()
 	_schemas()
+	_write_templates()
 	_attach_twice()
 	if _passed + _failed != CHECKS:
 		_failed += 1
@@ -218,6 +219,21 @@ func _schemas() -> void:
 	var other: Array = out.get("config_rules", []).map(func(e: Dictionary) -> String: return e["name"])
 	_check(other == ["friendly_fire"], "other groups get their own file")
 	_check(DotGameConfigSchemas.profile_schemas().has("config_move"), "the res:// scan finds only the fixture (the example project has one grouped config)")
+
+
+func _write_templates() -> void:
+	var root := "user://dot_game_tmpl_test"
+	var b := DotGameConfigBinder.create(preload("fixtures/test_grouped_config.gd").new(), "tg", "tg")
+	b.grouped = true
+	b.group_files = {"Movement": "move"}
+	var files := b.template_files()
+	var path: String = files.keys()[0]
+	DotPaths.write_text(root.path_join(path), "# stale\n")
+	var res := b.write_templates(root)
+	_check(res.ok, "write_templates succeeds")
+	var back := FileAccess.get_file_as_string(root.path_join(path))
+	_check(back == files[path] and back != "# stale\n", "write_templates replaces a stale file with the template")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(root.path_join(path)))
 
 
 func _attach_twice() -> void:
