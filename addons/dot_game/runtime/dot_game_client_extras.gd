@@ -37,7 +37,7 @@ static func _bind_if_alive(id: int) -> void:
 
 static func on_console_service(service: StringName, c: DotGameClient) -> void:
 	if service == &"dot_console":
-		bind_profiler_console.call_deferred(c)
+		_bind_if_alive.call_deferred(c.get_instance_id())
 
 
 static func bind_profiler_console(c: DotGameClient) -> bool:
