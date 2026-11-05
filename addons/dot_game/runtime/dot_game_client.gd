@@ -140,6 +140,7 @@ var chat: Node = null
 ## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command line). Blocks input and frees the pointer.
 var busy_fn: Callable = Callable()
 var _pointer_holds: Dictionary = {}
+var _fit_requests: Array[Dictionary] = []
 ## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape); connected, the link's roster feeds it.
 var board_snapshot_fn: Callable = Callable()
 ## The map menu on M: `func() -> Array` of rows and `func(id) -> DotResult` to change. Both unset leave M doing nothing.
@@ -284,17 +285,34 @@ func _ready() -> void:
 	_RenderQuality.apply_cmdline()
 	_RenderQuality.init_defaults()
 	_RenderQuality.apply(get_viewport(), get_tree().root)
-	if use_screen_fit and (screen_fit == null or screen_fit.window == null):
-		screen_fit = DotGameScreenFit.install(get_tree().root, -1, screen_fit)
+	_attach_screen_fit()
 	if not get_tree().node_added.is_connected(_on_node_added_quality):
 		get_tree().node_added.connect(_on_node_added_quality)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
 
 
-## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 and nothing set when no fit is attached.
+## Attaches the screen fit when wanted and not already attached, then sizes the buttons asked for before it existed.
+func _attach_screen_fit() -> void:
+	if not use_screen_fit or (screen_fit != null and screen_fit.window != null):
+		return
+	screen_fit = DotGameScreenFit.install(get_tree().root, -1, screen_fit)
+	if screen_fit == null:
+		return
+	for e in _fit_requests:
+		var b: Control = e["ref"].get_ref()
+		if b != null:
+			screen_fit.fit_buttons(b, e["layout"])
+
+
+## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 when no fit is attached, and the request is applied when one attaches.
 func fit_touch_buttons(buttons: Control, layout: Array) -> float:
-	return screen_fit.fit_buttons(buttons, layout) if screen_fit != null else 1.0
+	_fit_requests = _fit_requests.filter(func(e: Dictionary) -> bool: return e["ref"].get_ref() != null and e["ref"].get_ref() != buttons)
+	_fit_requests.append({"ref": weakref(buttons), "layout": layout})
+	if screen_fit == null or screen_fit.window == null:
+		DotLog.debug(CHANNEL, "no screen fit attached: touch buttons kept at their design size until one is")
+		return 1.0
+	return screen_fit.fit_buttons(buttons, layout)
 
 
 ## The shell's content client, else the one standalone play just made. Runs after the gate exists so the cover shows it.
@@ -782,6 +800,8 @@ func release_pointer(key: Variant) -> void:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_TREE and is_node_ready():
+		_attach_screen_fit()
 	if what == NOTIFICATION_EXIT_TREE:
 		restore_map_config()
 		DotGameClientExtras.disconnect_registry_bus(self)

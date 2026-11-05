@@ -31,6 +31,8 @@ var plan: Dictionary = {}
 var _base: Vector2 = Vector2.ZERO
 var _saved: Dictionary = {}
 var _buttons: Array[Dictionary] = []
+## Content scale factor and DPI the buttons were last sized for.
+var _inputs: Vector2 = Vector2.ZERO
 
 
 ## The canvas for a window [param window_px] real pixels on a project laid out at [param base]: the short side is [param short] units (never more than the base's), the long side follows the window, so nothing is pillarboxed.
@@ -142,7 +144,7 @@ func refit() -> bool:
 		window.content_scale_aspect = plan["aspect"]
 	if window.content_scale_size != plan["size"]:
 		window.content_scale_size = plan["size"]
-	if changed:
+	if changed or _scale_inputs() != _inputs:
 		_refit_buttons()
 	return changed
 
@@ -161,7 +163,12 @@ func fit_buttons(buttons: Control, layout: Array) -> float:
 	return _scale_one(buttons, layout)
 
 
+func _scale_inputs() -> Vector2:
+	return Vector2(window.content_scale_factor if window != null and is_instance_valid(window) else 1.0, dpi())
+
+
 func _refit_buttons() -> void:
+	_inputs = _scale_inputs()
 	for e in _buttons:
 		var b: Control = e["ref"].get_ref()
 		if b != null:
@@ -171,6 +178,7 @@ func _refit_buttons() -> void:
 func _scale_one(buttons: Control, layout: Array) -> float:
 	if plan.is_empty() or not "button_scale" in buttons:
 		return 1.0
+	_inputs = _scale_inputs()
 	# content_scale_factor (a player's UI size) multiplies the stretch and shrinks the visible canvas by as much.
 	var factor := window.content_scale_factor if window != null and is_instance_valid(window) and window.content_scale_factor > 0.0 else 1.0
 	var canvas := Vector2(plan["size"]) / factor

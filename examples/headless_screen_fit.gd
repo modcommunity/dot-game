@@ -2,7 +2,7 @@ extends Node
 
 ## DotGameScreenFit: the touch canvas plan, buttons sized in millimetres and capped to the screen, the root window fitted and restored, and DotGameClient's switch.
 
-const EXPECTED_CHECKS := 37
+const EXPECTED_CHECKS := 44
 const SECTIONS := ["plan", "buttons", "window", "client"]
 const BASE := Vector2(1600, 900)
 ## The smallest radius here is 24, its block 164x276: a two-column phone layout.
@@ -111,7 +111,16 @@ func _window() -> void:
 	root.content_scale_factor = 2.0
 	fit.fit_buttons(b, LAYOUT)
 	_check(absf(b.button_scale - one / 2.0) < 0.01, "content_scale_factor 2 halves the scale, got %.3f of %.3f" % [b.button_scale, one])
+	root.content_scale_factor = 2.0
+	fit.fit_buttons(b, LAYOUT)
+	var at_two := b.button_scale
 	root.content_scale_factor = 1.0
+	fit.refit()
+	_check(b.button_scale > at_two, "a changed content_scale_factor alone resizes the buttons on refit")
+	var at_dpi := b.button_scale
+	fit.dpi_override = 160.0
+	fit.refit()
+	_check(b.button_scale != at_dpi, "a changed DPI alone resizes the buttons on refit")
 	fit.attach(root)
 	_check(root.get_meta(DotGameScreenFit.META)["holders"] == 1, "attaching to the same window again does nothing")
 	var second := DotGameScreenFit.new()
@@ -140,6 +149,25 @@ func _client() -> void:
 	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "freeing the client restores the window's stretch")
 	_check(fit.window == null and fit._buttons.is_empty(), "freeing the client drops the fit's window and buttons")
 	held.free()
+	var again := _make_client(true, 1)
+	var moved := Buttons.new()
+	again.fit_touch_buttons(moved, LAYOUT)
+	var sized := moved.button_scale
+	remove_child(again)
+	_check(again.screen_fit.window == null, "leaving the tree detaches the fit")
+	add_child(again)
+	_check(again.screen_fit.window == root and root.get_meta(DotGameScreenFit.META)["holders"] == 1, "re-entering the tree reattaches once")
+	_check(moved.button_scale == sized and sized > 1.0, "re-entering the tree sizes the remembered buttons again")
+	moved.free()
+	again.free()
+	var late := _make_client(false, 1)
+	var wait_b := Buttons.new()
+	_check(late.fit_touch_buttons(wait_b, LAYOUT) == 1.0 and wait_b.button_scale == 1.0, "no fit yet: 1, buttons untouched")
+	late.use_screen_fit = true
+	late._attach_screen_fit()
+	_check(wait_b.button_scale > 1.0, "a request made before the fit attached is applied when it does")
+	wait_b.free()
+	late.free()
 	var off := _make_client(false, 1)
 	var b := Buttons.new()
 	_check(off.screen_fit == null and off.fit_touch_buttons(b, LAYOUT) == 1.0 and b.button_scale == 1.0, "use_screen_fit off: no fit, buttons left alone")
