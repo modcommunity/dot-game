@@ -124,6 +124,10 @@ var pointer_fn: Callable = Callable()
 @export var team_menu_default_when_unwired: bool = true
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
+## Fits a touch screen in [method _ready] ([DotGameScreenFit]: no pillarbox, a HUD-sized canvas, buttons in millimetres). Off keeps the project's stretch.
+@export var use_screen_fit: bool = true
+## The fit when attached, else null. Assign a tuned one before the client enters the tree to replace the default.
+var screen_fit: DotGameScreenFit = null
 
 ## The game's settings node (a `DotMenuSettings` subclass), assigned before [method setup]; null makes the stock one.
 var settings: Node = null
@@ -280,10 +284,17 @@ func _ready() -> void:
 	_RenderQuality.apply_cmdline()
 	_RenderQuality.init_defaults()
 	_RenderQuality.apply(get_viewport(), get_tree().root)
+	if use_screen_fit and (screen_fit == null or screen_fit.window == null):
+		screen_fit = DotGameScreenFit.install(get_tree().root, -1, screen_fit)
 	if not get_tree().node_added.is_connected(_on_node_added_quality):
 		get_tree().node_added.connect(_on_node_added_quality)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
+
+
+## Sizes dot-ui's DotTouchButtons for [param layout] in millimetres and keeps them sized on every resize. Returns the scale; 1 and nothing set when no fit is attached.
+func fit_touch_buttons(buttons: Control, layout: Array) -> float:
+	return screen_fit.fit_buttons(buttons, layout) if screen_fit != null else 1.0
 
 
 ## The shell's content client, else the one standalone play just made. Runs after the gate exists so the cover shows it.

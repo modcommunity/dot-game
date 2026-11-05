@@ -12,6 +12,7 @@ static func describe(c: DotGameClient) -> Dictionary:
 		"link": c.link != null,
 		"gate": c.gate.describe() if c.gate != null and is_instance_valid(c.gate) else {},
 		"set_up": c._set_up,
+		"screen_fit": c.screen_fit.describe() if c.screen_fit != null else {},
 		"settings": c.settings != null,
 		"menu": c.menu != null,
 		"menu_open": c.is_menu_open(),
