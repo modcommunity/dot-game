@@ -182,6 +182,7 @@ func _safe() -> void:
 	fit.safe_area_override = Rect2i(0, 0, 0, 0)
 	_check(DotGameScreenFit.new().safe_insets()["left"] == 0.0, "an unattached fit has no insets")
 	fit.detach()
+	b.free()
 	_done.append("safe")
 
 
