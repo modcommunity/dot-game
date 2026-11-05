@@ -140,7 +140,7 @@ var chat: Node = null
 ## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command line). Blocks input and frees the pointer.
 var busy_fn: Callable = Callable()
 var _pointer_holds: Dictionary = {}
-var _fit_requests: Array[Dictionary] = []
+var _fits := DotGameFitRequests.new()
 ## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape); connected, the link's roster feeds it.
 var board_snapshot_fn: Callable = Callable()
 ## The map menu on M: `func() -> Array` of rows and `func(id) -> DotResult` to change. Both unset leave M doing nothing.
@@ -292,35 +292,20 @@ func _ready() -> void:
 	DotGamePageGuard.install(self)
 
 
-## Attaches the screen fit when wanted and not already attached, then sizes the buttons asked for before it existed.
 func _attach_screen_fit() -> void:
-	if not use_screen_fit or (screen_fit != null and screen_fit.window != null):
-		return
-	screen_fit = DotGameScreenFit.install(get_tree().root, -1, screen_fit)
-	if screen_fit == null:
-		return
-	for e in _fit_requests:
-		var b: Control = e["ref"].get_ref()
-		if b != null:
-			screen_fit.fit_buttons(b, e["layout"])
+	if use_screen_fit:
+		screen_fit = _fits.attach(get_tree().root, screen_fit)
 
 
 ## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 when no fit is attached, and the request is applied when one attaches.
 func fit_touch_buttons(buttons: Control, layout: Array) -> float:
-	_fit_requests = _fit_requests.filter(func(e: Dictionary) -> bool: return e["ref"].get_ref() != null and e["ref"].get_ref() != buttons)
-	_fit_requests.append({"ref": weakref(buttons), "layout": layout})
-	if screen_fit == null or screen_fit.window == null:
-		DotLog.debug(CHANNEL, "no screen fit attached: touch buttons kept at their design size until one is")
-		return 1.0
-	return screen_fit.fit_buttons(buttons, layout)
+	return _fits.request(screen_fit, buttons, layout)
 
 
 ## The shell's content client, else the one standalone play just made. Runs after the gate exists so the cover shows it.
 func _mount_locked_content(standalone: Node) -> void:
 	var cloud: Object = DotRegistry.get_service(DotGameStandaloneContent.CLOUD_SERVICE)
-	if cloud == null:
-		cloud = standalone
-	var lock_result: DotResult = await DotGameLockedContent.run(cloud, gate)
+	var lock_result: DotResult = await DotGameLockedContent.run(cloud if cloud != null else standalone, gate)
 	locked_content = lock_result.value if lock_result.ok else null
 
 
@@ -335,9 +320,8 @@ static func user_tier_allowed(opt_in: bool, solo: bool, listen_host: bool, dedic
 
 
 func _apply_user_tier() -> void:
-	var host_here := listen_host_fn.is_valid() and bool(listen_host_fn.call())
 	var dedicated := bool(dedicated_fn.call()) if dedicated_fn.is_valid() else OS.has_feature("dedicated_server")
-	user_tier_on = user_tier_allowed(user_cfg, offline, host_here, dedicated)
+	user_tier_on = user_tier_allowed(user_cfg, offline, listen_host_fn.is_valid() and bool(listen_host_fn.call()), dedicated)
 	DotAddonConfig.set_user_tier(user_tier_on)
 
 
@@ -444,18 +428,7 @@ func set_chat(box: Node) -> void:
 
 ## The stock settings node, by path, when the game assigned none. Override to build your own.
 func _make_settings() -> Node:
-	if not ResourceLoader.exists(SETTINGS_SCRIPT):
-		DotLog.info(CHANNEL, "dot-menu is not in this build: no settings or Escape menu")
-		return null
-	var script: Variant = load(SETTINGS_SCRIPT)
-	if not (script is GDScript):
-		DotLog.warn(CHANNEL, "dot-menu's settings would not load", {"path": SETTINGS_SCRIPT})
-		return null
-	var made: Node = (script as GDScript).new()
-	made.set(&"app_namespace", app_namespace)
-	made.set(&"avatar_actions", true)
-	made.set(&"directory", settings_directory if settings_directory != "" else "user://%s_settings" % app_namespace)
-	return made
+	return _Settings.make(self)
 
 
 func _build_settings() -> void:
@@ -805,11 +778,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_EXIT_TREE:
 		restore_map_config()
 		DotGameClientExtras.disconnect_registry_bus(self)
-	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
-		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
-		user_tier_on = false
-		DotAddonConfig.set_user_tier(false)
-	if what == NOTIFICATION_EXIT_TREE:
+		if user_tier_on:
+			# Process-wide flag: left on, it would hand the next server's addons the player's files.
+			user_tier_on = false
+			DotAddonConfig.set_user_tier(false)
 		DotGamePageGuard.clear(self, false)
 		if screen_fit != null:
 			screen_fit.detach()
