@@ -49,3 +49,4 @@ What each `DotGameApi.LEVEL` added. The bump rule is on `DotAddonApi`.
 - 45: DotGameModule.use_noblock (opt out of the default noblock wiring); _noblock_runtime defaults to the game's started workbench.
 - 46: DotGameClient.tune_replay (default on: sets DotNetConfig.reconcile_once_per_frame and skip_matching_replays on the client's netcode).
 - 47: DotGameClient.locked_content_offline (default off: an offline, forced-offline or headless client no longer mounts content.lock.json).
+- 48: DotGameTouchLayout (touch button presets fps, driving, platformer; canonical ids, slots and homes; `apply` through `DotGameClient.fit_touch_buttons`).
