@@ -2,7 +2,7 @@ extends Node
 
 ## DotGameScreenFit: the touch canvas plan, buttons sized in millimetres and capped to the screen, the root window fitted and restored, and DotGameClient's switch.
 
-const EXPECTED_CHECKS := 28
+const EXPECTED_CHECKS := 37
 const SECTIONS := ["plan", "buttons", "window", "client"]
 const BASE := Vector2(1600, 900)
 ## The smallest radius here is 24, its block 164x276: a two-column phone layout.
@@ -80,6 +80,10 @@ func _buttons() -> void:
 	_check(is_equal_approx(capped, (662.0 - 28.0) / 276.0), "a target too big is capped to the room")
 	_check(DotGameScreenFit.button_scale_for(LAYOUT, 3.0, 44.0, Vector2(2000, 2000)) == 1.0, "never shrinks a layout below its design")
 	_check(DotGameScreenFit.button_scale_for([], stretch, 44.0, Vector2(700, 662)) == 1.0, "no layout: 1")
+	_check(DotGameScreenFit.button_scale_for(LAYOUT, stretch, 400.0, Vector2(120, 120)) == 1.0, "a layout already over the room stays at its design, never shrunk")
+	var odd: Array[Dictionary] = [{"offset": Vector2(-20, -20), "radius": 30.0}, {"offset": Vector2(100, 200), "radius": 24.0}]
+	var ko := DotGameScreenFit.button_scale_for(odd, stretch, 400.0, Vector2(700, 400))
+	_check(is_equal_approx(ko, (400.0 - 28.0) / 224.0), "a negative offset: the reach is the far button's offset + radius")
 	_done.append("buttons")
 
 
@@ -103,8 +107,22 @@ func _window() -> void:
 	fit.size_override = Vector2(2532, 1170)
 	fit.refit()
 	_check(b.button_scale > k, "a refit resizes the buttons it was given")
+	var one := b.button_scale
+	root.content_scale_factor = 2.0
+	fit.fit_buttons(b, LAYOUT)
+	_check(absf(b.button_scale - one / 2.0) < 0.01, "content_scale_factor 2 halves the scale, got %.3f of %.3f" % [b.button_scale, one])
+	root.content_scale_factor = 1.0
+	fit.attach(root)
+	_check(root.get_meta(DotGameScreenFit.META)["holders"] == 1, "attaching to the same window again does nothing")
+	var second := DotGameScreenFit.new()
+	second.size_override = Vector2(844, 390)
+	second.attach(root)
+	_check(second._saved["aspect"] == was[1] and second._saved["size"] == was[2], "a second fit keeps the original stretch, not the fitted one")
+	second.detach()
+	_check(root.content_scale_aspect == Window.CONTENT_SCALE_ASPECT_EXPAND, "the first fit still holds after the second lets go")
 	fit.detach()
 	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "detach restores the window")
+	_check(fit._buttons.is_empty() and not root.has_meta(DotGameScreenFit.META), "detach forgets the buttons and the meta")
 	b.free()
 	_done.append("window")
 
@@ -115,8 +133,13 @@ func _client() -> void:
 	var on := _make_client(true, 1)
 	_check(on.screen_fit != null and on.screen_fit.window == root, "touch: the client attaches a fit")
 	_check(on.describe().has("screen_fit"), "describe reports the fit")
-	on.screen_fit.detach()
+	var held := Buttons.new()
+	on.fit_touch_buttons(held, LAYOUT)
+	var fit := on.screen_fit
 	on.free()
+	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "freeing the client restores the window's stretch")
+	_check(fit.window == null and fit._buttons.is_empty(), "freeing the client drops the fit's window and buttons")
+	held.free()
 	var off := _make_client(false, 1)
 	var b := Buttons.new()
 	_check(off.screen_fit == null and off.fit_touch_buttons(b, LAYOUT) == 1.0 and b.button_scale == 1.0, "use_screen_fit off: no fit, buttons left alone")
@@ -136,7 +159,6 @@ func _make_client(use_fit: bool, touch: int) -> DotGameClient:
 	c.force_offline = true
 	c.use_screen_fit = use_fit
 	add_child(c)
-	remove_child(c)
 	return c
 
 

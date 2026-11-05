@@ -1,16 +1,19 @@
 class_name DotGameScreenFit
 extends RefCounted
 
-## Fits a touch screen: aspect expand (no pillarbox), a canvas whose short side is the HUD design's, and touch buttons sized in millimetres from the real window and DPI.
+## Fits a touch screen: aspect expand (no pillarbox), a canvas whose short side is the HUD design's, and touch buttons sized from the real window and the display's DPI.
+## Only the real-pixel floor is guaranteed: on the web and headless the DPI is a guess, so the millimetre target is only as true as it.
 ##
 ## [DotGameClient] attaches one to the root window when [member DotGameClient.use_screen_fit] is on and [method DotPlatform.has_touch] says a finger can reach the screen. A game tunes it by assigning [member DotGameClient.screen_fit] before the client is added, or opts out with [code]use_screen_fit = false[/code].
 
 const CHANNEL := "game.screen_fit"
 const MM_PER_INCH := 25.4
+## Window meta holding the stretch the first fit found and how many fits hold it, so a second fit never saves fitted values as the original.
+const META := &"dot_game_screen_fit"
 
 ## Canvas units the short side gets: dot-ui's HUD design height, so its 1280x720 pieces fit unscaled on a landscape phone.
 var short_side: float = 720.0
-## Smallest button diameter wanted, in millimetres, and the floor in real pixels when the DPI is unknown or low.
+## Smallest button diameter wanted, in millimetres at the reported DPI, and the real-pixel floor, which is all a guessed DPI can promise.
 var button_mm: float = 9.0
 var button_min_px: float = 44.0
 ## Shares of the canvas the button block may cover: nearly the whole height, under half the width so the stick keeps its side.
@@ -41,7 +44,8 @@ static func plan_for(window_px: Vector2, base: Vector2, short: float = 720.0) ->
 	return {"aspect": Window.CONTENT_SCALE_ASPECT_EXPAND, "size": canvas, "stretch": stretch}
 
 
-## The [code]button_scale[/code] that makes the smallest button in [param layout] (dot-ui's DotTouchButtons dictionaries: offset, radius) at least [param target_px] real pixels across at [param stretch], never below 1, capped so the block fits [param limit] canvas units less [param margin].
+## The [code]button_scale[/code] that makes the smallest button in [param layout] (dot-ui's DotTouchButtons dictionaries: offset from the bottom-right corner towards the middle, radius) at least [param target_px] real pixels across at [param stretch], capped so the block fits [param limit] canvas units less [param margin], and never below 1.
+## The block's reach from the corner is offset + radius per axis, which holds for a negative offset too (that button just reaches less far).
 static func button_scale_for(layout: Array, stretch: float, target_px: float, limit: Vector2, margin: float = 28.0) -> float:
 	if layout.is_empty() or stretch <= 0.0:
 		return 1.0
@@ -55,11 +59,14 @@ static func button_scale_for(layout: Array, stretch: float, target_px: float, li
 		extent = extent.max(off + Vector2(r, r))
 	if smallest == INF:
 		return 1.0
-	var k := maxf(1.0, target_px / (2.0 * smallest * stretch))
+	var k := target_px / (2.0 * smallest * stretch)
 	var room := limit - Vector2(margin, margin)
-	if extent.x > 0.0 and extent.y > 0.0 and room.x > 0.0 and room.y > 0.0:
-		k = minf(k, minf(room.x / extent.x, room.y / extent.y))
-	return k
+	if room.x > 0.0 and room.y > 0.0:
+		if extent.x > 0.0:
+			k = minf(k, room.x / extent.x)
+		if extent.y > 0.0:
+			k = minf(k, room.y / extent.y)
+	return maxf(1.0, k)
 
 
 ## Real pixels a [param mm] millimetre target is at [param dpi], never under [param floor_px].
@@ -76,13 +83,20 @@ static func install(win: Window, wanted: int = -1, fit: DotGameScreenFit = null)
 	return made
 
 
-## Saves the window's stretch, applies the fit and follows resizes (a phone turning over).
+## Saves the window's stretch (or takes the one an earlier fit saved), applies the fit and follows resizes (a phone turning over). Attaching to the same window again does nothing.
 func attach(win: Window) -> void:
+	if win == null or win == window:
+		return
 	if window != null:
 		detach()
 	window = win
-	_saved = {"mode": win.content_scale_mode, "aspect": win.content_scale_aspect, "size": win.content_scale_size}
-	_base = Vector2(win.content_scale_size)
+	var held: Dictionary = win.get_meta(META, {})
+	if held.is_empty():
+		held = {"saved": {"mode": win.content_scale_mode, "aspect": win.content_scale_aspect, "size": win.content_scale_size}, "holders": 0}
+	held["holders"] = int(held["holders"]) + 1
+	win.set_meta(META, held)
+	_saved = held["saved"]
+	_base = Vector2(_saved["size"])
 	if _base == Vector2.ZERO:
 		_base = Vector2(ProjectSettings.get_setting("display/window/size/viewport_width", 1152), ProjectSettings.get_setting("display/window/size/viewport_height", 648))
 	if not win.size_changed.is_connected(refit):
@@ -91,16 +105,23 @@ func attach(win: Window) -> void:
 	DotLog.info(CHANNEL, "touch screen fit: %s canvas %s at %.2f px per unit" % [win.size, plan.get("size", Vector2i.ZERO), float(plan.get("stretch", 1.0))])
 
 
-## Puts the window's stretch back and stops following it.
+## Stops following the window and forgets the buttons; the last fit to let go puts the window's stretch back.
 func detach() -> void:
+	_buttons.clear()
 	if window == null:
 		return
 	if is_instance_valid(window):
 		if window.size_changed.is_connected(refit):
 			window.size_changed.disconnect(refit)
-		window.content_scale_mode = _saved["mode"]
-		window.content_scale_aspect = _saved["aspect"]
-		window.content_scale_size = _saved["size"]
+		var held: Dictionary = window.get_meta(META, {})
+		var left := int(held.get("holders", 1)) - 1
+		if left > 0:
+			held["holders"] = left
+		else:
+			window.remove_meta(META)
+			window.content_scale_mode = _saved["mode"]
+			window.content_scale_aspect = _saved["aspect"]
+			window.content_scale_size = _saved["size"]
 	window = null
 	plan = {}
 
@@ -150,10 +171,12 @@ func _refit_buttons() -> void:
 func _scale_one(buttons: Control, layout: Array) -> float:
 	if plan.is_empty() or not "button_scale" in buttons:
 		return 1.0
-	var canvas := Vector2(plan["size"])
+	# content_scale_factor (a player's UI size) multiplies the stretch and shrinks the visible canvas by as much.
+	var factor := window.content_scale_factor if window != null and is_instance_valid(window) and window.content_scale_factor > 0.0 else 1.0
+	var canvas := Vector2(plan["size"]) / factor
 	var limit := Vector2(canvas.x * button_max_width, canvas.y * button_max_height)
 	var margin := float(buttons.get("margin")) if "margin" in buttons else 28.0
-	var k := button_scale_for(layout, float(plan["stretch"]), target_px_for(dpi(), button_mm, button_min_px), limit, margin)
+	var k := button_scale_for(layout, float(plan["stretch"]) * factor, target_px_for(dpi(), button_mm, button_min_px), limit, margin)
 	buttons.set("button_scale", k)
 	if buttons.has_method(&"queue_redraw"):
 		buttons.queue_redraw()

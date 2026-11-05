@@ -124,7 +124,7 @@ var pointer_fn: Callable = Callable()
 @export var team_menu_default_when_unwired: bool = true
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
-## Fits a touch screen in [method _ready] ([DotGameScreenFit]: no pillarbox, a HUD-sized canvas, buttons in millimetres). Off keeps the project's stretch.
+## Fits a touch screen in [method _ready] ([DotGameScreenFit]: no pillarbox, a HUD-sized canvas, buttons sized from the DPI with a 44 px floor); leaving the tree gives the window its stretch back. Off keeps the project's stretch.
 @export var use_screen_fit: bool = true
 ## The fit when attached, else null. Assign a tuned one before the client enters the tree to replace the default.
 var screen_fit: DotGameScreenFit = null
@@ -292,7 +292,7 @@ func _ready() -> void:
 	DotGamePageGuard.install(self)
 
 
-## Sizes dot-ui's DotTouchButtons for [param layout] in millimetres and keeps them sized on every resize. Returns the scale; 1 and nothing set when no fit is attached.
+## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 and nothing set when no fit is attached.
 func fit_touch_buttons(buttons: Control, layout: Array) -> float:
 	return screen_fit.fit_buttons(buttons, layout) if screen_fit != null else 1.0
 
@@ -791,6 +791,8 @@ func _notification(what: int) -> void:
 		DotAddonConfig.set_user_tier(false)
 	if what == NOTIFICATION_EXIT_TREE:
 		DotGamePageGuard.clear(self, false)
+		if screen_fit != null:
+			screen_fit.detach()
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
