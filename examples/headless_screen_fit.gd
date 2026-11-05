@@ -2,8 +2,8 @@ extends Node
 
 ## DotGameScreenFit: the touch canvas plan, buttons sized in millimetres and capped to the screen, the root window fitted and restored, and DotGameClient's switch.
 
-const EXPECTED_CHECKS := 44
-const SECTIONS := ["plan", "buttons", "window", "client"]
+const EXPECTED_CHECKS := 56
+const SECTIONS := ["plan", "buttons", "window", "safe", "client"]
 const BASE := Vector2(1600, 900)
 ## The smallest radius here is 24, its block 164x276: a two-column phone layout.
 const LAYOUT: Array[Dictionary] = [
@@ -35,6 +35,7 @@ func _run() -> void:
 	_plan()
 	_buttons()
 	_window()
+	_safe()
 	_client()
 	for s in SECTIONS:
 		if not s in _done:
@@ -134,6 +135,54 @@ func _window() -> void:
 	_check(fit._buttons.is_empty() and not root.has_meta(DotGameScreenFit.META), "detach forgets the buttons and the meta")
 	b.free()
 	_done.append("window")
+
+
+func _safe() -> void:
+	var root := get_tree().root
+	var fit := DotGameScreenFit.new()
+	fit.dpi_override = 96.0
+	fit.size_override = Vector2(844, 390)
+	fit.attach(root)
+	var b := Buttons.new()
+	var plain := fit.fit_buttons(b, LAYOUT)
+	_check(fit.safe_insets()["right"] == 0.0 and fit.safe_insets()["bottom"] == 0.0 and b.margin == 28.0, "no notch: no insets, the margin untouched")
+	fit.safe_area_override = Rect2i(0, 0, 844, 390)
+	fit.refit()
+	_check(fit.safe_insets()["left"] == 0.0 and b.margin == 28.0, "a safe area equal to the screen is a no-op")
+	var per_unit := 390.0 / 720.0
+	fit.safe_area_override = Rect2i(47, 0, 750, 356)
+	fit.refit()
+	var ins := fit.safe_insets()
+	_check(absf(ins["left"] - 47.0 / per_unit) < 0.01 and absf(ins["right"] - 47.0 / per_unit) < 0.01 and absf(ins["bottom"] - 34.0 / per_unit) < 0.01 and ins["top"] == 0.0, "notch: insets are the cutout in canvas units")
+	_check(b.margin > 28.0 and b.button_scale == plain, "notch: the block shifts in, the size is unchanged")
+	var canvas := Vector2(fit.plan["size"])
+	var inside := true
+	for e in LAYOUT:
+		var c: Vector2 = canvas - Vector2(b.margin, b.margin) - e["offset"] * b.button_scale
+		var r: float = e["radius"] * b.button_scale
+		inside = inside and c.x + r <= canvas.x - ins["right"] + 0.01 and c.y + r <= canvas.y - ins["bottom"] + 0.01 and c.x - r >= ins["left"] and c.y - r >= ins["top"]
+	_check(inside, "notch: every button sits inside the safe rect")
+	_check(b.button_scale * 48.0 * per_unit >= 43.99, "notch: the smallest button keeps the 44 px floor")
+	var shifted := b.margin
+	fit.refit()
+	fit.fit_buttons(b, LAYOUT)
+	_check(b.margin == shifted, "refitting and re-registering never stacks the shift")
+	fit.safe_area_override = Rect2i(0, 0, 844, 390)
+	fit.refit()
+	_check(b.margin == 28.0, "the cutout going away gives the margin back")
+	fit.size_override = Vector2(2532, 1170)
+	fit.dpi_override = 460.0
+	fit.safe_area_override = Rect2i(132, 0, 2268, 1100)
+	fit.refit()
+	var cut := fit.safe_insets()
+	_check(absf(cut["left"] - 132.0 / (1170.0 / 720.0)) < 0.01 and cut["top"] == 0.0, "landscape cutout: left inset in canvas units at a dense phone")
+	var limit_ok: bool = b.margin >= 28.0 and b.margin + (56.0 + 44.0) * b.button_scale < float(fit.plan["size"].x) - cut["left"]
+	_check(b.margin > 28.0 and limit_ok, "landscape cutout: the margin grows for the bottom bar and the block stays clear of the cutout")
+	_check(fit.describe().has("safe_insets"), "describe reports the safe insets")
+	fit.safe_area_override = Rect2i(0, 0, 0, 0)
+	_check(DotGameScreenFit.new().safe_insets()["left"] == 0.0, "an unattached fit has no insets")
+	fit.detach()
+	_done.append("safe")
 
 
 func _client() -> void:

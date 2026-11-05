@@ -23,6 +23,8 @@ var button_max_width: float = 0.45
 var dpi_override: float = 0.0
 ## Replaces the window's real size; zero reads the window. A suite has no phone.
 var size_override: Vector2 = Vector2.ZERO
+## Replaces the display's safe area, in the window's real pixels; an empty rect asks the display. A suite has no notch.
+var safe_area_override: Rect2i = Rect2i()
 
 var window: Window = null
 ## The last [method plan_for] applied: aspect, size (canvas units), stretch (real pixels per unit).
@@ -33,6 +35,7 @@ var _saved: Dictionary = {}
 var _buttons: Array[Dictionary] = []
 ## Content scale factor and DPI the buttons were last sized for.
 var _inputs: Vector2 = Vector2.ZERO
+var _safe_seen: Dictionary = {}
 
 
 ## The canvas for a window [param window_px] real pixels on a project laid out at [param base]: the short side is [param short] units (never more than the base's), the long side follows the window, so nothing is pillarboxed.
@@ -144,7 +147,7 @@ func refit() -> bool:
 		window.content_scale_aspect = plan["aspect"]
 	if window.content_scale_size != plan["size"]:
 		window.content_scale_size = plan["size"]
-	if changed or _scale_inputs() != _inputs:
+	if changed or _scale_inputs() != _inputs or safe_insets() != _safe_seen:
 		_refit_buttons()
 	return changed
 
@@ -158,9 +161,33 @@ func dpi() -> float:
 
 ## Sizes [param buttons] (anything with [code]button_scale[/code] and [code]margin[/code], dot-ui's DotTouchButtons) for [param layout] now and on every refit. Returns the scale set.
 func fit_buttons(buttons: Control, layout: Array) -> float:
+	# The margin a game set, before any safe-area shift, so refits never stack shifts.
+	var base := float(buttons.get("margin")) if "margin" in buttons else 28.0
+	for e in _buttons:
+		if e["ref"].get_ref() == buttons:
+			base = e["margin"]
 	_buttons = _buttons.filter(func(e: Dictionary) -> bool: return e["ref"].get_ref() != null and e["ref"].get_ref() != buttons)
-	_buttons.append({"ref": weakref(buttons), "layout": layout})
-	return _scale_one(buttons, layout)
+	_buttons.append({"ref": weakref(buttons), "layout": layout, "margin": base})
+	return _scale_one(buttons, layout, base)
+
+
+## The display's unsafe borders (notch, rounded corners, gesture bar) in canvas units: left, top, right, bottom, all zero when the safe area is the whole screen. Only a window that fills its screen has any.
+func safe_insets() -> Dictionary:
+	var none := {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}
+	if plan.is_empty() or window == null or not is_instance_valid(window):
+		return none
+	var px := size_override if size_override != Vector2.ZERO else Vector2(window.size)
+	var safe := safe_area_override
+	if safe.size == Vector2i.ZERO:
+		if size_override != Vector2.ZERO or DisplayServer.screen_get_size(window.current_screen) != window.size:
+			return none
+		safe = DisplayServer.get_display_safe_area()
+	if safe.size == Vector2i.ZERO:
+		return none
+	var factor := window.content_scale_factor if window.content_scale_factor > 0.0 else 1.0
+	var per_unit := float(plan["stretch"]) * factor
+	return {"left": maxf(0.0, safe.position.x) / per_unit, "top": maxf(0.0, safe.position.y) / per_unit,
+		"right": maxf(0.0, px.x - safe.end.x) / per_unit, "bottom": maxf(0.0, px.y - safe.end.y) / per_unit}
 
 
 func _scale_inputs() -> Vector2:
@@ -169,13 +196,14 @@ func _scale_inputs() -> Vector2:
 
 func _refit_buttons() -> void:
 	_inputs = _scale_inputs()
+	_safe_seen = safe_insets()
 	for e in _buttons:
 		var b: Control = e["ref"].get_ref()
 		if b != null:
-			_scale_one(b, e["layout"])
+			_scale_one(b, e["layout"], e["margin"])
 
 
-func _scale_one(buttons: Control, layout: Array) -> float:
+func _scale_one(buttons: Control, layout: Array, base_margin: float) -> float:
 	if plan.is_empty() or not "button_scale" in buttons:
 		return 1.0
 	_inputs = _scale_inputs()
@@ -183,14 +211,33 @@ func _scale_one(buttons: Control, layout: Array) -> float:
 	var factor := window.content_scale_factor if window != null and is_instance_valid(window) and window.content_scale_factor > 0.0 else 1.0
 	var canvas := Vector2(plan["size"]) / factor
 	var limit := Vector2(canvas.x * button_max_width, canvas.y * button_max_height)
-	var margin := float(buttons.get("margin")) if "margin" in buttons else 28.0
+	var margin := base_margin
 	var k := button_scale_for(layout, float(plan["stretch"]) * factor, target_px_for(dpi(), button_mm, button_min_px), limit, margin)
 	buttons.set("button_scale", k)
+	_safe_seen = safe_insets()
+	if "margin" in buttons:
+		buttons.set("margin", margin + _safe_shift(layout, k, margin, canvas, _safe_seen))
 	if buttons.has_method(&"queue_redraw"):
 		buttons.queue_redraw()
 	return k
 
 
+## How much more margin (the buttons anchor to the bottom-right and use one margin on both axes) keeps every button inside the safe rect, without pushing the block's far edge out of it.
+static func _safe_shift(layout: Array, k: float, margin: float, canvas: Vector2, insets: Dictionary) -> float:
+	var near := Vector2(INF, INF)
+	var far := Vector2.ZERO
+	for b in layout:
+		var r := float(b.get("radius", 0.0))
+		var off: Vector2 = b.get("offset", Vector2.ZERO)
+		near = near.min(off - Vector2(r, r))
+		far = far.max(off + Vector2(r, r))
+	if near.x == INF:
+		return 0.0
+	var need := maxf(float(insets["right"]) - (margin + near.x * k), float(insets["bottom"]) - (margin + near.y * k))
+	var room := minf(canvas.x - float(insets["left"]) - (margin + far.x * k), canvas.y - float(insets["top"]) - (margin + far.y * k))
+	return clampf(need, 0.0, maxf(0.0, room))
+
+
 func describe() -> Dictionary:
-	return {"attached": window != null, "plan": plan, "dpi": dpi() if window != null else 0.0, "buttons": _buttons.size(),
+	return {"attached": window != null, "plan": plan, "dpi": dpi() if window != null else 0.0, "buttons": _buttons.size(), "safe_insets": safe_insets(),
 		"short_side": short_side, "button_mm": button_mm}
