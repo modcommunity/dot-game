@@ -784,7 +784,7 @@ func _notification(what: int) -> void:
 			DotAddonConfig.set_user_tier(false)
 		DotGamePageGuard.clear(self, false)
 		if screen_fit != null:
-			screen_fit.detach()
+			screen_fit.detach(true)
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \

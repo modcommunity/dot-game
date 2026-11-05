@@ -2,7 +2,7 @@ extends Node
 
 ## DotGameScreenFit: the touch canvas plan, buttons sized in millimetres and capped to the screen, the root window fitted and restored, and DotGameClient's switch.
 
-const EXPECTED_CHECKS := 56
+const EXPECTED_CHECKS := 59
 const SECTIONS := ["plan", "buttons", "window", "safe", "client"]
 const BASE := Vector2(1600, 900)
 ## The smallest radius here is 24, its block 164x276: a two-column phone layout.
@@ -36,7 +36,7 @@ func _run() -> void:
 	_buttons()
 	_window()
 	_safe()
-	_client()
+	await _client()
 	for s in SECTIONS:
 		if not s in _done:
 			_check(false, "section %s ran to the end" % s)
@@ -196,6 +196,8 @@ func _client() -> void:
 	on.fit_touch_buttons(held, LAYOUT)
 	var fit := on.screen_fit
 	on.free()
+	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] != was, "leaving the tree keeps the stretch until idle, while menus below are out of the tree")
+	await get_tree().process_frame
 	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "freeing the client restores the window's stretch")
 	_check(fit.window == null and fit._buttons.is_empty(), "freeing the client drops the fit's window and buttons")
 	held.free()
@@ -206,10 +208,17 @@ func _client() -> void:
 	remove_child(again)
 	_check(again.screen_fit.window == null, "leaving the tree detaches the fit")
 	add_child(again)
+	await get_tree().process_frame
 	_check(again.screen_fit.window == root and root.get_meta(DotGameScreenFit.META)["holders"] == 1, "re-entering the tree reattaches once")
 	_check(moved.button_scale == sized and sized > 1.0, "re-entering the tree sizes the remembered buttons again")
+	remove_child(again)
+	add_child(again)
+	await get_tree().process_frame
+	_check(root.has_meta(DotGameScreenFit.META) and root.get_meta(DotGameScreenFit.META)["holders"] == 1 and moved.button_scale == sized, "reparenting in one frame keeps the fit and the stretch")
 	moved.free()
 	again.free()
+	await get_tree().process_frame
+	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "freeing a reparented client restores the stretch")
 	var late := _make_client(false, 1)
 	var wait_b := Buttons.new()
 	_check(late.fit_touch_buttons(wait_b, LAYOUT) == 1.0 and wait_b.button_scale == 1.0, "no fit yet: 1, buttons untouched")
@@ -223,6 +232,7 @@ func _client() -> void:
 	_check(off.screen_fit == null and off.fit_touch_buttons(b, LAYOUT) == 1.0 and b.button_scale == 1.0, "use_screen_fit off: no fit, buttons left alone")
 	b.free()
 	off.free()
+	await get_tree().process_frame
 	var desk := _make_client(true, 0)
 	_check(desk.screen_fit == null and root.content_scale_aspect == was[1], "no touch: no fit")
 	desk.free()

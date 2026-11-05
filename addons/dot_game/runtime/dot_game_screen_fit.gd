@@ -111,24 +111,35 @@ func attach(win: Window) -> void:
 
 
 ## Stops following the window and forgets the buttons; the last fit to let go puts the window's stretch back.
-func detach() -> void:
+## [param deferred] lets go at idle: from a tree exit the menus below are already out of the tree and
+## answer the window's size_changed by reading a viewport they no longer have. Re-entering first is safe.
+func detach(deferred: bool = false) -> void:
 	_buttons.clear()
 	if window == null:
 		return
-	if is_instance_valid(window):
-		if window.size_changed.is_connected(refit):
-			window.size_changed.disconnect(refit)
-		var held: Dictionary = window.get_meta(META, {})
-		var left := int(held.get("holders", 1)) - 1
-		if left > 0:
-			held["holders"] = left
-		else:
-			window.remove_meta(META)
-			window.content_scale_mode = _saved["mode"]
-			window.content_scale_aspect = _saved["aspect"]
-			window.content_scale_size = _saved["size"]
+	var win := window
+	if is_instance_valid(win) and win.size_changed.is_connected(refit):
+		win.size_changed.disconnect(refit)
 	window = null
 	plan = {}
+	if deferred:
+		_release.call_deferred(win, _saved)
+	else:
+		_release(win, _saved)
+
+
+static func _release(win: Window, saved: Dictionary) -> void:
+	if not is_instance_valid(win):
+		return
+	var held: Dictionary = win.get_meta(META, {})
+	var left := int(held.get("holders", 1)) - 1
+	if left > 0:
+		held["holders"] = left
+		return
+	win.remove_meta(META)
+	win.content_scale_mode = saved["mode"]
+	win.content_scale_aspect = saved["aspect"]
+	win.content_scale_size = saved["size"]
 
 
 ## Re-applies for the window's size (or [member size_override]). True when the plan changed.
