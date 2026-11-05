@@ -3,7 +3,9 @@ extends SceneTree
 ## Renders a game's real client at phone size with touch on and writes one PNG. Run through dot_game_phone_shot.sh.
 ## `--scene=res://x.tscn` (default: the project's main scene), `--touch`, `--size=844x390`, `--out=PATH`,
 ## `--frames=N` (settle frames, default 150), `--ready=property` (wait until the root's property is set; default `player`),
-## `--set=prop=value` (repeatable; `force_offline=true` is always set when the root has it), `--call=method` (once ready).
+## `--set=prop=value` (repeatable; `force_offline=true` is always set when the root has it).
+## `--call=[NodePath:]method[:arg1,arg2]` (repeatable, once ready; the path is relative to the scene root, none means the root;
+## an argument is a Godot literal such as 3 or true, anything else is a string, so a shout is `--call=Hud:shout:Run!`).
 
 const DEFAULT_SIZE := Vector2i(844, 390)
 
@@ -73,11 +75,8 @@ func _process(delta: float) -> bool:
 		return false
 	if not _called:
 		_called = true
-		for method in _calls:
-			if _node.has_method(method):
-				_node.call(method)
-			else:
-				printerr("phone_shot: no method %s" % method)
+		for spec in _calls:
+			_call(spec)
 	_seen += 1
 	if _seen < _frames:
 		return false
@@ -93,6 +92,30 @@ func _process(delta: float) -> bool:
 	print("wrote %s (%d x %d)" % [path, image.get_width(), image.get_height()])
 	quit(0)
 	return true
+
+
+func _call(spec: String) -> void:
+	var parts := spec.split(":", true, 2)
+	var path := "."
+	var method := parts[0]
+	var raw := ""
+	if parts.size() == 2:
+		path = parts[0]
+		method = parts[1]
+	elif parts.size() == 3:
+		path = parts[0]
+		method = parts[1]
+		raw = parts[2]
+	var target := _node.get_node_or_null(path if path != "" else ".")
+	if target == null or not target.has_method(method):
+		printerr("phone_shot: no %s on %s" % [method, path])
+		return
+	var values: Array = []
+	if raw != "":
+		for item in raw.split(","):
+			var parsed: Variant = str_to_var(item)
+			values.append(item if parsed == null else parsed)
+	target.callv(method, values)
 
 
 func _is_flat(image: Image) -> bool:

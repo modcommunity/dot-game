@@ -27,7 +27,7 @@ Add `examples/headless_touch.tscn` extending `DotGameCheckSuite`, with the usual
 
 ## Rendering a phone frame
 
-No assertion shows that the HUD is readable. `addons/dot_game/tools/dot_game_phone_shot.sh` renders one 844x390 frame of the game's real client with touch on, HUD and menu built, to `screenshots/phone.png`; a game's `tools/phone_shot.sh` execs it (the GPU runner only runs `tools/*.sh`). It needs xvfb, not `--headless`, which gives a 64x64 viewport. Options: `--scene=`, `--out=`, `--set=key=value`, `RESOLUTION=WxH` with `--size=WxH`, `--no-touch`, and `RENDERER=gl_compatibility` for a 3D map that would otherwise pass the memory cap in Forward+ on software rendering. The tool lives on the `phoneshot` branch of dot-game until it is merged; a game takes it with the addon update that includes it. Look at the frame after any HUD or layout change.
+No assertion shows that the HUD is readable. `addons/dot_game/tools/dot_game_phone_shot.sh` renders one 844x390 frame of the game's real client with touch on, HUD and menu built, to `screenshots/phone.png`; a game's `tools/phone_shot.sh` execs it (the GPU runner only runs `tools/*.sh`). It needs xvfb, not `--headless`, which gives a 64x64 viewport. Options: `--scene=`, `--out=`, `--set=key=value`, `--size=WxH` (the window follows it), `--no-touch`, `--call=[NodePath:]method[:arg1,arg2]` (repeatable, run once the client is ready, path relative to the scene root, so `--call=Hud:shout:Run!` shows a HUD shout), and `RENDERER=gl_compatibility` for a 3D map that would otherwise pass the memory cap in Forward+ on software rendering. A game takes the tool with the dot-game update that includes it. Look at the frame after any HUD or layout change.
 
 ## HUD text placement
 
@@ -39,7 +39,7 @@ Lessons from rolling touch controls across the games; walk it for each one.
 
 1. A `DotTouchButtons` offset is measured from the margin-inset corner, so a button's centre is at `size - margin - offset * scale`, not `size - offset`. Compute layouts and expected positions from that, or every button sits closer to the edge than planned.
 2. Hide keyboard-only hint lists and labels when `DotPlatform.has_touch()`, and give touch a button for every key-only action (the loadout menu, for one). A hint for a key nobody can press is noise, and an action with no button is unreachable.
-3. Move HUD text (status lines, role labels, money plates) away from the button clusters. Render at 844x390, 667x375 and 932x430 and Read the PNG; the desktop frame hides every collision.
+3. Move HUD text (status lines, role labels, money plates) away from the button clusters. Render at 844x390, 667x375 and 932x430 (`tools/phone_shot.sh --size=667x375`, see Rendering a phone frame; add `--call=` to show a shout or banner) and Read the PNG; the desktop frame hides every collision.
 4. `headless_touch` checks fit inside the screen, a minimum button size of 44 px, a gap of at least 4 px between buttons, that touch-off hides the buttons, and that the buttons are freed.
 5. A button-up must always be delivered, even when a menu or chat cover opened while the button was held. Route releases past any "UI is open" guard, or the action sticks on (a held fire, a scoreboard that never closes).
 6. When the HUD can be rebuilt, guard stored references with `is_instance_valid(node)`, not `!= null`: a freed node is not null, and the next call on it errors.
