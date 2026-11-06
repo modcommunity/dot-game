@@ -114,6 +114,11 @@ func attach(win: Window) -> void:
 ## [param deferred] lets go at idle: from a tree exit the menus below are already out of the tree and
 ## answer the window's size_changed by reading a viewport they no longer have. Re-entering first is safe.
 func detach(deferred: bool = false) -> void:
+	# Hand back the game's own margin: a replay on re-entry would otherwise take the shifted one as the base.
+	for e in _buttons:
+		var b: Object = e["ref"].get_ref()
+		if b != null and "margin" in b:
+			b.set("margin", e["margin"])
 	_buttons.clear()
 	if window == null:
 		return
@@ -128,7 +133,7 @@ func detach(deferred: bool = false) -> void:
 		_release(win, _saved)
 
 
-static func _release(win: Window, saved: Dictionary) -> void:
+static func _release(win: Variant, saved: Dictionary) -> void:
 	if not is_instance_valid(win):
 		return
 	var held: Dictionary = win.get_meta(META, {})
@@ -163,6 +168,16 @@ func refit() -> bool:
 	return changed
 
 
+## Refits when the content scale factor, DPI or safe area changed without the window resizing; the client calls it each frame. True when it refit.
+func poll() -> bool:
+	if window == null or not is_instance_valid(window) or plan.is_empty():
+		return false
+	if _scale_inputs() == _inputs and safe_insets() == _safe_seen:
+		return false
+	refit()
+	return true
+
+
 ## The display's DPI, or [member dpi_override].
 func dpi() -> float:
 	if dpi_override > 0.0:
@@ -171,7 +186,11 @@ func dpi() -> float:
 
 
 ## Sizes [param buttons] (anything with [code]button_scale[/code] and [code]margin[/code], dot-ui's DotTouchButtons) for [param layout] now and on every refit. Returns the scale set.
-func fit_buttons(buttons: Control, layout: Array) -> float:
+func fit_buttons(buttons_in: Variant, layout: Array) -> float:
+	# Untyped: the engine refuses a freed node at a typed parameter, before this guard could run.
+	if buttons_in == null or not is_instance_valid(buttons_in):
+		return 1.0
+	var buttons: Control = buttons_in
 	# The margin a game set, before any safe-area shift, so refits never stack shifts.
 	var base := float(buttons.get("margin")) if "margin" in buttons else 28.0
 	for e in _buttons:

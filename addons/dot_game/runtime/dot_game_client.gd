@@ -298,7 +298,7 @@ func _attach_screen_fit() -> void:
 
 
 ## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 when no fit is attached, and the request is applied when one attaches.
-func fit_touch_buttons(buttons: Control, layout: Array) -> float:
+func fit_touch_buttons(buttons: Variant, layout: Array) -> float:
 	return _fits.request(screen_fit, buttons, layout)
 
 
@@ -619,6 +619,8 @@ func _pointer_wanted() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if screen_fit != null:
+		screen_fit.poll()
 	DotGameClientFeel.drive(self)
 	if _hit_flinch != null:
 		_hit_flinch.drive()

@@ -22,7 +22,10 @@ func attach(root: Window, current: DotGameScreenFit) -> DotGameScreenFit:
 
 
 ## Records the request (replacing an earlier one for the same buttons) and applies it when [param fit] is attached; 1 otherwise.
-func request(fit: DotGameScreenFit, buttons: Control, layout: Array) -> float:
+func request(fit: DotGameScreenFit, buttons_in: Variant, layout: Array) -> float:
+	if buttons_in == null or not is_instance_valid(buttons_in):
+		return 1.0
+	var buttons: Control = buttons_in
 	_requests = _requests.filter(func(e: Dictionary) -> bool: return e["ref"].get_ref() != null and e["ref"].get_ref() != buttons)
 	_requests.append({"ref": weakref(buttons), "layout": layout})
 	if fit == null or fit.window == null:

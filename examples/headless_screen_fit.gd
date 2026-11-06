@@ -2,7 +2,7 @@ extends Node
 
 ## DotGameScreenFit: the touch canvas plan, buttons sized in millimetres and capped to the screen, the root window fitted and restored, and DotGameClient's switch.
 
-const EXPECTED_CHECKS := 59
+const EXPECTED_CHECKS := 67
 const SECTIONS := ["plan", "buttons", "window", "safe", "client"]
 const BASE := Vector2(1600, 900)
 ## The smallest radius here is 24, its block 164x276: a two-column phone layout.
@@ -181,6 +181,30 @@ func _safe() -> void:
 	_check(fit.describe().has("safe_insets"), "describe reports the safe insets")
 	fit.safe_area_override = Rect2i(0, 0, 0, 0)
 	_check(DotGameScreenFit.new().safe_insets()["left"] == 0.0, "an unattached fit has no insets")
+	_check(fit.poll() and not fit.poll(), "a safe-area change with no resize is picked up by poll, once")
+	var scale_was := b.button_scale
+	fit.dpi_override = 200.0
+	_check(fit.poll() and b.button_scale != scale_was, "a DPI change with no resize refits the buttons")
+	var factor_was := root.content_scale_factor
+	root.content_scale_factor = 1.5
+	fit.poll()
+	_check(fit._inputs.x == 1.5 and not fit.poll(), "a content scale factor change with no resize is followed, and poll settles")
+	root.content_scale_factor = factor_was
+	fit.poll()
+	fit.safe_area_override = Rect2i(132, 0, 2268, 1100)
+	fit.refit()
+	_check(b.margin > 28.0, "setup: the notch shifts the margin")
+	fit.detach()
+	_check(b.margin == 28.0, "detach hands the buttons' own margin back")
+	fit.attach(root)
+	fit.fit_buttons(b, LAYOUT)
+	_check(b.margin > 28.0, "re-entering with the margin handed back shifts it from the game's base, not from the old shift")
+	var gone := Buttons.new()
+	gone.free()
+	_check(fit.fit_buttons(null, LAYOUT) == 1.0 and fit.fit_buttons(gone, LAYOUT) == 1.0, "fit_buttons with null or a freed node returns 1")
+	var requests := DotGameFitRequests.new()
+	_check(requests.request(fit, null, LAYOUT) == 1.0 and requests.request(fit, gone, LAYOUT) == 1.0, "a request for null or a freed node returns 1 and is not remembered")
+	fit.safe_area_override = Rect2i()
 	fit.detach()
 	b.free()
 	_done.append("safe")
