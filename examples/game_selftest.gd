@@ -6,7 +6,7 @@ extends "selftest/selftest_hooks.gd"
 
 ## Every check this suite runs, the section guard's own included.
 ## A runtime error aborts a section after it announced itself, so the section counter alone misses lost checks. See docs/testing.md.
-const CHECKS := 590
+const CHECKS := 593
 
 func _ready() -> void:
 	DotLog.set_level(
@@ -99,6 +99,7 @@ func _run_wiring() -> void:
 	_test_map_load_threads()
 	_test_client_vis_mode()
 	await _test_client_latency()
+	await _test_client_replay_tuning()
 	_test_render_quality()
 	_test_sun_shadow_cvars()
 	_test_relevance_cvars()

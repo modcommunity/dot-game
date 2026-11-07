@@ -270,6 +270,7 @@ func _ready() -> void:
 				gate.opened.connect(_on_gate_cover.bind(false))
 				gate.closed.connect(_on_gate_cover.bind(true))
 	_apply_user_tier()
+	DotGameClientExtras.watch_replay_tuning(self)
 	var standalone: Node = null
 	# Headless is a test run: a cold cache would hold the cover on a real download and fail every cover check.
 	if offline and use_standalone_content and DisplayServer.get_name() != "headless":
@@ -472,6 +473,10 @@ func add_console(manager: Object = null) -> Node:
 
 func _on_console_service(service_name: StringName, _instance: Object) -> void:
 	DotGameClientExtras.on_console_service(service_name, self)
+
+
+func _on_replay_service(service_name: StringName, instance: Object) -> void:
+	DotGameClientExtras.on_replay_service(service_name, instance, self)
 
 
 func _on_latency_service(service_name: StringName, instance: Object) -> void:

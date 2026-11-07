@@ -24,6 +24,8 @@ static func disconnect_registry_bus(c: DotGameClient) -> void:
 	var bus := DotRegistry.signals()
 	if bus.service_registered.is_connected(c._on_console_service):
 		bus.service_registered.disconnect(c._on_console_service)
+	if bus.service_registered.is_connected(c._on_replay_service):
+		bus.service_registered.disconnect(c._on_replay_service)
 	if bus.service_registered.is_connected(c._on_latency_service):
 		bus.service_registered.disconnect(c._on_latency_service)
 
@@ -116,6 +118,24 @@ static func on_latency_service(service_name: StringName, instance: Object, clien
 	if (instance as DotNetManager).is_server:
 		return
 	client.add_latency(instance as DotNetManager)
+
+
+## Tunes the client's replay settings from _ready, so a client that never calls setup() (a game with its own menu and console) gets them too.
+static func watch_replay_tuning(c: DotGameClient) -> void:
+	var bus := DotRegistry.signals()
+	if not bus.service_registered.is_connected(c._on_replay_service):
+		bus.service_registered.connect(c._on_replay_service)
+	for service_name in DotRegistry.names():
+		on_replay_service(service_name, DotRegistry.get_service(service_name), c)
+
+
+static func on_replay_service(service_name: StringName, instance: Object, client: DotGameClient) -> void:
+	if not client.tune_replay or not String(service_name).begins_with(String(DotNetManager.SERVICE)) or not (instance is DotNetManager):
+		return
+	var m := instance as DotNetManager
+	if not m.is_server and m.config != null:
+		m.config.reconcile_once_per_frame = true
+		m.config.skip_matching_replays = true
 
 
 static func bind_latency(c: DotGameClient) -> void:

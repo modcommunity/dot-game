@@ -305,6 +305,41 @@ func _test_client_latency() -> void:
 	_done()
 
 
+func _test_client_replay_tuning() -> void:
+	await get_tree().process_frame
+	_section("a client that never calls setup() still tunes its netcode's replay settings, and tune_replay off opts out")
+	var c := DotGameClient.new()
+	c.use_gate = false
+	add_child(c)
+	var early := DotNetManager.new()
+	early.config = DotNetConfig.new()
+	add_child(early)
+	_check(early.config.reconcile_once_per_frame and early.config.skip_matching_replays, "a net registered after _ready is tuned without setup()")
+	var srv := DotNetManager.new()
+	srv.is_server = true
+	srv.service_scope = &"replay_tune_srv"
+	srv.config = DotNetConfig.new()
+	add_child(srv)
+	_check(not srv.config.reconcile_once_per_frame and not srv.config.skip_matching_replays, "a server's manager is left alone")
+	var off := DotGameClient.new()
+	off.use_gate = false
+	off.tune_replay = false
+	add_child(off)
+	var late := DotNetManager.new()
+	late.service_scope = &"replay_tune_off"
+	late.config = DotNetConfig.new()
+	late.config.reconcile_once_per_frame = false
+	c.tune_replay = false
+	add_child(late)
+	_check(not late.config.reconcile_once_per_frame, "tune_replay off leaves the config as the game set it")
+	early.queue_free()
+	srv.queue_free()
+	late.queue_free()
+	off.queue_free()
+	c.queue_free()
+	_done()
+
+
 func _test_client_vis_mode() -> void:
 	_section("map culling is opt-in, and the console's vis_mode drives it")
 	var c := DotGameClient.new()
