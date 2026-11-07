@@ -5,5 +5,5 @@ extends RefCounted
 ## OLDEST rises to LEVEL when a removal or change breaks packs built before it.
 
 # What each level added: docs/api-levels.md.
-const LEVEL := 48
+const LEVEL := 50
 const OLDEST := 1
