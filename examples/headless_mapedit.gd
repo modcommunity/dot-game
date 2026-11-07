@@ -2,7 +2,7 @@ extends Node
 
 ## DotGameMapEdit against a fake console, point set, store and navigation: every command, the flag gate, validation, save, revert, export and import.
 
-const CHECKS := 66
+const CHECKS := 68
 
 var _passed := 0
 var _failed := 0
@@ -186,6 +186,12 @@ func _say(host: Host, name: String, args: Array) -> Ctx:
 	return ctx
 
 
+func _ctx_with(args: Array) -> Ctx:
+	var ctx := Ctx.new()
+	ctx.args = PackedStringArray(args)
+	return ctx
+
+
 func _run() -> void:
 	print("dot-game: map edit commands")
 	var host := Host.new()
@@ -229,6 +235,11 @@ func _run() -> void:
 		gated = gated and (host.commands[name] as Cmd).permission == "config"
 	_check(gated, "every command carries the map_edit_flag")
 	_check(host.commands.has("spawn_add") and host.commands.has("mapdata_import"), "names match the plan")
+
+	var refused: DotResult = await edit.run("spawn_remove", _ctx_with(["nobody"]))
+	var allowed: DotResult = await edit.run("spawn_list", _ctx_with([]))
+	_check(not refused.ok, "run reports a refusal as a failure")
+	_check(allowed.ok, "and a success as one")
 
 	var c := await _say(host, "spawn_list", [])
 	_check(c.last().begins_with("No authored"), "an empty set says the map's own are in use")

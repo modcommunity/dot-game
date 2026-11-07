@@ -155,23 +155,23 @@ func bind(host: Object) -> DotResult:
 
 func _handler_for(role: String) -> Callable:
 	return func(ctx: Object) -> void:
-		await run(role, ctx)
+		var _outcome := await run(role, ctx)
 
 
-## Runs one role for [param ctx]; public so a toolgun mode can drive the same editor.
-func run(role: String, ctx: Object) -> void:
+## Runs one role for [param ctx] and returns its outcome, a refusal being a failure, so a toolgun mode can drive the same editor and tell.
+func run(role: String, ctx: Object) -> DotResult:
 	var args := _args(ctx)
 	var outcome: DotResult = await _dispatch(role, ctx, args)
 
 	if not outcome.ok:
 		_reply(ctx, outcome.error.message)
-		return
+		return outcome
 
 	var said := str(outcome.value)
 	_reply(ctx, said)
 
 	if role in ["spawn_list"]:
-		return
+		return outcome
 
 	var line := "%s %s" % [command_name(role), " ".join(args)]
 	DotLog.info(CHANNEL, "map edit", {"by": _caller(ctx), "command": line.strip_edges(), "result": said})
@@ -180,6 +180,8 @@ func run(role: String, ctx: Object) -> void:
 
 	if audit is Object and (audit as Object).has_method("record"):
 		(audit as Object).call("record", command_name(role), _caller(ctx), " ".join(args), {})
+
+	return outcome
 
 
 func _dispatch(role: String, ctx: Object, args: PackedStringArray) -> DotResult:
