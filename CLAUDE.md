@@ -12,6 +12,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | --- | --- |
 | [docs/design.md](docs/design.md) | `DotGameModule`, `DotGameNetcode`, `DotGameRoster`, `DotGameChatClient`: why it exists, what belongs here, what is fatal, teardown order, `session_fn`, schema refusal, `report_map`, the Tab board, the suite |
 | [docs/services.md](docs/services.md) | `DotGameServices`: build order, loading by path, the live tools, the hooks, hibernation |
+| [docs/touch-controls.md](docs/touch-controls.md) | a game on a phone: `DotTouchButtons` with `DotFpsTouchSampler`, the handlers dictionary, `menu_button_corner`, a `headless_touch` suite, the phone frame, HUD placement |
 | [docs/map-config.md](docs/map-config.md) | a game taking per-map settings (`DotGameMapConfig`, `_map_config_keys`, `DotGameClient.map_changed`) |
 | [docs/config-binder.md](docs/config-binder.md) | a game's `*Config` made server-tunable: `DotGameConfigBinder`, strict boot, the cvars, the workbench kind, the yml diff |
 | [docs/avatar-actions.md](docs/avatar-actions.md) | emotes, poses and gestures: the checked message and relay, `DotGameClient.add_avatar_actions`, the module's `_avatar_actions_equipped` and `_avatar_action_veto` hooks, the server-read loadouts (`DotGameAvatarLoadouts`) and uploaded clips on other players |
@@ -28,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_game/net/` | `DotGameNetcode`: the dot-net manager with the four settings every game had, and `refuse_peer`; `DotGameLink`, a game's RPC link attached under the server node and freed with its bridge |
 | `addons/dot_game/runtime/` | `DotGameRoster`, `DotGameServices`, `DotGameChatClient`, `DotGameClient` (the client's platform layer), `DotGameWorkbench` (F9 tuning window and optional HTTP), `DotGameMapConfig` (per-map settings) |
 | `addons/dot_game/runtime/` helpers | `DotGameClient` delegates to static helpers taking the client: `DotGameClientLook` (look and mute), `DotGameUserCfg` (the user cfg tier), `DotGameClientAvatars`, `DotGamePageGuard` (browser leave guard); `DotGameAvatarActionSupport` holds the action client's row building and optional-script cache |
-| `addons/dot_game/qa/`, `tools/` | `DotGameNetchaosServer` and `DotGameNetchaosClient` (tool-only: a pack never calls them, so no API level) and the shared perf, visual and netchaos scripts. [qa](docs/qa.md) |
+| `addons/dot_game/qa/`, `tools/` | `dot_game_phone_shot.sh` (a phone-size touch frame of a game), `DotGameNetchaosServer` and `DotGameNetchaosClient` (tool-only: a pack never calls them, so no API level) and the shared perf, visual and netchaos scripts. [qa](docs/qa.md) |
 | `addons/dot_game/dot_game_api.gd` | the API level (`LEVEL`, `OLDEST`); the bump rule is on `DotAddonApi` |
 | `examples/game_selftest.tscn` | the suite (sections inherit through `examples/selftest/selftest_{base,avatar,extra,cvars,slide,stats,hooks}.gd`); `examples/fixtures/` the module, bridge, identity and services it loads |
 
