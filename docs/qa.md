@@ -33,3 +33,7 @@ See dot-ci. It is the other half: what to run after an edit to an addon.
 Netchaos runs on dev01's nightly: `Netchaos arena` and `Netchaos ZZ` nightly with the default profiles, and `Netchaos full weekly` (Sundays 02:00) with all six. The jobs are rows in the nightly database, documented in `~/stack/nightly/README.md`; each ends in `tools/netchaos.sh --post`.
 
 A `godot --script` tool that writes project files (`dot_game_cfg_templates.gd`, any generator) is run as `GPU_OFFLOAD=0 heavy -- ...`: `heavy` may offload it to a staging box, which writes its own copy of the files, not yours.
+
+## Cover server
+
+`tools/cover_server.tscn` is the headless dedicated server `tools/render_cover.gd` joins. The game's `tools/cover_server.gd` extends `DotCoverServer` (`addons/dot_game/qa/`, tool-only, no API level) and overrides `_default_port`, `_max_players`, `_hostname` and `_boot`; a game that boots through a descriptor and module calls `boot_descriptor_module(path)` from `_boot`. Suite: `examples/headless_cover_server.tscn`.
