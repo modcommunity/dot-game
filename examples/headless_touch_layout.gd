@@ -33,7 +33,7 @@ func _run() -> void:
 	_homes()
 	_overrides()
 	_validate()
-	_apply()
+	await _apply()
 	for s in SECTIONS:
 		if not s in _done:
 			_check(false, "section %s ran to the end" % s)
@@ -139,6 +139,7 @@ func _apply() -> void:
 	b.free()
 	c.free()
 	DotPlatform.touch_override = -1
+	await get_tree().process_frame  # the screen fit restores the stretch deferred
 	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "the window's stretch is restored")
 	_done.append("apply")
 
