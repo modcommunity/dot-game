@@ -73,9 +73,9 @@ class Store:
 	var saved: Dictionary = {}
 	var saves: Array = []
 
-	func save(bundle: Dictionary, by: String) -> DotResult:
+	func save(bundle: Variant, by: String) -> DotResult:
 		await Engine.get_main_loop().process_frame
-		saved = bundle.duplicate(true)
+		saved = DotGameMapEditBundle.as_dict(bundle).duplicate(true)
 		saves.append(by)
 		return DotResult.success(true)
 
@@ -338,13 +338,13 @@ func _run() -> void:
 	other = store.saved.duplicate(true)
 	other["map"]["version"] = "2"
 	other["sections"]["spawns"] = {"points": [{"id": "from_v2", "kind": "both", "enabled": true, "pos": [0, 0, 0]}]}
-	other["sections"]["scripts"] = {"load": "res://evil.gd"}
+	other["sections"]["scripts"] = {"load": "evil"}
 	_write("older", other)
 	c = await _say(host, "mapdata_import", ["older"])
 	_check(c.last().contains("force") and edit.points.find(&"from_v2") == null, "a version difference needs force")
 	c = await _say(host, "mapdata_import", ["older", "force"])
 	_check(edit.points.find(&"from_v2") != null, "force imports it")
-	other["sections"]["spawns"] = {"points": [{"id": "x" , "kind": "both", "enabled": true, "pos": [0, 0, 0]}], "deep": "y".repeat(500)}
+	other["sections"]["spawns"] = {"points": [{"id": "x" , "kind": "both", "enabled": true, "pos": [0, 0, 0]}], "deep": "y".repeat(5000)}
 	_write("fat", other)
 	c = await _say(host, "mapdata_import", ["fat", "force"])
 	_check(c.last().contains("over a limit") and edit.points.find(&"x") == null, "an over-long string is refused")

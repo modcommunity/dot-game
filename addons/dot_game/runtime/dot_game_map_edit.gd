@@ -467,7 +467,7 @@ func _save(ctx: Object, args: PackedStringArray) -> DotResult:
 	if map.is_empty() or store == null or not store.has_method("save"):
 		return DotResult.fail(DotError.CODE_UNSUPPORTED, "There is no map data store to save to.")
 
-	var bundle := _bundle(_caller(ctx), map, " ".join(args).left(DotGameMapEditBundle.MAX_STRING))
+	var bundle: Variant = _bundle(_caller(ctx), map, " ".join(args).left(DotGameMapEditBundle.MAX_STRING))
 	var saved: Variant = await store.call("save", bundle, _caller(ctx))
 
 	if saved is DotResult and not (saved as DotResult).ok:
@@ -489,11 +489,12 @@ func _revert() -> DotResult:
 		return (loaded as DotResult).wrap("nothing saved to go back to")
 
 	var bundle: Variant = loaded.value if loaded is DotResult else loaded
+	var as_dict := DotGameMapEditBundle.as_dict(bundle)
 
-	if not (bundle is Dictionary):
+	if as_dict.is_empty():
 		return DotResult.fail(DotError.CODE_INVALID, "The store returned something that is not map data.")
 
-	var taken := await _take((bundle as Dictionary).get("sections", {}))
+	var taken := await _take(as_dict.get("sections", {}))
 
 	if not taken.ok:
 		return taken
@@ -520,7 +521,7 @@ func _export(ctx: Object, args: PackedStringArray) -> DotResult:
 	if file == null:
 		return DotResult.fail(DotError.CODE_IO, "Could not write %s." % path)
 
-	file.store_string(JSON.stringify(_bundle(_caller(ctx), map, ""), "\t"))
+	file.store_string(JSON.stringify(DotGameMapEditBundle.as_dict(_bundle(_caller(ctx), map, "")), "\t"))
 	file.close()
 	return DotResult.success("Exported to %s." % path)
 
@@ -559,7 +560,7 @@ func _import(args: PackedStringArray) -> DotResult:
 	return DotResult.success("Imported %s; mapdata_save keeps it." % name)
 
 
-func _bundle(by: String, map: Dictionary, note: String) -> Dictionary:
+func _bundle(by: String, map: Dictionary, note: String) -> Variant:
 	var sections := {}
 
 	if points != null:
