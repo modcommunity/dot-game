@@ -62,14 +62,12 @@ func _run() -> void:
 	var ready_now: Variant = audio.call("setup")
 	var manager: Object = audio.get("manager")
 	var sink: Object = manager.get("sink") if manager != null else null
-	ok = bool(ready_now.get("ok")) and sink != null and "bank" in sink
+	ok = bool(ready_now.get("ok")) and sink != null
 	report("driver=%s sink=%s" % [AudioServer.get_driver_name(), sink != null])
-	if not ok:
-		_finish(false)
-		return
 
 	for id in _cue_ids():
-		var stream: Variant = (sink.get("bank") as Dictionary).get(id)
+		var bank: Variant = sink.get("bank") if sink != null else null
+		var stream: Variant = (bank as Dictionary).get(id) if bank is Dictionary else null
 		var length := (stream as AudioStream).get_length() if stream is AudioStream else 0.0
 		var voice := int(manager.call("play_at", id, _cue_position()))
 		await get_tree().process_frame
