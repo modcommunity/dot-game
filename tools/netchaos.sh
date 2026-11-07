@@ -162,6 +162,9 @@ say "pre-check: tc must be clean on every box"
 for b in "${USE[@]}"; do tc_box "$b" check "${BOXDEV[$b]}" || die "$b not clean before the run"; done
 [[ -n $LAST_DEV_LOCAL ]] && { tc_local check "$LAST_DEV_LOCAL" || die "dev02 not clean before the run"; }
 
+# A class_name added to an addon leaves this project's cache stale: parse errors and a failed module load on the server and local clients.
+"$GODOT" --headless --path "$ROOT" --import >/dev/null 2>&1 </dev/null
+
 for b in "${USE[@]}"; do
 	say "syncing the project to $b"
 	GPU_BOX=$b "$ROOT/../gpu.sh" sync "$GAME" >/dev/null || die "sync to $b failed"
