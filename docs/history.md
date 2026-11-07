@@ -22,7 +22,7 @@ Neither is in this addon, and both had been there for as long as modules have.
 
 ## A new class_name broke a game three repositories away
 
-`DotGameServices` was added here and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"*: its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. See the family rule in [game-dev/CLAUDE.md](../../../CLAUDE.md#validating-anything).
+`DotGameServices` was added here and a dedicated server three repositories away spent a boot reporting *"Could not resolve script … bfh_services.gd"*: its own class cache had never heard of the base class. The addon was fine, the game was fine, and the cache was stale. See the family rule in [family CLAUDE.md](../../../CLAUDE.md#validating-anything).
 
 ## The platform module outlived the game
 

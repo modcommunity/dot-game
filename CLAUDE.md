@@ -35,7 +35,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Running and testing
 
-- The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)), then `timeout 200 godot --headless --path . res://examples/game_selftest.tscn`.
+- The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `timeout 200 godot --headless --path . res://examples/game_selftest.tscn`.
 - **A new `class_name` here breaks every consumer until each is re-imported.** Every converted game links this addon. [history](docs/history.md#a-new-class_name-broke-a-game-three-repositories-away)
 - The suite runs with none of the addons the base loads by path; the wire half is in the games' suites. [design](docs/design.md#the-suite)
 - Fixtures await a frame in `setup()` on purpose; keep them suspending. [design](docs/design.md#the-suite)
