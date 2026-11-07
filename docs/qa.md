@@ -37,3 +37,13 @@ A `godot --script` tool that writes project files (`dot_game_cfg_templates.gd`, 
 ## Cover server
 
 `tools/cover_server.tscn` is the headless dedicated server `tools/render_cover.gd` joins. The game's `tools/cover_server.gd` extends `DotCoverServer` (`addons/dot_game/qa/`, tool-only, no API level) and overrides `_default_port`, `_max_players`, `_hostname` and `_boot`; a game that boots through a descriptor and module calls `boot_descriptor_module(path)` from `_boot`. Suite: `examples/headless_cover_server.tscn`.
+
+## Load and audio probes
+
+`DotLoadProbe` and `DotAudioProbe` (`addons/dot_game/qa/`, tool-only, no API level) are the loops ten and five games each copied; a game's `tools/load_probe.gd` / `tools/audio_probe.gd` extends one and overrides the hooks, with a one-script `.tscn` beside it. Run under `xvfb-run -a godot --path . res://tools/load_probe.tscn -- [--frames=90] [--shot=N]` (never `--headless`: no render, and the audio driver is Dummy).
+
+- `DotLoadProbe`: `_make_client` (required), `_default_frames`, `_gate`, `_covered`, `_body`, `_columns` (the text between `covered=` and `pos=`), `_line`, `_shot_wanted`, `_shot_path`, `_started`, `_done`, `_finish`, `report`.
+- `DotAudioProbe`: `_make_audio` and `_cue_ids` (required), `_min_length`, `_cue_position`, `_after_cues(sink)` (the game's own checks, awaited, return false to fail), `report`, `_finish`. dot-audio is duck-typed: the audio node needs `setup()` returning something with `ok` and a `manager` whose `sink` has a `bank`.
+
+Not covered: g2gfast's `load_probe` (a server-tick cost bench, nothing to do with the client), and the audio probes that drive a real client (look-at-me, dangerous-delivery, playground, smash-copter, arena, g2gfast). Suite: `examples/headless_probes.tscn`.
+
