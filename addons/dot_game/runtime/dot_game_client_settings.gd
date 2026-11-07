@@ -31,3 +31,19 @@ static func build(c: DotGameClient) -> void:
 	var got: Variant = c.settings.get(&"menu")
 	c.menu = got if got is Object else null
 	DotGameUserCfg.add_entry(c)
+
+
+## The stock dot-menu settings node, or null when dot-menu is not in the build.
+static func make(c: DotGameClient) -> Node:
+	if not ResourceLoader.exists(DotGameClient.SETTINGS_SCRIPT):
+		DotLog.info(CHANNEL, "dot-menu is not in this build: no settings or Escape menu")
+		return null
+	var script: Variant = load(DotGameClient.SETTINGS_SCRIPT)
+	if not (script is GDScript):
+		DotLog.warn(CHANNEL, "dot-menu's settings would not load", {"path": DotGameClient.SETTINGS_SCRIPT})
+		return null
+	var made: Node = (script as GDScript).new()
+	made.set(&"app_namespace", c.app_namespace)
+	made.set(&"avatar_actions", true)
+	made.set(&"directory", c.settings_directory if c.settings_directory != "" else "user://%s_settings" % c.app_namespace)
+	return made

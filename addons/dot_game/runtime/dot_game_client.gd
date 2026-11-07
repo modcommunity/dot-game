@@ -124,6 +124,10 @@ var pointer_fn: Callable = Callable()
 @export var team_menu_default_when_unwired: bool = true
 ## Flush [code]user://[/code] to the browser's storage when the game goes. A no-op off the web.
 @export var sync_on_exit: bool = true
+## Fits a touch screen in [method _ready] ([DotGameScreenFit]: no pillarbox, a HUD-sized canvas, buttons sized from the DPI with a 44 px floor); leaving the tree gives the window its stretch back. Off keeps the project's stretch.
+@export var use_screen_fit: bool = true
+## The fit when attached, else null. Assign a tuned one before the client enters the tree to replace the default.
+var screen_fit: DotGameScreenFit = null
 
 ## The game's settings node (a `DotMenuSettings` subclass), assigned before [method setup]; null makes the stock one.
 var settings: Node = null
@@ -136,6 +140,7 @@ var chat: Node = null
 ## [code]func() -> bool[/code]: something else of the game's has the keyboard (a command line). Blocks input and frees the pointer.
 var busy_fn: Callable = Callable()
 var _pointer_holds: Dictionary = {}
+var _fits := DotGameFitRequests.new()
 ## [code]func() -> Dictionary[/code]: the Tab board offline (dot-menu's snapshot shape); connected, the link's roster feeds it.
 var board_snapshot_fn: Callable = Callable()
 ## The map menu on M: `func() -> Array` of rows and `func(id) -> DotResult` to change. Both unset leave M doing nothing.
@@ -281,18 +286,27 @@ func _ready() -> void:
 	_RenderQuality.apply_cmdline()
 	_RenderQuality.init_defaults()
 	_RenderQuality.apply(get_viewport(), get_tree().root)
+	_attach_screen_fit()
 	if not get_tree().node_added.is_connected(_on_node_added_quality):
 		get_tree().node_added.connect(_on_node_added_quality)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
 
 
+func _attach_screen_fit() -> void:
+	if use_screen_fit:
+		screen_fit = _fits.attach(get_tree().root, screen_fit)
+
+
+## Sizes dot-ui's DotTouchButtons for [param layout] from the DPI (44 real px at least) and keeps them sized on every resize. Returns the scale; 1 when no fit is attached, and the request is applied when one attaches.
+func fit_touch_buttons(buttons: Variant, layout: Array) -> float:
+	return _fits.request(screen_fit, buttons, layout)
+
+
 ## The shell's content client, else the one standalone play just made. Runs after the gate exists so the cover shows it.
 func _mount_locked_content(standalone: Node) -> void:
 	var cloud: Object = DotRegistry.get_service(DotGameStandaloneContent.CLOUD_SERVICE)
-	if cloud == null:
-		cloud = standalone
-	var lock_result: DotResult = await DotGameLockedContent.run(cloud, gate)
+	var lock_result: DotResult = await DotGameLockedContent.run(cloud if cloud != null else standalone, gate)
 	locked_content = lock_result.value if lock_result.ok else null
 
 
@@ -307,9 +321,8 @@ static func user_tier_allowed(opt_in: bool, solo: bool, listen_host: bool, dedic
 
 
 func _apply_user_tier() -> void:
-	var host_here := listen_host_fn.is_valid() and bool(listen_host_fn.call())
 	var dedicated := bool(dedicated_fn.call()) if dedicated_fn.is_valid() else OS.has_feature("dedicated_server")
-	user_tier_on = user_tier_allowed(user_cfg, offline, host_here, dedicated)
+	user_tier_on = user_tier_allowed(user_cfg, offline, listen_host_fn.is_valid() and bool(listen_host_fn.call()), dedicated)
 	DotAddonConfig.set_user_tier(user_tier_on)
 
 
@@ -416,18 +429,7 @@ func set_chat(box: Node) -> void:
 
 ## The stock settings node, by path, when the game assigned none. Override to build your own.
 func _make_settings() -> Node:
-	if not ResourceLoader.exists(SETTINGS_SCRIPT):
-		DotLog.info(CHANNEL, "dot-menu is not in this build: no settings or Escape menu")
-		return null
-	var script: Variant = load(SETTINGS_SCRIPT)
-	if not (script is GDScript):
-		DotLog.warn(CHANNEL, "dot-menu's settings would not load", {"path": SETTINGS_SCRIPT})
-		return null
-	var made: Node = (script as GDScript).new()
-	made.set(&"app_namespace", app_namespace)
-	made.set(&"avatar_actions", true)
-	made.set(&"directory", settings_directory if settings_directory != "" else "user://%s_settings" % app_namespace)
-	return made
+	return _Settings.make(self)
 
 
 func _build_settings() -> void:
@@ -622,6 +624,8 @@ func _pointer_wanted() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if screen_fit != null:
+		screen_fit.poll()
 	DotGameClientFeel.drive(self)
 	if _hit_flinch != null:
 		_hit_flinch.drive()
@@ -776,15 +780,18 @@ func release_pointer(key: Variant) -> void:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_TREE and is_node_ready():
+		_attach_screen_fit()
 	if what == NOTIFICATION_EXIT_TREE:
 		restore_map_config()
 		DotGameClientExtras.disconnect_registry_bus(self)
-	if what == NOTIFICATION_EXIT_TREE and user_tier_on:
-		# The flag is process-wide: leaving it on would hand the next server's addons the player's files.
-		user_tier_on = false
-		DotAddonConfig.set_user_tier(false)
-	if what == NOTIFICATION_EXIT_TREE:
+		if user_tier_on:
+			# Process-wide flag: left on, it would hand the next server's addons the player's files.
+			user_tier_on = false
+			DotAddonConfig.set_user_tier(false)
 		DotGamePageGuard.clear(self, false)
+		if screen_fit != null:
+			screen_fit.detach(true)
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
