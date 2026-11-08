@@ -289,13 +289,39 @@ func _alive(p: Object) -> bool:
 
 ## Override when the game's roster is not `game.players()` (an Array of players).
 func _roster() -> Array:
-	var game = _client.get("game") if _client != null else null
+	var game = _find_game(_client)
 	return game.players() if game != null else []
 
 
+## The client's game node: its `game` property when set, else the first node-valued script variable of the client (or of a
+## `DotGameClient` child) that has a `players()` method, else a node in group `game`. A game names it as it likes
+## (playground's is `playground`), so the roster watch must not need the name.
+static func _find_game(client: Node) -> Object:
+	if client == null:
+		return null
+	var named = client.get("game")
+	if named is Object and is_instance_valid(named):
+		return named
+	var holders: Array = [client]
+	for child in client.get_children():
+		if child is DotGameClient:
+			holders.append(child)
+	for holder: Object in holders:
+		for prop in holder.get_property_list():
+			if prop["type"] != TYPE_OBJECT or not (prop["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				continue
+			var value = holder.get(prop["name"])
+			if value is Node and value != client and value.has_method(&"players"):
+				return value
+	if client.is_inside_tree():
+		for node in client.get_tree().get_nodes_in_group(&"game"):
+			if node != client and node.has_method(&"players"):
+				return node
+	return null
+
+
 func _watch_roster() -> void:
-	var game = _client.get("game") if _client != null else null
-	if game == null:
+	if _client == null:
 		return
 	for who in _roster():
 		if not _roster_seen.has(who.display_name):
@@ -400,7 +426,7 @@ func _report(t0: float) -> void:
 		_fold_prediction()
 		var cnet: DotNetManager = _client.get("net")
 		var player = _client.get("player")
-		var game = _client.get("game")
+		var game = _find_game(_client)
 		out["gate_open"] = _gate_is_open()
 		out["link_playing"] = _link != null and _link.is_playing()
 		out["clock_synced"] = cnet != null and cnet.clock.is_synced()
