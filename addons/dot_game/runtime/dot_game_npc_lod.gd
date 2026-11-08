@@ -74,7 +74,9 @@ func follow(delta: float = 0.0) -> void:
 	if spawner == null or not is_instance_valid(spawner):
 		return
 	if server_config != null and server_config.has_method(&"npc_workers"):
-		spawner.set(&"sense_workers", int(server_config.call(&"npc_workers")))
+		var workers: int = int(server_config.call(&"npc_workers"))
+		spawner.set(&"sense_workers", workers)
+		spawner.set(&"path_workers", workers)
 	var limits: Object = spawner.get(&"limits")
 	if limits != null:
 		limits.set(&"sense_quiet_mult", console.get_int("npc_sense_quiet", 1))
