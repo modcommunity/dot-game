@@ -8,8 +8,11 @@ func _test_server_threads_reach_the_netcode() -> void:
 	var sc := DotServerConfig.new()
 	var c := DotNetConfig.new()
 	_check(not DotGameNetcode.follow_server_threads(c, null), "no server config changes nothing")
-	_check(DotGameNetcode.follow_server_threads(c, sc) and c.snapshot_workers == 0,
-		"the default stays 0 with the switch off")
+	_check(DotGameNetcode.follow_server_threads(c, sc) and c.snapshot_workers == -1,
+		"the default (switch on, automatic count) asks for -1")
+	sc.threads_net = false
+	DotGameNetcode.follow_server_threads(c, sc)
+	_check(c.snapshot_workers == 0, "with the switch off it stays 0")
 	sc.threads_net = true
 	sc.worker_threads = 3
 	_check(DotGameNetcode.follow_server_threads(c, sc) and c.snapshot_workers == 3,

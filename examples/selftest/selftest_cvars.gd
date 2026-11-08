@@ -3,10 +3,12 @@ extends "selftest_extra.gd"
 ## The thread, relevance, render and latency cvar sections of game_selftest.gd.
 
 func _test_thread_defaults_off() -> void:
-	_section("threads are off by default and turn on only through their own switch")
+	_section("snapshot threads default on, NPC threads off; each changes only through its own switch")
 	var sc := DotServerConfig.new()
-	_check(not sc.threads_net and not sc.threads_npc, "both opt-ins default off")
-	_check(sc.net_snapshot_workers() == 0 and sc.npc_workers() == 0, "no workers asked for while off")
+	_check(sc.threads_net and not sc.threads_npc, "snapshot workers default on, NPC workers off")
+	_check(sc.npc_workers() == 0, "no NPC workers asked for while off")
+	sc.threads_net = false
+	_check(sc.net_snapshot_workers() == 0, "snapshot workers off when switched off")
 	sc.threads_net = true
 	sc.worker_threads = 3
 	_check(sc.net_snapshot_workers() == 3 and sc.npc_workers() == 0, "one switch enables only its own subsystem")
