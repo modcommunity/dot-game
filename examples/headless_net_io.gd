@@ -59,6 +59,7 @@ func _run() -> void:
 
 	var client := DotNetManager.new()
 	client.is_server = false
+	var _set := client.setup()
 	io.net = client
 	io._send(1, bytes, DotNetMessage.Delivery.RELIABLE)
 	_check(link.calls[-1] == ["request", 0], "a client's reliable send is a request")
