@@ -6,7 +6,7 @@ extends "selftest/selftest_client.gd"
 
 ## Every check this suite runs, the section guard's own included.
 ## A runtime error aborts a section after it announced itself, so the section counter alone misses lost checks. See docs/testing.md.
-const CHECKS := 598
+const CHECKS := 600
 
 func _ready() -> void:
 	DotLog.set_level(
