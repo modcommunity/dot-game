@@ -52,6 +52,8 @@ var _gate_open := true
 var _errors: PackedStringArray = []
 var _sess_base := {"corrections": 0, "replays": 0}
 var _spikes: Array = []
+## Corrections under SPIKE_M but visible (over 2 cm), with the predictor's newest mismatch, to tell rounding from a real divergence.
+var _small: Array = []
 var _roster_seen: Dictionary = {}
 var _dbg: Dictionary = {}
 var _dbg_log: Array = []
@@ -257,6 +259,10 @@ func _watch_corrections() -> void:
 		return
 	cnet.predictor.set("_worst_error", 0.0)
 	_worst_error = maxf(_worst_error, e)
+	if e >= 0.02 and e < SPIKE_M and _small.size() < 60 and _now() >= _start_at:
+		var q := cnet.predictor.describe()
+		_small.append({"t": snappedf(_now() - _start_at, 0.01), "error_m": snappedf(e, 0.001),
+			"replayed": q.get("last_replay_ticks"), "last_mismatch": str(q.get("last_mismatch")), "state": _state_line()})
 	if e < SPIKE_M or _spikes.size() >= 40 or _now() < _start_at:
 		return
 	var p := cnet.predictor.describe()
@@ -268,6 +274,15 @@ func _watch_corrections() -> void:
 		"catch_ups": c.get("catch_ups"), "clock_snaps": c.get("snaps"), "lost_ms": c.get("lost_ms"),
 		"snap_lost": cnet.stats.snapshots_lost, "out_of_order": cnet.stats.out_of_order,
 		"gap_s": snappedf(_gap_clock, 0.01), "last_mismatch": str(p.get("last_mismatch"))})
+
+
+## Where the pilot is and what the motor says (position, mode, ground), for the small corrections.
+func _state_line() -> String:
+	var player = _client.get("player") if _client != null else null
+	if player == null or player.get("controller") == null or player.controller.get("state") == null:
+		return ""
+	var st = player.controller.state
+	return "pos %s vel %s mode %s ground %s" % [st.position, st.velocity, st.get("mode"), st.get("ground_id")]
 
 
 ## The replicated behaviour a player is mirrored by, found through the registry.
@@ -421,7 +436,7 @@ func _report(t0: float) -> void:
 	var out := {"name": _name, "server": _server, "unix": _now(), "start_at": _start_at,
 		"connected": not _never_ready and _client != null, "sessions": _sessions, "join_attempts": _join_attempts,
 		"join_seconds": _join_seconds, "disconnects": _disconnects, "rejoin_seconds": _rejoin_seconds,
-		"errors": _errors, "timeline": _timeline, "spikes": _spikes, "roster_seen": _roster_seen, "dbg": _dbg_log}
+		"errors": _errors, "timeline": _timeline, "spikes": _spikes, "small_corrections": _small, "roster_seen": _roster_seen, "dbg": _dbg_log}
 	if _client != null:
 		_fold_prediction()
 		var cnet: DotNetManager = _client.get("net")
@@ -449,6 +464,10 @@ func _report(t0: float) -> void:
 				"decode_failures": cnet.stats.decode_failures, "rtt_p50": cnet.stats.rtt_percentile(0.5),
 				"rtt_p95": cnet.stats.rtt_percentile(0.95)}
 	out["prediction"] = {"corrections": _corrections, "replays": _replays, "worst_error_m": _worst_error}
+	if _client != null:
+		var pd := _prediction()
+		out["predictor"] = {"skipped": pd.get("skipped"), "mismatches": pd.get("mismatches"), "unpredicted": pd.get("unpredicted"),
+			"unpredicted_moves": pd.get("unpredicted_moves"), "last_mismatch": str(pd.get("last_mismatch"))}
 	out["contacts"] = _contacts()
 	for who in (_roster() if _client != null else []):
 		var nb = _net_behaviour(who)

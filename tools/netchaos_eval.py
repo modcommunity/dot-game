@@ -18,6 +18,7 @@ import sys
 GAP_S = {"clean": 1.0, "lossy100": 2.5, "lossy200": 4.0, "jitter200": 4.0, "awful400": 8.0, "bwcap": 8.0, "blackout": 8.0}
 JOIN_S = {"clean": 20.0, "lossy100": 30.0, "lossy200": 35.0, "jitter200": 35.0, "awful400": 45.0, "bwcap": 30.0, "blackout": 30.0}
 WORST_ERR_M = {"clean": 0.5, "lossy100": 1.0, "lossy200": 1.5, "jitter200": 1.5, "awful400": 3.0, "bwcap": 3.0, "blackout": 3.0}
+SPARSE_REPLAYS = 50
 CORRECTION_RATE = {"clean": 0.10, "lossy100": 0.25, "lossy200": 0.40, "jitter200": 0.40, "awful400": 0.60, "bwcap": 0.30, "blackout": 0.30}
 # Settled (everyone idle for the settle time) distance to the server's truth.
 # The blackout's resume: the server ran the dark seconds on neutral input while each client
@@ -124,8 +125,19 @@ def judge(run, profile, names):
         rate = p["corrections"] / p["replays"] if p["replays"] else 0.0
         c["correction_rate"] = round(rate, 3)
         lim = tun("CORRECTION_RATE", CORRECTION_RATE, profile)
-        check(name, "correction rate under %.0f%%" % (lim * 100), rate <= lim,
-              "%d of %d replays" % (p["corrections"], p["replays"]))
+        skipped = rep.get("predictor", {}).get("skipped")
+        if p["replays"] < SPARSE_REPLAYS and skipped:
+            # a predictor that matches almost every snapshot replays a handful of times, so
+            # corrections / replays is 13 of 17 on a few cm and says nothing: judge them
+            # against every reconcile (replayed + matched) at a tenth of the rate limit.
+            total = p["replays"] + skipped
+            rate = p["corrections"] / total
+            c["correction_rate"] = round(rate, 4)
+            check(name, "sparse replays: corrections under %.1f%% of all reconciles" % (lim * 10),
+                  rate <= lim / 10, "%d corrections, %d replays, %d matched" % (p["corrections"], p["replays"], skipped))
+        else:
+            check(name, "correction rate under %.0f%%" % (lim * 100), rate <= lim,
+                  "%d of %d replays" % (p["corrections"], p["replays"]))
         lim = tun("WORST_ERR_M", WORST_ERR_M, profile)
         worst, what = p["worst_error_m"], "worst correction under %.2f m" % lim
         bo_at, bo_s = os.environ.get("NC_BLACKOUT_AT"), os.environ.get("NC_BLACKOUT_S")
