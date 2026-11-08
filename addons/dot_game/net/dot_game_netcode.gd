@@ -145,6 +145,11 @@ static func build(
 	return DotResult.success({"net": net, "bridge": bridge})
 
 
+## See [method DotGameModule.use_map_visibility].
+static func attach_visibility(net: Object, world: Object, bounds: AABB = AABB()) -> bool:
+	return _Relevance.attach_visibility(net, world, bounds)
+
+
 ## Copies the server's snapshot worker count ([method DotServerConfig.net_snapshot_workers]) into [member DotNetConfig.snapshot_workers], unless the game set one itself.
 ##
 ## An explicit game value wins (0 is "not set"). Returns whether [param config] follows the server, so the caller re-calls it each tick only for a config that does. [param server_config] is duck-typed.

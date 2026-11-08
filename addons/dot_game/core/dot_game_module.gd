@@ -502,6 +502,13 @@ func _on_hibernation_changed(hibernating: bool) -> void:
 	_game_hibernation(hibernating)
 
 
+## Snapshot interest from [param world]'s potentially visible set (a dot-map DotMapBspMesh placed at the origin), switched by the `net_visibility` cvar; call on every server map load, with null on unload. Value: whether a set is in force (false without a netcode, a default interest or the map's data).
+func use_map_visibility(world: Object, bounds: AABB = AABB()) -> bool:
+	var on := DotGameNetcode.attach_visibility(net, world, bounds)
+	DotLog.info(CHANNEL, "snapshot visibility", {"in_force": on})
+	return on
+
+
 ## Tells the server which map this game is on, for A2S, DQP and the backbone report; "" clears it. Returns whether the server took it.
 ##
 ## Called by the game, which alone knows what it calls a map; the server forgets it on every unload. Duck-typed: an older server reports nothing and this says so once.

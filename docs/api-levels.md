@@ -53,3 +53,4 @@ What each `DotGameApi.LEVEL` added. The bump rule is on `DotAddonApi`.
 - 49: DotGameToyNet (a map toy on the wire, duck-typed toy; replaces the byte-identical `*_toy_net.gd` in eleven games). Suite: `examples/headless_toy_net.tscn`.
 - 50: DotGameRequest (a client request: kind and body, the game subclass names it) and DotGamePaths (root_of, rebase_onto); replace the per-game *_request.gd and *_paths.gd. Suite: `examples/headless_net_plumbing.tscn`.
 - 51: DotGameNetIo (a bridge's _send, receive_event, receive_request, receive_snapshot and the net, link and rtt_source fields; replaces the identical copies in ten games' bridges). Suite: `examples/headless_net_io.tscn`.
+- 52: the net_skip_idle / net_visibility server cvars (DotGameRelevance.bind_toggles), DotGameModule.use_map_visibility (a dot-map's PVS for snapshot interest).
