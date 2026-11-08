@@ -1,13 +1,9 @@
-extends Node
+extends DotGameCheckSuite
 
 ## DotGameNoblock: cfg layers, cvars, the pair answer a body's pair_fn gets, strict refusal, workbench edit.
 
 const ROOT := "res://examples/fixtures/noblock/"
 const CHECKS := 20
-
-var _passed := 0
-var _failed := 0
-var _failures := PackedStringArray()
 
 
 class Body:
@@ -18,14 +14,6 @@ class Body:
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.FATAL)
 	_run.call_deferred()
-
-
-func _check(ok: bool, what: String) -> void:
-	if ok:
-		_passed += 1
-	else:
-		_failed += 1
-		_failures.append(what)
 
 
 func _side(id: Variant) -> Variant:
@@ -78,10 +66,4 @@ func _run() -> void:
 	var lax := DotGameNoblock.create("tg", _side, PackedStringArray([ROOT + "bad"]), false)
 	_check(lax.ok, "and only logs when not strict")
 
-	if _passed + _failed != CHECKS:
-		_failed += 1
-		_failures.append("ran %d checks, expected %d" % [_passed + _failed - 1, CHECKS])
-	for f in _failures:
-		print("FAIL: ", f)
-	print("%d passed, %d failed" % [_passed, _failed])
-	get_tree().quit(1 if _failed > 0 else 0)
+	_report(CHECKS)

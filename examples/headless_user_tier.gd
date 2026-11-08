@@ -1,14 +1,10 @@
-extends Node
+extends DotGameCheckSuite
 
 ## The player's user:// cfg tier end to end: a process that is a dedicated server ignores a user override, solo and a listen host apply it.
 
 const ADDON := "dot_game_usertier_probe"
 const FILE := "probe.yml"
 const CHECKS := 16
-
-var _passed := 0
-var _failed := 0
-var _failures := PackedStringArray()
 
 
 ## Stands in for the browser bridge and counts the flushes.
@@ -80,13 +76,7 @@ func _run() -> void:
 	_clean()
 	_check(DotAddonConfig.user_paths(ADDON, FILE).is_empty(), "probe cleaned up")
 	_check(not DotAddonConfig.user_tier_enabled, "tier left off")
-	if _passed + _failed != CHECKS:
-		_failed += 1
-		_failures.append("ran %d checks, expected %d" % [_passed + _failed - 1, CHECKS])
-	for f in _failures:
-		print("FAIL: ", f)
-	print("%d passed, %d failed" % [_passed, _failed])
-	get_tree().quit(1 if _failed > 0 else 0)
+	_report(CHECKS)
 
 
 func _client(host: Node, solo: bool, listen_host: bool, dedicated: bool) -> DotGameClient:
@@ -115,11 +105,3 @@ func _clean() -> void:
 	DotAddonConfig.set_user_tier(true)
 	var _r := DotAddonConfig.reset_user(ADDON, FILE)
 	DotAddonConfig.set_user_tier(false)
-
-
-func _check(ok: bool, what: String) -> void:
-	if ok:
-		_passed += 1
-	else:
-		_failed += 1
-		_failures.append(what)

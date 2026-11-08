@@ -1,4 +1,4 @@
-extends Node
+extends DotGameCheckSuite
 
 ## DotGameTouchLayout: the presets, the canonical homes of fire, jump, crouch and reload, per-game overrides, validation, and the fit through DotGameClient.
 
@@ -6,9 +6,6 @@ const EXPECTED_CHECKS := 36
 const SECTIONS := ["presets", "homes", "overrides", "validate", "apply"]
 const L := preload("res://addons/dot_game/runtime/dot_game_touch_layout.gd")
 
-var _passed := 0
-var _failed := 0
-var _failures := PackedStringArray()
 var _done: Array[String] = []
 
 
@@ -37,14 +34,7 @@ func _run() -> void:
 	for s in SECTIONS:
 		if not s in _done:
 			_check(false, "section %s ran to the end" % s)
-	var total := _passed + _failed
-	if total != EXPECTED_CHECKS:
-		_failed += 1
-		_failures.append("ran %d checks, expected %d" % [total, EXPECTED_CHECKS])
-	for f in _failures:
-		print("FAIL: ", f)
-	print("%d passed, %d failed" % [_passed, _failed])
-	get_tree().quit(1 if _failed > 0 else 0)
+	_report(EXPECTED_CHECKS)
 
 
 func _presets() -> void:
@@ -142,11 +132,3 @@ func _apply() -> void:
 	await get_tree().process_frame  # the screen fit restores the stretch deferred
 	_check([root.content_scale_mode, root.content_scale_aspect, root.content_scale_size] == was, "the window's stretch is restored")
 	_done.append("apply")
-
-
-func _check(ok: bool, what: String) -> void:
-	if ok:
-		_passed += 1
-	else:
-		_failed += 1
-		_failures.append(what)

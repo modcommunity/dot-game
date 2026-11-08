@@ -1,26 +1,14 @@
-extends Node
+extends DotGameCheckSuite
 
 ## DotGameLockedContent: no lock does nothing, a lock is handed to ensure_locked behind the gate, a failure releases the gate, the switch.
 
 const Stub := preload("res://examples/fixtures/locked_cloud_stub.gd")
 const DIR := "user://locked_content_test"
 
-var _passed := 0
-var _failed := 0
-var _failures := PackedStringArray()
-
 
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.FATAL)
 	_run.call_deferred()
-
-
-func _check(ok: bool, what: String) -> void:
-	if ok:
-		_passed += 1
-	else:
-		_failed += 1
-		_failures.append(what)
 
 
 func _run() -> void:
@@ -59,7 +47,4 @@ func _run() -> void:
 
 	DotGameLockedContent.lock_override = ""
 	DotPaths.remove_tree(DIR)
-	print("dot-game locked content: %d passed, %d failed" % [_passed, _failed])
-	for f in _failures:
-		print("FAIL: ", f)
-	get_tree().quit(1 if _failed > 0 else 0)
+	_report()
