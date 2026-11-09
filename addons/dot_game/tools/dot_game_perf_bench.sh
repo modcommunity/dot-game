@@ -35,6 +35,7 @@ mkdir -p "$logs"
 # One run of the checkout $1 (extra bench args after ::) on $box; prints the log path.
 run_one() {
 	local spec=$1 label=$2 dir extra=() log
+	shift 2
 	dir=${spec%%::*}
 	[[ $spec == *::* ]] && read -ra extra <<< "${spec#*::}"
 	dir=$(cd "$dir" && pwd)
