@@ -14,6 +14,9 @@ static func add_profiler(c: DotGameClient) -> void:
 	c.profiler = _Profiler.add(c)
 	if c.profiler == null:
 		return
+	# F10 captures profiler_capture_seconds; a dot-profiler older than level 2 has no capture key.
+	if c.profiler.has_method(&"enable_capture_key"):
+		c.profiler.call(&"enable_capture_key")
 	if not bind_profiler_console(c):
 		# A game that builds its own console registers it later; bind then (deferred, so its own commands are on it).
 		DotRegistry.signals().service_registered.connect(c._on_console_service)
