@@ -37,6 +37,9 @@ signal menu_state_changed(any_open: bool)
 ## Play offline even with a link (a suite, [code]--offline[/code]).
 @export var force_offline: bool = false
 
+## The [member link] is this machine's own server (a solo game hosted in a second process), so [code]--offline[/code], which means no remote server, does not drop it; [member force_offline] still does.
+@export var local_link: bool = false
+
 ## Fetch the world's art slices when played offline from the project (no shell, so no content client). `--standalone_content=0` turns it off.
 @export var use_standalone_content: bool = true
 ## Build the load gate and its cover. Off for a client whose shell covers it some other way.
@@ -177,7 +180,7 @@ var avatar_fetcher: RefCounted = null
 var avatar_site_url: String = ""
 var avatar_server_id: int = 0
 var _avatar_library := {}
-## No server: no link, [member force_offline], or [code]--offline[/code] on the command line.
+## No server: no link, [member force_offline], or [code]--offline[/code] on the command line (unless [member local_link]).
 var offline: bool = true
 ## Whether this client turned the cfg tier on ([member user_cfg] and solo or listen host).
 var user_tier_on: bool = false
@@ -265,7 +268,7 @@ func _ready() -> void:
 		mp.server_disconnected.connect(restore_map_config)
 	if link == null:
 		link = DotRegistry.get_service(LINK_SERVICE)
-	offline = force_offline or link == null or OS.get_cmdline_user_args().has("--offline")
+	offline = offline_wanted(force_offline, link != null, OS.get_cmdline_user_args().has("--offline"), local_link)
 	if use_gate:
 		gate = _make_gate()
 		if gate != null:
@@ -308,6 +311,11 @@ func _mount_locked_content(standalone: Node) -> void:
 	var cloud: Object = DotRegistry.get_service(DotGameStandaloneContent.CLOUD_SERVICE)
 	var lock_result: DotResult = await DotGameLockedContent.run(cloud if cloud != null else standalone, gate)
 	locked_content = lock_result.value if lock_result.ok else null
+
+
+## Whether the client plays offline: forced, no link, or [code]--offline[/code] with a link that is not [member local_link].
+static func offline_wanted(forced: bool, has_link: bool, offline_flag: bool, local: bool) -> bool:
+	return forced or not has_link or (offline_flag and not local)
 
 
 ## Whether the lock is mounted: switched on, and not an offline or headless client unless it opted in.
