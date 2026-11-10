@@ -29,6 +29,11 @@ const RESPAWN := &"respawn"
 const CAMERA := &"camera"
 const STEER_LEFT := &"steer_left"
 const STEER_RIGHT := &"steer_right"
+## The keys a phone has no keyboard for: the command line, the map list, look-to-gag and look-to-mute (voice). The view key is [constant CAMERA].
+const COMMAND := &"command"
+const MAPS := &"maps"
+const GAG := &"gag"
+const MUTE := &"mute"
 
 const FPS := &"fps"
 const DRIVING := &"driving"
@@ -76,7 +81,7 @@ const PRESETS := {
 const LABELS := {
 	FIRE: "FIRE", ALT: "ALT", JUMP: "JUMP", CROUCH: "DUCK", RELOAD: "R", USE: "USE", SPRINT: "RUN",
 	NEXT: ">", PREV: "<", BOARD: "TAB", CHAT: "CHAT", GAS: "GAS", BRAKE: "BRAKE", HANDBRAKE: "HAND",
-	RESPAWN: "BACK", CAMERA: "CAM", STEER_LEFT: "<", STEER_RIGHT: ">",
+	RESPAWN: "BACK", CAMERA: "CAM", STEER_LEFT: "<", STEER_RIGHT: ">", COMMAND: "/", MAPS: "MAPS", GAG: "GAG", MUTE: "MUTE",
 }
 
 ## Ids games used before the presets, and the canonical id each is; [method validate] refuses them.

@@ -587,6 +587,32 @@ func _look_chat_mute(peer: int, muted: bool) -> void:
 	DotGameClientLook.chat_mute(self, peer, muted)
 
 
+## A phone's gag (or, [param mute], mute) button: the key press on the player under the crosshair. False when the voice look keys are not built.
+func touch_look(mute: bool = false) -> bool:
+	return DotGameClientLook.tap(self, mute)
+
+
+## A phone's scoreboard button, held: the board opens on the press and closes on the release. A release always closes; a press waits while a menu or the chat has the screen.
+func touch_board(down: bool) -> void:
+	var board_node: Object = board
+	if board_node == null or not is_instance_valid(board_node):
+		return
+	if not down:
+		board_node.call(&"close")
+	elif not is_menu_open() and not _chat_typing() and not is_input_blocked():
+		board_node.call(&"open")
+
+
+## A phone's map-list button, as M. False when this game has no map menu.
+func touch_maps() -> bool:
+	if maps == null or not is_instance_valid(maps) or is_input_blocked() or is_menu_open():
+		return false
+	if &"enabled" in maps and not bool(maps.get(&"enabled")):
+		return false
+	maps.call(&"open")
+	return true
+
+
 func _look_target() -> int:
 	return DotGameClientLook.target(self)
 

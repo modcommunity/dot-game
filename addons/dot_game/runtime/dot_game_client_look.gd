@@ -123,6 +123,14 @@ static func build(c: DotGameClient) -> void:
 			{"action": k["action"], "key": k["key"], "other": k["other"]})
 
 
+## One touch on the gag (or mute) button: what the key press does. False without the look keys.
+static func tap(c: DotGameClient, mute: bool) -> bool:
+	if c.look_mute == null or not is_instance_valid(c.look_mute) or not c.look_mute.has_method(&"tap"):
+		return false
+	c.look_mute.call(&"tap", Time.get_ticks_msec(), mute and c.look_separate_keys)
+	return true
+
+
 static func conflicts(c: DotGameClient) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var actions: Array = [c.look_gag_action]

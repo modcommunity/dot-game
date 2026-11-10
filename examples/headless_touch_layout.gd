@@ -2,7 +2,7 @@ extends DotGameCheckSuite
 
 ## DotGameTouchLayout: the presets, the canonical homes of fire, jump, crouch and reload, per-game overrides, validation, and the fit through DotGameClient.
 
-const EXPECTED_CHECKS := 36
+const EXPECTED_CHECKS := 42
 const SECTIONS := ["presets", "homes", "overrides", "validate", "apply"]
 const L := preload("res://addons/dot_game/runtime/dot_game_touch_layout.gd")
 
@@ -67,6 +67,8 @@ func _homes() -> void:
 	var fps: DotGameTouchLayout = L.make(L.FPS).value
 	_check(fps.row(L.JUMP)["offset"] == Vector2(80, 172) and fps.row(L.JUMP)["radius"] == 32.0, "jump is under fire, (80,172) r32")
 	_check(fps.row(L.CROUCH)["label"] == "DUCK", "crouch is labelled DUCK, its id is crouch")
+	for extra: StringName in [L.COMMAND, L.MAPS, L.GAG, L.MUTE]:
+		_check(L.build(L.PLATFORMER, {extra: &"row1"}).ok and L.LABELS.has(extra), "%s is a canonical id with a label, placeable in a slot" % extra)
 	_check(L.canonical_id(&"attack") == L.FIRE and L.canonical_id(&"swing") == L.FIRE, "attack and swing are fire")
 	_check(L.canonical_id(&"duck") == L.CROUCH and L.canonical_id(&"dot_fps_crouch") == L.CROUCH, "duck and dot_fps_crouch are crouch")
 	_check(L.canonical_id(&"split") == &"split", "a game's own id is left alone")
@@ -126,6 +128,10 @@ func _apply() -> void:
 		smallest = minf(smallest, float(r["radius"]))
 	_check(smallest * 2.0 * k * c.screen_fit.plan.get("stretch", 1.0) >= 43.99, "the smallest preset button is 44 real px across")
 	_check(lay.relabel(L.FIRE, "HIT").apply(b, c) == k and b.rows[0]["label"] == "HIT", "a relabel re-applies at the same scale")
+	_check(not c.touch_look(true) and not c.touch_maps(), "the touch gag and map buttons say false with no voice and no map menu")
+	c.touch_board(true)
+	c.touch_board(false)
+	_check(true, "the touch board button with no board does nothing")
 	b.free()
 	c.free()
 	DotPlatform.touch_override = -1
