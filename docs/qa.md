@@ -53,3 +53,7 @@ A `godot --script` tool that writes project files (`dot_game_cfg_templates.gd`, 
 
 Not covered: g2gfast's `load_probe` (a server-tick cost bench, nothing to do with the client), and the audio probes that drive a real client (look-at-me, dangerous-delivery, playground, smash-copter, arena, g2gfast). Suite: `examples/headless_probes.tscn`.
 
+
+## Sharded suites
+
+`DotGameShardArgs` (`addons/dot_game/qa/`, tool-only) is what a sharded suite reads from its command line: `shard()` (`-- --shard NAME`, "" for the whole suite), `is_merge()` / `merge_logs()` (`-- --merge LOG...`), `slice(items, shard, count)` (round-robin `m0`..`mN-1`), `missing(logs)` and `sections_entered(logs)` for the merge check. `game.sh test NAME.SHARD` / `NAME.merge` (dot-game-template `suite_shards`) pass the arguments. Users: arena, zombie-zone, prop-hunt. Suite: `examples/headless_shard_args.tscn`.
