@@ -27,6 +27,8 @@ var tag := ""
 var profiler_mode := "record"
 ## Every `--key value` pair, keyed without the dashes, values as strings.
 var args := {}
+## Nodes that entered the tree during the measured window: a match that is playing makes thousands (bullets, effects, drops), a dead one almost none; the sidecar's `nodes_added` / `nodes_added_per_tick` let the wrapper flag an INERT run.
+var _nodes_added := 0
 var client: Node = null
 var profiler: Node = null
 ## Per-frame sums while recording, for the sidecar.
@@ -165,6 +167,8 @@ func _run() -> void:
 		_add_counters(game)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_record_begin()
+	_nodes_added = 0
+	get_tree().node_added.connect(_count_node_added)
 	_steps0 = Engine.get_physics_frames()
 	_usec0 = Time.get_ticks_usec()
 	if recording:
@@ -182,6 +186,7 @@ func _run() -> void:
 		_frame_ms.append((now - last) / 1000.0)
 		last = now
 		_sample()
+	get_tree().node_added.disconnect(_count_node_added)
 	_usec1 = last
 	_steps1 = Engine.get_physics_frames()
 	await get_tree().process_frame
@@ -213,6 +218,10 @@ func _run() -> void:
 	print("PERF_BENCH_SIDECAR %s" % JSON.stringify(side))
 	print("PERF_BENCH %s" % JSON.stringify({"report": ProjectSettings.globalize_path(path), "sidecar": side_path, "tag": tag}))
 	get_tree().quit(0)
+
+
+func _count_node_added(_n: Node) -> void:
+	_nodes_added += 1
 
 
 func _add(key: String, v: float) -> void:
@@ -278,6 +287,7 @@ func _sidecar(game: Object, players0: int) -> Dictionary:
 		"dropped_ticks": int(round(dropped)), "dropped_per_sec": snappedf(dropped / wall_s, 0.01),
 		"profiler": profiler_mode, "frame_ms": frame_stats(_frame_ms),
 		"per_frame": per_frame,
+		"nodes_added": _nodes_added, "nodes_added_per_tick": snappedf(float(_nodes_added) / maxf(ticks, 1.0), 0.001),
 	}
 	if game != null and game.get("mode") != null:
 		side["mode"] = String(game.get("mode").id)

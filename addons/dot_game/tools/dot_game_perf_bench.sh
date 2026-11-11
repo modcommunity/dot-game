@@ -6,6 +6,8 @@
 #   tools/perf_bench.sh [--box staging02] [--headless] [--tag T] [--ref owner.json] [-- perf_bench args]
 #   tools/perf_bench.sh --ab DIR_A DIR_B [-n 3] [--box staging02] [-- perf_bench args]
 # --ab runs A,B,A,B... (n each) on one pinned box and prints per-system mean deltas.
+# A run whose world was inert (nodes_added ~0: no match, no fights) is flagged WARN, and the summary prints INVALID and exits 3;
+# --ab will not rank an inert side. PERF_BENCH_INERT_PER_TICK (default 0.05 nodes per tick) sets the limit.
 # DIR may carry extra bench args after "::", e.g. ~/wt/game-arena-x::--bots 15.
 set -euo pipefail
 
@@ -48,6 +50,9 @@ run_one() {
 		"$gpu" run "$(basename "$dir")" "${hl[@]}" res://tools/perf_bench.tscn -- --tag "$label" "$@" "${extra[@]}" \
 		> "$log" 2>&1 || echo "perf_bench: run exited $? (see $log)" >&2
 	grep -q '^PERF_BENCH_REPORT ' "$log" || { echo "perf_bench: no report in $log" >&2; tail -20 "$log" >&2; return 1; }
+	# A dead world (nobody fought) gives timings that read as a speedup: say so at once, per run (the table below
+	# then exits 3 / INVALID, and --ab will not rank it).
+	python3 "$self/dot_game_perf_bench_compare.py" --check "$log" | grep -a 'WARN' | sed 's/^/perf_bench: /' >&2 || true
 	echo "$log"
 }
 
@@ -58,6 +63,7 @@ if [[ $ab == 0 ]]; then
 	else
 		echo "perf_bench: no reference profile (PERF_BENCH_REF / --ref): report only, in $log"
 		grep -h '^PERF_BENCH_SIDECAR ' "$log" | cut -c1-600
+		python3 "$self/dot_game_perf_bench_compare.py" --check "$log"
 	fi
 	exit 0
 fi

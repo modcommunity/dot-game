@@ -4,14 +4,43 @@
   dot_game_perf_bench_compare.py REF RUN...            each RUN against REF (the first file)
   dot_game_perf_bench_compare.py --ab A1 B1 A2 B2 ...  group by label (LABEL=path; else A/B by position), mean B-A
   dot_game_perf_bench_compare.py --per-tick RUN...     the per-tick systems in ms per game tick (mean over the runs)
+  dot_game_perf_bench_compare.py --check RUN...        only whether each run's world was alive
+
+Every mode flags an INERT run (almost no nodes entering the tree per tick: nothing fought) with a WARN line, prints
+INVALID and exits 3; --ab then refuses to rank A against B.
 
 A file is a profiler report (.json) or a log with PERF_BENCH_REPORT / PERF_BENCH_SIDECAR lines.
 ms/frame differs with frame rate (2 ticks a frame at 50 ms, fewer on a faster box), so the
 per-call column is the one to compare across machines; ms/frame is what a player feels.
 """
 import json
+import os
 import statistics
 import sys
+
+# A world where nothing happens (bots never fought, a match never started) adds almost no nodes: ~0.001 a tick, against
+# 0.4-1.3 for a live 32-player match. Such a run's ms/tick reads as a speedup it is not (an idle sim-host bench was
+# taken for a 20% win for a day). Below this many nodes entering the tree per physics tick, a run is INERT.
+INERT_NODES_PER_TICK = float(os.environ.get("PERF_BENCH_INERT_PER_TICK", "0.05"))
+
+
+def activity(report, side):
+    """(nodes_added, nodes_added per tick) of the measured window, or None when the log carries neither number."""
+    side = side or {}
+    if "nodes_added" in side:
+        return side["nodes_added"], side.get("nodes_added_per_tick", 0.0)
+    eng = report.get("engine") or {}
+    if "nodes_added" in eng:
+        return eng["nodes_added"], eng.get("nodes_added_per_tick", 0.0)
+    return None
+
+
+def inert_note(head):
+    """A loud line when the run's world was dead (not a result), else ""."""
+    if head["inert"]:
+        return "WARN INERT RUN: nodes_added %d (%.3f/tick, limit %.2f): the world did not play (no fights, no match?); its timings are INVALID, do not rank them" % (
+            head["nodes_added"], head["nodes_per_tick"], INERT_NODES_PER_TICK)
+    return ""
 
 
 def load(path):
@@ -48,7 +77,10 @@ def load(path):
                 rows["engine." + k] = {"ms": v, "call": v, "calls": 1}
         for k, v in side.get("motor_queries", {}).items():
             rows["query." + k] = {"ms": v["ms_per_frame"], "call": v["us_each"] / 1000.0, "calls": v["per_frame"]}
+    act = activity(report, side)
     head = {
+        "inert": act is not None and act[1] < INERT_NODES_PER_TICK,
+        "nodes_added": act[0] if act else -1, "nodes_per_tick": act[1] if act else -1.0,
         "p50": report.get("p50_ms", 0.0), "p95": report.get("p95_ms", 0.0), "p99": report.get("p99_ms", 0.0),
         "frames": report.get("frames", 0),
         "ticks/frame": rows.get(pre + "physics", {}).get("calls", (side or {}).get("ticks_per_frame", 0.0)),
@@ -92,6 +124,9 @@ def compare(files, top):
     for r in runs:
         print("run %s  p50 %.1f ms (%+.0f%%)  p95 %.1f  p99 %.1f  frames %d  %s  [%s]" % (
             r[1], r[2]["p50"], pct(ref[2]["p50"], r[2]["p50"]), r[2]["p95"], r[2]["p99"], r[2]["frames"], ticks(r[2]), r[2]["box"]))
+    bad = [r for r in runs if r[2]["inert"]]
+    for r in bad:
+        print("%s: %s" % (r[1], inert_note(r[2])))
     print()
     print("%-32s %9s %9s" % ("system", "ref ms/f", "ms/call") + "".join(" | %8s %7s %8s %7s" % ("ms/f", "d%", "ms/call", "d%") for _ in runs))
     for k in order(ref[3], top):
@@ -111,6 +146,27 @@ def compare(files, top):
             b = r[3].get(k)
             line += " | %8.2f %7s %8.4f %7s" % (b["ms"], "", b["call"], "") if b else " | %8s %7s %8s %7s" % ("-", "", "-", "")
         print(line)
+    if bad:
+        print()
+        print("INVALID: %d of %d run(s) INERT (see WARN above); this table is not a result" % (len(bad), len(runs)))
+        return 3
+    return 0
+
+
+def check(files):
+    """Only the inert test, for a report-only run (no reference profile): 3 when any file is an inert run."""
+    code = 0
+    for f in files:
+        head = load(f)[2]
+        note = inert_note(head)
+        if note:
+            print("%s: %s" % (f, note))
+            code = 3
+        elif head["nodes_added"] < 0:
+            print("%s: note: no nodes_added in this log (older bench), activity not checked" % f)
+        else:
+            print("%s: world active (nodes_added %d, %.3f/tick)" % (f, head["nodes_added"], head["nodes_per_tick"]))
+    return code
 
 
 def ab(files, top):
@@ -118,6 +174,15 @@ def ab(files, top):
     for i, f in enumerate(files):
         label, path, head, rows = load(f)
         groups.setdefault(label or "AB"[i % 2], []).append((head, rows))
+        if head["inert"]:
+            groups.setdefault("_inert", []).append("%s %s" % (label or "AB"[i % 2], path))
+    dead = groups.pop("_inert", [])
+    if dead:
+        print("WARN INERT RUN(S): the world did not play (nodes_added below %.2f per tick), so their timings say nothing about the code:" % INERT_NODES_PER_TICK)
+        for d in dead:
+            print("  " + d)
+        print("INVALID: not ranking A against B while any run is inert (a dead match reads as a speedup)")
+        return 3
     if len(groups) != 2:
         sys.exit("--ab needs exactly two labels")
     (la, ga), (lb, gb) = groups.items()
@@ -177,10 +242,14 @@ def ab(files, top):
     da = [h["dropped/sec"] for h, _ in ga]
     db = [h["dropped/sec"] for h, _ in gb]
     print("%-32s %9.2f %15s %9.2f" % ("dropped ticks/sec", statistics.mean(da), "", statistics.mean(db)))
+    return 0
 
 
 def per_tick(files, top):
     runs = [load(f) for f in files]
+    for r in runs:
+        if r[2]["inert"]:
+            print("%s: %s" % (r[1], inert_note(r[2])))
     heads = [r[2] for r in runs]
     print("%d run(s)  p50 %s ms  p99 %s  ticks/frame %s  ticks/sec %s  dropped/sec %s" % (
         len(runs), " ".join("%.1f" % h["p50"] for h in heads), " ".join("%.1f" % h["p99"] for h in heads),
@@ -195,6 +264,10 @@ def per_tick(files, top):
         if not vals:
             continue
         print("%-32s %10.3f %10.1f %9.1f" % (k, statistics.mean(v[0] for v in vals), statistics.mean(v[1] for v in vals), statistics.mean(v[2] for v in vals)))
+    if any(r[2]["inert"] for r in runs):
+        print("INVALID: inert run(s) above")
+        return 3
+    return 0
 
 
 def main():
@@ -207,11 +280,14 @@ def main():
     if not args:
         sys.exit(__doc__)
     if args[0] == "--ab":
-        ab(args[1:], top)
+        code = ab(args[1:], top)
     elif args[0] == "--per-tick":
-        per_tick(args[1:], top)
+        code = per_tick(args[1:], top)
+    elif args[0] == "--check":
+        code = check(args[1:])
     else:
-        compare(args, top)
+        code = compare(args, top)
+    sys.exit(code)
 
 
 if __name__ == "__main__":
