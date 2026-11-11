@@ -57,3 +57,4 @@ What each `DotGameApi.LEVEL` added. The bump rule is on `DotAddonApi`.
 - 53: DotGameShardArgs (a sharded suite's `--shard` / `--merge` arguments, the round-robin `slice`, `missing`, `sections_entered`; replaces the per-game copies in arena, zombie-zone and prop-hunt). Tool-only, in `qa/`. Suite: `examples/headless_shard_args.tscn`.
 - 54: DotGameTouchLayout canonical ids `command`, `maps`, `gag`, `mute` (labels `/`, MAPS, GAG, MUTE) for the keys a phone lacks; slots unchanged. Suite: `examples/headless_touch_layout.tscn`.
 - 55: DotGameClient.local_link (a link to this machine's own server, a solo game hosted in a second process, survives `--offline`) and the static `offline_wanted`. Suite: `examples/game_selftest.tscn`.
+- 56: `DotGameModule._map_download_groups(map_id)`: the groups `report_map` passes to dot-server's `set_current_map` (dot-server API 19, per-map download groups); an older server is called with the map alone. Suite: `examples/game_selftest.tscn`.

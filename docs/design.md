@@ -54,7 +54,7 @@ dot-net compares the two ends' message tables when the client's arrives and refu
 
 ## `report_map`, because the map is the game's to say
 
-`DotGameModule.report_map(map_id)` hands the game's own map to `DotGameManager.set_current_map`, which A2S, DQP and the backbone report print in their map field. It is duck-typed (`has_method`), so a game built against this addon still loads on a dot-server from before `set_current_map` and is listed under its own name there, with one INFO line. The server forgets the map whenever a game unloads, so a game that changes map calls it on every change, not once at load.
+`DotGameModule.report_map(map_id)` hands the game's own map to `DotGameManager.set_current_map`, which A2S, DQP and the backbone report print in their map field. It is duck-typed (`has_method`), so a game built against this addon still loads on a dot-server from before `set_current_map` and is listed under its own name there, with one INFO line. A game whose map has its own download files (a bake, bot rides) overrides `_map_download_groups(map_id)`; `report_map` passes those dot-cloud groups on (dot-server API 19) so a joining client gets only this map's, and one already in the session tops up with `DotCloudClient.ensure_groups_at`. The server forgets the map whenever a game unloads, so a game that changes map calls it on every change, not once at load.
 
 ## The Tab board's server half
 

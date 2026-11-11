@@ -263,6 +263,8 @@ func _test_the_sequence() -> bool:
 	)
 	_module.report_map("")
 	_check(_server.games.current_map() == "", "and \"\" clears it")
+	_check(_module._server_takes_map_groups() == (DotAddonApi.build_level("dot_server") >= 19),
+		"report_map passes groups exactly when the server's set_current_map takes them")
 
 	_done()
 	return true

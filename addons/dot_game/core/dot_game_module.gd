@@ -531,8 +531,25 @@ func report_map(map_id: String) -> bool:
 			})
 		return false
 
-	server.games.call("set_current_map", map_id)
+	# dot-server 19 takes the map's download groups too, so a joining client fetches only this map's files.
+	if _server_takes_map_groups():
+		server.games.call("set_current_map", map_id, _map_download_groups(map_id) if map_id != "" else PackedStringArray())
+	else:
+		server.games.call("set_current_map", map_id)
 	return true
+
+
+## The dot-cloud download groups of [param map_id]'s own files (a bake, bot rides), reported with the map so a client
+## joining now fetches them and one already in the session tops up. Empty, the default, means the map has none.
+func _map_download_groups(_map_id: String) -> PackedStringArray:
+	return PackedStringArray()
+
+
+func _server_takes_map_groups() -> bool:
+	for m in server.games.get_method_list():
+		if m.name == "set_current_map":
+			return (m.args as Array).size() >= 2
+	return false
 
 
 ## The cvars a map's file may set: key -> `{type, min, max}` (dot-map's docs/map-config.md). Empty, the default, means this game takes no per-map settings.
