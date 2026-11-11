@@ -33,6 +33,8 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 mkdir -p "$logs"
+# Present through a headless Xorg, not Xvfb (gpu.sh ensure_xorg): about 10 ms/frame less on the NVIDIA driver. GPU_XORG=0 for Xvfb.
+export GPU_XORG=${GPU_XORG:-1}
 
 # One run of the checkout $1 (extra bench args after ::) on $box; prints the log path.
 run_one() {
