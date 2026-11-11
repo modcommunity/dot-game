@@ -35,7 +35,7 @@ CONTACTS_MIN = 20
 SERVER_FRAME_MS = 500.0
 SERVER_ERR = re.compile(r"\bERROR\b|\bFATAL\b|SCRIPT ERROR")
 # The server's first calls reach a client before its game link node exists (see netchaos_client.gd).
-JOIN_RACE = re.compile(r'Node not found: "Netchaos/Server/\w+"|Parameter "node" is null|Invalid packet received. Requested node was not found|Failed to get path from RPC|scene_cache_interface|node\.cpp:1975|scene_rpc_interface|rpcp \(|get_node \(scene')
+JOIN_RACE = re.compile(r'Node not found: "Netchaos/Server/\w+"|Parameter "node" is null|Invalid packet received. Requested node was not found|Failed to get path from RPC|Failed to get cached node from peer|scene_cache_interface|node\.cpp:1975|scene_rpc_interface|rpcp \(|get_node \(scene')
 JOIN_RACE_MAX = 12
 CLIENT_ERR = re.compile(r"SCRIPT ERROR|Parse Error|leaked at exit|still in use at exit|^ERROR:|Invalid (get|set|call)|Cannot (call|infer)")
 
