@@ -110,7 +110,7 @@ Each is additive; leaving it alone keeps the old behaviour.
 | mg-deathrun, mg-prop-hunt, mg-wipeout | easy to moderate | the same shape as look-at-me: `_build_gate`, `_build_settings` with the kit and `follow_hud`, `_capture`/`_release`, `_suspend_input`, `_show_board` |
 | mg-smash-copter, mg-buses-from-hell, mg-dangerous-delivery | moderate | 2D or vehicle clients with their own pointer rules (`capture_pointer = false`) and their own chat window |
 | game-hide-n-seek, game-zombie-zone, game-hungario, game-g2gfast | moderate | full settings pages and their own keys; check each suite's Tab and frame-count waits |
-| game-arena, game-playground | hard | arena has its server browser as a menu page and its own chat flow; playground keeps its spawn menu and server browser on its own stack. Use `use_settings = false` or a `_make_settings` override first |
+| game-arena, game-playlot | hard | arena has its server browser as a menu page and its own chat flow; playlot keeps its spawn menu and server browser on its own stack. Use `use_settings = false` or a `_make_settings` override first |
 
 ## Combat feel (spread, recoil, spread crosshair)
 

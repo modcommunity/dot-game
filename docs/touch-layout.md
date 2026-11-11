@@ -4,7 +4,7 @@
 
 ## The model
 
-- **Slots** (`SLOTS`): named places in the bottom-right cluster, offsets from the corner in design units of the 720-unit canvas. `primary` (80,84) r44, `secondary` (190,60) r30, `below` (80,172) r32, `outer` (262,60) r28, `inner` (190,150) r26, `corner` (262,140) r22, `row1`..`row4` along y 246 at r22; and `steer_near` / `steer_far` (r46) for a left steering strip. These are the wipeout family's numbers (wipeout, playground, smash-copter, buses), the most tested set, with reload at 140.
+- **Slots** (`SLOTS`): named places in the bottom-right cluster, offsets from the corner in design units of the 720-unit canvas. `primary` (80,84) r44, `secondary` (190,60) r30, `below` (80,172) r32, `outer` (262,60) r28, `inner` (190,150) r26, `corner` (262,140) r22, `row1`..`row4` along y 246 at r22; and `steer_near` / `steer_far` (r46) for a left steering strip. These are the wipeout family's numbers (wipeout, playlot, smash-copter, buses), the most tested set, with reload at 140.
 - **Homes** (`HOMES`): fire is always `primary`, jump `below`, crouch `outer`, reload `corner`, in every preset that has them. The suite checks it.
 - **Canonical ids**: `fire alt jump crouch reload use sprint next prev board chat gas brake handbrake respawn camera steer_left steer_right command maps gag mute`, each a constant (the last four, for a game with a command line, a map menu and voice look keys: `touch_look`, `touch_board`, `touch_maps` on DotGameClient do the key press). Labels default from `LABELS` (crouch is labelled DUCK; the id stays `crouch`). `ALIASES` maps the old ids (`attack`, `swing`, `duck`, `dot_fps_crouch`, `dot_fps_jump`, `dot_fps_sprint`, `run`, `tab`, `hand`) to canonical ones; `canonical_id(id)` is for a router that must accept both during a migration, and `validate()` refuses an alias in a layout.
 - **Presets** (`PRESETS`), per cluster (`RIGHT`, `LEFT`):
@@ -122,7 +122,7 @@ From the touch branches named in `game-dev/docs/touch-branches-status.md`; the c
 | Game | Preset and overrides | Ids renamed | Moves a player would notice | Cost |
 | --- | --- | --- | --- | --- |
 | mg-wipeout | fps, `{use: null, grab: inner}` | `duck` -> `crouch` | none | small: const block becomes one `build` |
-| game-playground | fps, `{use: null, reload: null, menu: {slot: inner, label: "Q"}}` | `duck` -> `crouch` | none | small |
+| game-playlot | fps, `{use: null, reload: null, menu: {slot: inner, label: "Q"}}` | `duck` -> `crouch` | none | small |
 | mg-smash-copter | fps as is (`use` label "E") | `duck` -> `crouch` | reload 128 -> 140 | small |
 | mg-buses-from-hell | platformer less sprint/crouch with fire, or fps `{alt: null, ...}`; brake to `secondary` | `swing` -> `fire` | none | small; also drop the stray `.uid` files |
 | mg-prop-hunt | fps for the hunter (`aim` in `outer`, `gear` in `inner`), `custom()` for the prop | none | fire, jump, reload move from the compact family to the homes | medium: two role layouts, its suite's positions |
