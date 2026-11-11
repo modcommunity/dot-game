@@ -132,6 +132,6 @@ From the touch branches named in `game-dev/docs/touch-branches-status.md`; the c
 | game-hide-n-seek | platformer `{use: {label: "DOOR"}, taunt: corner}` | `dot_fps_jump/sprint/crouch` -> `jump/sprint/crouch` | jump r54 -> r32 in `below`; its router reads action names, so it needs `canonical_id` or a map | medium: the `DotTouchButtons` subclass's `LAYOUT` and the id-is-action trick go |
 | mg-dangerous-delivery | driving, right `{camera: null, respawn: null}`; left adds `respawn`, `camera`, `lot` by offset | `hand` -> `handbrake`, `left`/`right` -> `steer_left`/`steer_right` | gas r54 -> r44 | medium: two clusters, its input reads the ids |
 | game-hungario | `custom()` with four slots (above) | none | all four, by up to 12 units | small |
-| game-arena, game-g2gfast, game-zombie-zone | fps, after their touch branches are rebased on `phone-scale` | per branch (not yet compared) | unknown | small each once rebased |
+| game-fatal-contact, game-airdrift, game-zombie-zone | fps, after their touch branches are rebased on `phone-scale` | per branch (not yet compared) | unknown | small each once rebased |
 
 Order: this branch after `phone-scale` merges, then one builder per game, the wipeout family first (smallest change, proves the preset), the odd ones (dangerous-delivery, hide-n-seek, prop-hunt) last.

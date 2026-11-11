@@ -545,7 +545,7 @@ func _map_config_defaults() -> Dictionary:
 	return {}
 
 
-## The `cfg/game/<game>/dot_map/` folder's game name (the repository's, such as `game-arena`): `DotAddonConfig.game` when the host set it, else the module's name.
+## The `cfg/game/<game>/dot_map/` folder's game name (the repository's, such as `game-fatal-contact`): `DotAddonConfig.game` when the host set it, else the module's name.
 func _map_config_game() -> String:
 	return DotAddonConfig.game if DotAddonConfig.game != "" else String(_module_name())
 

@@ -15,7 +15,7 @@ func _map_config_keys() -> Dictionary:
 	}
 ```
 
-The other hooks default to what nearly every game wants: `_map_config_defaults()` (key to value for a map with no file, `{}`), `_map_config_game()` (the `cfg/game/<game>/` folder: `DotAddonConfig.game`, else `_module_name()`; set `DotAddonConfig.game` to the repository name, such as `game-arena`), and `_map_config_get(key)` / `_map_config_set(key, value)`, which read and set the server console's cvars. Override the last two for settings that are not cvars.
+The other hooks default to what nearly every game wants: `_map_config_defaults()` (key to value for a map with no file, `{}`), `_map_config_game()` (the `cfg/game/<game>/` folder: `DotAddonConfig.game`, else `_module_name()`; set `DotAddonConfig.game` to the repository name, such as `game-fatal-contact`), and `_map_config_get(key)` / `_map_config_set(key, value)`, which read and set the server console's cvars. Override the last two for settings that are not cvars.
 
 ## On a `DotModule` not yet on `DotGameModule`
 
@@ -25,7 +25,7 @@ Build the helper once and call it from the map-change handler:
 var map_config: DotGameMapConfig
 func _on_map_changed(map) -> void:
 	if map_config == null:
-		map_config = DotGameMapConfig.for_console("game-arena", console, {"arena_surf": {"type": "int", "min": 0, "max": 1}})
+		map_config = DotGameMapConfig.for_console("game-fatal-contact", console, {"arena_surf": {"type": "int", "min": 0, "max": 1}})
 	map_config.apply(String(map.id))
 # and in the unload: map_config.restore()
 ```

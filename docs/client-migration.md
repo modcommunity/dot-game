@@ -6,7 +6,7 @@
 
 Settings layer the same way in every addon, weakest first: the addon's schema defaults, the addon's shipped `cfg/addon/<addon>/`, the game's `cfg/game/<game>/<addon>/`, the server operator's `cfg/server/addon/<addon>/` and `cfg/server/game/<game>/`, then environment variables, then the command line, then runtime changes (a console `set`). The folder is the addon name with `-` written as `_`. Secrets are read from files only: a key marked sensitive is refused from the environment and the command line. Details: [dot-core's addon-config.md](../../dot-core/docs/addon-config.md).
 
-`./game.sh` is the one entry point every game repository has (copy it from the reference game, `game-arena`):
+`./game.sh` is the one entry point every game repository has (copy it from the reference game, `game-fatal-contact`):
 
 | Command | Does |
 | --- | --- |
@@ -109,9 +109,9 @@ Each is additive; leaving it alone keeps the old behaviour.
 | --- | --- | --- |
 | mg-deathrun, mg-prop-hunt, mg-wipeout | easy to moderate | the same shape as look-at-me: `_build_gate`, `_build_settings` with the kit and `follow_hud`, `_capture`/`_release`, `_suspend_input`, `_show_board` |
 | mg-smash-copter, mg-buses-from-hell, mg-dangerous-delivery | moderate | 2D or vehicle clients with their own pointer rules (`capture_pointer = false`) and their own chat window |
-| game-hide-n-seek, game-zombie-zone, game-hungario, game-g2gfast | moderate | full settings pages and their own keys; check each suite's Tab and frame-count waits |
-| game-arena, game-playlot | hard | arena has its server browser as a menu page and its own chat flow; playlot keeps its spawn menu and server browser on its own stack. Use `use_settings = false` or a `_make_settings` override first |
+| game-hide-n-seek, game-zombie-zone, game-hungario, game-airdrift | moderate | full settings pages and their own keys; check each suite's Tab and frame-count waits |
+| game-fatal-contact, game-playlot | hard | arena has its server browser as a menu page and its own chat flow; playlot keeps its spawn menu and server browser on its own stack. Use `use_settings = false` or a `_make_settings` override first |
 
 ## Combat feel (spread, recoil, spread crosshair)
 
-`DotGameCombatFeel` (API 27) is the opt-in for movement-dependent spread, recoil patterns and the `cl_crosshair_*` console cvars. `DotGameCombatFeel.new(true)` turns the rules on, `new(false)` registers them off (admins flip `sv_spread_enabled` / `sv_recoil_enabled`). Per game: `feel.attach(player.arsenal)` for every arsenal on both sides, `feel.sprint_defaults(config_tunables)` once and `feel.track_tunables(t)` for every player's `DotFpsTunables` (sprint and stamina cvars; `new(on, false)` for a game with no sprint), `feel.bind_cvars(add_cvar)` in the server module, `feel.follow_cvars(link)` on the client, and either `DotGameClient.add_combat_feel(feel, crosshair, arsenal_fn)` (follows, binds the console, drives the crosshair each frame) or `feel.bind_console(local_console, crosshair)` when the crosshair already pulls its spread. game-arena is the reference.
+`DotGameCombatFeel` (API 27) is the opt-in for movement-dependent spread, recoil patterns and the `cl_crosshair_*` console cvars. `DotGameCombatFeel.new(true)` turns the rules on, `new(false)` registers them off (admins flip `sv_spread_enabled` / `sv_recoil_enabled`). Per game: `feel.attach(player.arsenal)` for every arsenal on both sides, `feel.sprint_defaults(config_tunables)` once and `feel.track_tunables(t)` for every player's `DotFpsTunables` (sprint and stamina cvars; `new(on, false)` for a game with no sprint), `feel.bind_cvars(add_cvar)` in the server module, `feel.follow_cvars(link)` on the client, and either `DotGameClient.add_combat_feel(feel, crosshair, arsenal_fn)` (follows, binds the console, drives the crosshair each frame) or `feel.bind_console(local_console, crosshair)` when the crosshair already pulls its spread. game-fatal-contact is the reference.
