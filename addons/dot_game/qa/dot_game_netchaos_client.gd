@@ -132,6 +132,9 @@ func _now() -> float:
 	return Time.get_unix_time_from_system()
 
 
+# Every `cnet` below is untyped on purpose: with `var cnet: DotNetManager` here and a typed
+# `DotClientLink` in the same script, Godot 4.7.2 left 120 objects and 90 scripts at exit (the exit-walk
+# bug), and `netchaos clean` failed on it. Do not annotate them.
 func _join() -> bool:
 	_sessions += 1
 	_dropped = false
@@ -161,7 +164,7 @@ func _join() -> bool:
 	_client.set("mouse_capture_override", true)
 	add_child(_client)
 	while _now() - began < READY_SECONDS and not _dropped:
-		var cnet: DotNetManager = _client.get("net")
+		var cnet = _client.get("net")
 		if cnet != null and cnet.clock.is_synced() and _client.get("player") != null:
 			_join_seconds.append(_now() - began)
 			_sess_base = {"corrections": 0, "replays": 0}
@@ -174,7 +177,7 @@ func _join() -> bool:
 
 ## The spawn snap on join is not a misprediction; judge corrections from the moment play starts.
 func _forget_join_snap() -> void:
-	var cnet: DotNetManager = _client.get("net")
+	var cnet = _client.get("net")
 	if cnet == null or cnet.predictor == null:
 		return
 	cnet.predictor.set("_worst_error", 0.0)
@@ -216,14 +219,14 @@ func _fold_prediction() -> void:
 func _prediction() -> Dictionary:
 	if _client == null:
 		return {}
-	var cnet: DotNetManager = _client.get("net")
+	var cnet = _client.get("net")
 	if cnet == null or cnet.predictor == null:
 		return {}
 	return cnet.predictor.describe()
 
 
 func _sample() -> void:
-	var cnet: DotNetManager = _client.get("net")
+	var cnet = _client.get("net")
 	if cnet == null:
 		return
 	var p := _prediction()
@@ -251,7 +254,7 @@ const SPIKE_M := 0.5
 
 
 func _watch_corrections() -> void:
-	var cnet: DotNetManager = _client.get("net") if _client != null else null
+	var cnet = _client.get("net") if _client != null else null
 	if cnet == null or cnet.predictor == null:
 		return
 	var e: float = cnet.predictor.get("_worst_error")
@@ -260,13 +263,13 @@ func _watch_corrections() -> void:
 	cnet.predictor.set("_worst_error", 0.0)
 	_worst_error = maxf(_worst_error, e)
 	if e >= 0.02 and e < SPIKE_M and _small.size() < 60 and _now() >= _start_at:
-		var q := cnet.predictor.describe()
+		var q = cnet.predictor.describe()
 		_small.append({"t": snappedf(_now() - _start_at, 0.01), "error_m": snappedf(e, 0.001),
 			"replayed": q.get("last_replay_ticks"), "last_mismatch": str(q.get("last_mismatch")), "state": _state_line()})
 	if e < SPIKE_M or _spikes.size() >= 40 or _now() < _start_at:
 		return
-	var p := cnet.predictor.describe()
-	var c := cnet.clock.describe()
+	var p = cnet.predictor.describe()
+	var c = cnet.clock.describe()
 	var player = _client.get("player")
 	_spikes.append({"t": snappedf(_now() - _start_at, 0.01), "error_m": snappedf(e, 0.001),
 		"replayed": p.get("last_replay_ticks"), "snaps": p.get("snaps"), "alive": player != null and _alive(player),
@@ -287,7 +290,7 @@ func _state_line() -> String:
 
 ## The replicated behaviour a player is mirrored by, found through the registry.
 func _net_behaviour(who) -> Variant:
-	var cnet: DotNetManager = _client.get("net")
+	var cnet = _client.get("net")
 	if cnet == null:
 		return null
 	for identity in cnet.registry.all():
@@ -352,7 +355,7 @@ func _watch_roster() -> void:
 func _watch_gap(delta: float) -> void:
 	if _client == null:
 		return
-	var cnet: DotNetManager = _client.get("net")
+	var cnet = _client.get("net")
 	if cnet == null:
 		return
 	var received: int = cnet.stats.snapshots_received
@@ -441,7 +444,7 @@ func _report(t0: float) -> void:
 		"errors": _errors, "timeline": _timeline, "spikes": _spikes, "small_corrections": _small, "roster_seen": _roster_seen, "dbg": _dbg_log}
 	if _client != null:
 		_fold_prediction()
-		var cnet: DotNetManager = _client.get("net")
+		var cnet = _client.get("net")
 		var player = _client.get("player")
 		var game = _find_game(_client)
 		out["gate_open"] = _gate_is_open()
