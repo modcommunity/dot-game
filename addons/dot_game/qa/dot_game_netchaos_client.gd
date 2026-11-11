@@ -429,6 +429,8 @@ func _run() -> void:
 	# reach the others before their own report, which read as a lost roster entry.
 	if ok:
 		await get_tree().create_timer(LINGER_SEC).timeout
+	# Free the pilot, client and link before quitting, so none is still alive when the engine exits.
+	await _teardown()
 	get_tree().quit()
 
 
