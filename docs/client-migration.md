@@ -53,6 +53,8 @@ Settings layer the same way in every addon, weakest first: the addon's schema de
    board = platform.board
    ```
 
+   A client that draws can spread the setup over frames instead (API 57): `await platform.setup_stepped(between)` builds one piece of `DotGameClient.SETUP_PIECES` a frame and awaits `between.call(piece)` after each (a frame when `between` is empty; headless it runs straight through). `platform.setup_usec` then holds each piece's cost. All of it in one `setup()` was about 200 ms in one frame in game-arena.
+
    A settings node the game adds to its own tree before `setup()` stays where it is; one that is not in the tree is added under the platform. The same goes for the chat box.
 
 3. **After `setup()`**, bind the settings to the camera, audio, effects and look as before, and set the board's columns, title and `sort_by` (the platform has already fed it).

@@ -235,6 +235,10 @@ var _vis_world: RefCounted = null
 var _vis_drawn: WeakRef = null
 var _vis_parent: WeakRef = null
 
+## The pieces of [method setup], in order; [method setup_stepped] runs one per frame. Late parts are [code]sounds[/code] and [code]quality[/code].
+const SETUP_PIECES: Array[StringName] = [&"chat", &"settings", &"console", &"profiler", &"menu", &"look", &"sounds", &"quality"]
+## Microseconds each piece of the last [method setup] or [method setup_stepped] took, by piece name.
+var setup_usec: Dictionary = {}
 var _set_up: bool = false
 var _feel: DotGameCombatFeel = null
 var _feel_crosshair: Control = null
@@ -378,24 +382,67 @@ func setup() -> DotResult:
 	if _set_up:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
 	_set_up = true
-	DotGameClientExtras.wire_chat(self)
-	_wire_pointer_modals()
-	if gate_only:
-		_refresh_blocked()
-		return DotResult.success(self)
-	if use_settings and menu == null:
-		_build_settings()
-	if use_console:
-		add_console()
-	DotGameClientExtras.add_profiler(self)
-	_wire_menu()
-	DotGameClientLook.build(self)
-	DotGameClientExtras.add_late_parts(self)
+	setup_usec.clear()
+	for piece in _setup_pieces():
+		_run_setup_piece(piece)
+	return _finish_setup()
 
-	if capture_pointer and not DotPlatform.is_web():
+
+## [method setup] one piece at a time ([constant SETUP_PIECES]), so no single client frame pays for all of it. [param between] is `func(piece: StringName)`, may await, and runs after each piece; unset waits a process frame, except headless, which runs in one go. Await it.
+func setup_stepped(between: Callable = Callable()) -> DotResult:
+	if _set_up:
+		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
+	_set_up = true
+	setup_usec.clear()
+	var pieces := _setup_pieces()
+	for i in pieces.size():
+		_run_setup_piece(pieces[i])
+		if i == pieces.size() - 1:
+			break
+		if between.is_valid():
+			await between.call(pieces[i])
+		elif DisplayServer.get_name() != "headless" and is_inside_tree():
+			await get_tree().process_frame
+	return _finish_setup()
+
+
+func _setup_pieces() -> Array[StringName]:
+	var only_chat: Array[StringName] = [&"chat"]
+	return only_chat if gate_only else SETUP_PIECES
+
+
+func _run_setup_piece(piece: StringName) -> void:
+	var started := Time.get_ticks_usec()
+	match piece:
+		&"chat":
+			DotGameClientExtras.wire_chat(self)
+			_wire_pointer_modals()
+		&"settings":
+			if use_settings and menu == null:
+				_build_settings()
+		&"console":
+			if use_console:
+				add_console()
+		&"profiler":
+			DotGameClientExtras.add_profiler(self)
+		&"menu":
+			_wire_menu()
+		&"look":
+			DotGameClientLook.build(self)
+		&"sounds":
+			DotGameClientExtras.add_slide_sounds(self)
+			DotGameClientExtras.add_landing(self)
+		&"quality":
+			DotGameClientExtras.add_render_quality(self)
+			DotGameClientExtras.watch_latency_net(self)
+	setup_usec[piece] = Time.get_ticks_usec() - started
+
+
+func _finish_setup() -> DotResult:
+	if not gate_only and capture_pointer and not DotPlatform.is_web():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-
 	_refresh_blocked()
+	DotLog.debug(CHANNEL, "platform set up", {"usec": setup_usec})
 	return DotResult.success(self)
 
 

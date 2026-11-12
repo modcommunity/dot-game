@@ -88,6 +88,7 @@ func _run_wiring() -> void:
 	await _test_client_page_guard()
 	await _test_client_user_tier()
 	await _test_client_without_the_addons()
+	await _test_client_stepped_setup()
 	await _test_link_survives_reload()
 	_test_workbench_hosting()
 	_test_workbench_key()

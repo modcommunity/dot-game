@@ -500,6 +500,51 @@ func _test_client_without_the_addons() -> void:
 	await get_tree().process_frame
 	_done()
 
+
+## setup_stepped: the same pieces as setup, with the caller's step between each.
+func _test_client_stepped_setup() -> void:
+	_section("the client's platform, set up one piece a frame")
+	var host := Node.new()
+	add_child(host)
+	var client := DotGameClient.new()
+	client.require_camera = false
+	client.capture_pointer = false
+	client.console_kit_path = CONSOLE_KIT_FIXTURE
+	var settings := ClientSettings.new()
+	client.settings = settings
+	host.add_child(client)
+	var seen: Array[StringName] = []
+	var frame0 := Engine.get_process_frames()
+	var between := func(piece: StringName) -> void:
+		seen.append(piece)
+		await get_tree().process_frame
+	var stepped: DotResult = await client.setup_stepped(between)
+	var expected := DotGameClient.SETUP_PIECES.slice(0, DotGameClient.SETUP_PIECES.size() - 1)
+	_check(stepped.ok and seen == expected,
+		"the caller's step runs after every piece but the last, in order", str(seen))
+	_check(Engine.get_process_frames() - frame0 >= expected.size(),
+		"and a frame passes at each step")
+	_check(settings.setups == 1 and client.menu != null and client.console != null \
+			and client.console.get_meta(&"menu") == client.menu,
+		"it builds what setup builds: the settings once, the menu, the console over it")
+	_check(client.setup_usec.keys() == Array(DotGameClient.SETUP_PIECES),
+		"and times every piece", str(client.setup_usec))
+	var again: DotResult = await client.setup_stepped(between)
+	_check(not again.ok and again.error.code == DotError.CODE_STATE and not client.setup().ok,
+		"a second setup, either way, is refused")
+
+	var bare := DotGameClient.new()
+	bare.gate_only = true
+	bare.require_camera = false
+	host.add_child(bare)
+	seen.clear()
+	var bare_up: DotResult = await bare.setup_stepped(between)
+	_check(bare_up.ok and seen.is_empty() and bare.setup_usec.keys() == [&"chat"] and bare.menu == null,
+		"gate_only steps only the chat, with nothing between")
+	host.queue_free()
+	await get_tree().process_frame
+	_done()
+
 # 9. DotGameLink
 
 ## Catches every engine-level error while attached. A deliberate error elsewhere in this suite
