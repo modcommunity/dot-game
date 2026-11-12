@@ -37,12 +37,13 @@ static func make_gate(c: DotGameClient) -> DotLoadGate:
 static func stepped(c: DotGameClient, between: Callable) -> DotResult:
 	var pieces := c._setup_pieces()
 	var stepping := between.is_valid() or (DisplayServer.get_name() != "headless" and c.is_inside_tree())
-	# dot-profiler is the costly piece: its script compiles on a loader thread while the pieces before it run.
+	# dot-profiler is the costly piece: its script compiles on a loader thread (from _ready) while the pieces before it run.
 	var profiler_loading := stepping and c.use_profiler and c.is_inside_tree() and &"profiler" in pieces and _Profiler.request_script()
 	var profiler_script: Resource = null
 	for i in pieces.size():
 		if pieces[i] == &"profiler" and profiler_loading:
-			profiler_script = await _Profiler.await_script(c.get_tree())
+			# With between, every frame boundary is the game's (it may hold the multiplayer poll across them): never end one here.
+			profiler_script = await _Profiler.await_script(c.get_tree(), between.is_valid())
 			DotLog.debug(DotGameClient.CHANNEL, "profiler script loaded off the main thread", {"ok": profiler_script != null})
 		c._run_setup_piece(pieces[i])
 		if i == pieces.size() - 1:

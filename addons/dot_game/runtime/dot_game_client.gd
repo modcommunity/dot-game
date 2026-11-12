@@ -293,6 +293,9 @@ func _ready() -> void:
 		get_tree().node_added.connect(_on_node_added_quality)
 	_blocked = is_input_blocked()
 	DotGamePageGuard.install(self)
+	# Compiled on a loader thread from here, so setup's profiler piece finds it ready rather than waiting frames for it.
+	if use_profiler and not gate_only and DisplayServer.get_name() != "headless":
+		var _loading := _Profiler.request_script()
 
 
 func _attach_screen_fit() -> void:

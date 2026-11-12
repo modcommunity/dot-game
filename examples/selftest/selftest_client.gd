@@ -524,6 +524,8 @@ func _test_client_stepped_setup() -> void:
 		"the caller's step runs after every piece but the last, in order", str(seen))
 	_check(Engine.get_process_frames() - frame0 >= expected.size(),
 		"and a frame passes at each step")
+	_check(Engine.get_process_frames() - frame0 == expected.size(),
+		"and only there: the profiler's script load ends no frame of its own", str(Engine.get_process_frames() - frame0))
 	_check(settings.setups == 1 and client.menu != null and client.console != null \
 			and client.console.get_meta(&"menu") == client.menu,
 		"it builds what setup builds: the settings once, the menu, the console over it")
