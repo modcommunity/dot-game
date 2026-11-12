@@ -18,6 +18,22 @@ static func wanted() -> bool:
 	return OS.get_environment(OFF_ENV) != "0"
 
 
+## Starts compiling the profiler script on a loader thread, so [method add] later finds it cached instead of compiling it in one frame. False when there is nothing to load or no threads (web): [method add] then loads it itself.
+static func request_script() -> bool:
+	if not wanted() or not ResourceLoader.exists(SCRIPT) or ResourceLoader.has_cached(SCRIPT) or not DotPlatform.has_threads():
+		return false
+	return ResourceLoader.load_threaded_request(SCRIPT) == OK
+
+
+## Awaits the load [method request_script] started, one process frame at a time, and returns the script (null if it failed). Hold the result until [method add] ran: the cache keeps a script only while something references it.
+static func await_script(tree: SceneTree) -> Resource:
+	while ResourceLoader.load_threaded_get_status(SCRIPT) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await tree.process_frame
+	if ResourceLoader.load_threaded_get_status(SCRIPT) != ResourceLoader.THREAD_LOAD_LOADED:
+		return null
+	return ResourceLoader.load_threaded_get(SCRIPT)
+
+
 ## Adds the profiler under [param host] (the Performance tab then appears in the menu). Null when it is off, not in this build, or already placed.
 ## It watches no frames until profiler_enabled or a recording turns that on, so an idle one costs nothing.
 static func add(host: Node) -> Node:

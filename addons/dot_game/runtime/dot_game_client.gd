@@ -388,14 +388,21 @@ func setup() -> DotResult:
 	return _finish_setup()
 
 
-## [method setup] one piece at a time ([constant SETUP_PIECES]), so no single client frame pays for all of it. [param between] is `func(piece: StringName)`, may await, and runs after each piece; unset waits a process frame, except headless, which runs in one go. Await it.
+## [method setup] one piece at a time ([constant SETUP_PIECES]), so no single client frame pays for all of it. [param between] is `func(piece: StringName)`, may await, and runs after each piece; unset waits a process frame, except headless, which runs in one go. When it steps, the dot-profiler script compiles on a loader thread before its piece. Await it.
 func setup_stepped(between: Callable = Callable()) -> DotResult:
 	if _set_up:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
 	_set_up = true
 	setup_usec.clear()
 	var pieces := _setup_pieces()
+	var stepping := between.is_valid() or (DisplayServer.get_name() != "headless" and is_inside_tree())
+	# dot-profiler is the costly piece: its script compiles on a loader thread while the pieces before it run.
+	var profiler_loading := stepping and use_profiler and is_inside_tree() and &"profiler" in pieces and _Profiler.request_script()
+	var profiler_script: Resource = null
 	for i in pieces.size():
+		if pieces[i] == &"profiler" and profiler_loading:
+			profiler_script = await _Profiler.await_script(get_tree())
+			DotLog.debug(CHANNEL, "profiler script loaded off the main thread", {"ok": profiler_script != null})
 		_run_setup_piece(pieces[i])
 		if i == pieces.size() - 1:
 			break
