@@ -226,6 +226,13 @@ def ab(files, top):
     print("%s: %d runs, p50 %s ms   %s: %d runs, p50 %s ms   delta %+.2f ms (%+.1f%%)" % (
         la, len(ga), " ".join("%.1f" % v for v in pa), lb, len(gb), " ".join("%.1f" % v for v in pb),
         statistics.mean(pb) - statistics.mean(pa), pct(statistics.mean(pa), statistics.mean(pb))))
+    # Sim speed beside the frame: a cheaper tick can buy catch-up ticks instead of a shorter frame, so p50 alone misleads.
+    for key in ("ticks/sec", "dropped/sec"):
+        va = [h[key] for h, _ in ga]
+        vb = [h[key] for h, _ in gb]
+        print("%s: %s %s ->  %s: %s %s   delta %+.2f (%+.1f%%)" % (
+            la, key, " ".join("%.1f" % v for v in va), lb, key, " ".join("%.1f" % v for v in vb),
+            statistics.mean(vb) - statistics.mean(va), pct(statistics.mean(va), statistics.mean(vb))))
     qa = [h["p99"] for h, _ in ga]
     qb = [h["p99"] for h, _ in gb]
     print("%s p99 %s ms   %s p99 %s ms   delta %+.2f ms" % (
