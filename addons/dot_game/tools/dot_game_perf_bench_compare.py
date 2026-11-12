@@ -92,6 +92,8 @@ def load(path):
         "frame_ms": (side or {}).get("frame_ms", {}),
         "profiler": (side or {}).get("profiler", "record"),
         "box": (side or {}).get("adapter") or (side or {}).get("display", "") or "owner",
+        # `--first-use 1` rows: [{name, base_ms, worst_ms, over_ms, at, compiles}].
+        "first_use": (side or {}).get("first_use", []),
     }
     return label, path, head, rows
 
@@ -153,6 +155,30 @@ def compare(files, top):
     return 0
 
 
+def first_use_table(groups):
+    """Per first-use name, each label's worst frame (mean and per run) and pipelines compiled: [(label, [head, ...])]."""
+    names = []
+    for _, heads in groups:
+        for h in heads:
+            for r in h["first_use"]:
+                if r["name"] not in names:
+                    names.append(r["name"])
+    if not names:
+        return
+    print()
+    print("%-28s" % "first use (worst frame ms)" + "".join(" | %-8s %9s %-24s %8s" % (l, "mean", "runs", "compiles") for l, _ in groups))
+    for n in names:
+        line = "%-28s" % n
+        for _, heads in groups:
+            rows = [r for h in heads for r in h["first_use"] if r["name"] == n]
+            if not rows:
+                line += " | %-8s %9s %-24s %8s" % ("", "-", "", "")
+                continue
+            line += " | %-8s %9.1f %-24s %8.1f" % ("", statistics.mean(r["worst_ms"] for r in rows),
+                " ".join("%.0f" % r["worst_ms"] for r in rows)[:24], statistics.mean(r["compiles"] for r in rows))
+        print(line)
+
+
 def check(files):
     """Only the inert test, for a report-only run (no reference profile): 3 when any file is an inert run."""
     code = 0
@@ -166,6 +192,8 @@ def check(files):
             print("%s: note: no nodes_added in this log (older bench), activity not checked" % f)
         else:
             print("%s: world active (nodes_added %d, %.3f/tick)" % (f, head["nodes_added"], head["nodes_per_tick"]))
+        if head["first_use"]:
+            first_use_table([("run", [head])])
     return code
 
 
@@ -177,6 +205,8 @@ def ab(files, top):
         if head["inert"]:
             groups.setdefault("_inert", []).append("%s %s" % (label or "AB"[i % 2], path))
     dead = groups.pop("_inert", [])
+    if len(groups) == 2:
+        first_use_table([(l, [h for h, _ in g]) for l, g in groups.items()])
     if dead:
         print("WARN INERT RUN(S): the world did not play (nodes_added below %.2f per tick), so their timings say nothing about the code:" % INERT_NODES_PER_TICK)
         for d in dead:

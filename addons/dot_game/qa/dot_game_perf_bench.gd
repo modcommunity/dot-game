@@ -8,7 +8,9 @@ extends Node
 ## (which execs dot-game's `tools/perf_bench.sh`), not headless: headless has no renderer, so the render cost reads as zero.
 ##
 ## Flags (after `--`): `--map ID --mode ID --bots N --seconds S --warmup S --seed N --out DIR --tag T --profiler record|idle|off`; every `--key value` pair is also
-## in [member args] (without the dashes) for a subclass's own flags. Prints `PERF_BENCH_REPORT {json}` (the profiler report without
+## in [member args] (without the dashes) for a subclass's own flags. `--first-use 1` runs the game's `_first_use` hook between the selection
+## and the warm-up: it times each first use (first shot of each weapon, first explosion) with `time_first_use`, and the rows land in
+## the sidecar's `first_use` list, which `dot_game_perf_bench_compare.py` prints per name (A/B: `--ab DIR DIR::--prewarm 0 -- --first-use 1`). Prints `PERF_BENCH_REPORT {json}` (the profiler report without
 ## spikes and samples, as the run may be on another box), `PERF_BENCH_SIDECAR {json}` and `PERF_BENCH {json}` (paths and tag).
 
 ## The game's client scene (`res://game/x.tscn`). Required.
@@ -25,6 +27,9 @@ var tag := ""
 ## `profiler_record`), "idle" (placed, not recording) or "off" (never placed). The sidecar's `frame_ms` is the bench's own
 ## clock in all three, so `--ab DIR::--profiler off DIR` gives the cost of recording.
 var profiler_mode := "record"
+## `--first-use 1`: call `_first_use` after the selection and put its `time_first_use` rows in the sidecar.
+var first_use := false
+var _first_use_rows: Array[Dictionary] = []
 ## Every `--key value` pair, keyed without the dashes, values as strings.
 var args := {}
 ## Nodes that entered the tree during the measured window: a match that is playing makes thousands (bullets, effects, drops), a dead one almost none; the sidecar's `nodes_added` / `nodes_added_per_tick` let the wrapper flag an INERT run.
@@ -60,6 +65,12 @@ func _select(_game: Object) -> void:
 
 ## After the selection, before the warm-up: start a pilot that drives the player.
 func _start_pilot(_game: Object) -> void:
+	pass
+
+
+## With `--first-use 1`, after the selection and before the pilot: use each thing once (equip and fire every weapon, say), each
+## wrapped in `await time_first_use(name, action)`. May await.
+func _first_use(_game: Object) -> void:
 	pass
 
 
@@ -101,6 +112,7 @@ func _ready() -> void:
 			"out": out_dir = v
 			"tag": tag = v
 			"profiler": profiler_mode = v
+			"first-use": first_use = v == "1" or v == "true"
 	if profiler_mode == "off":
 		# Before the client loads: it places the profiler itself unless this says no.
 		OS.set_environment(preload("../runtime/dot_game_profiler.gd").OFF_ENV, "0")
@@ -114,6 +126,58 @@ func say(text: String) -> void:
 
 func wait(sec: float) -> void:
 	await get_tree().create_timer(sec, true, false, true).timeout
+
+
+## Shader pipelines the renderer has compiled so far (mesh, surface, draw and specialization), as dot-core's DotHitchLog reads them.
+static func pipeline_compiles() -> int:
+	return (RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH)
+		+ RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE)
+		+ RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW)
+		+ RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION))
+
+
+## Frame times (ms, wall clock between process frames, so render included) of the next `count` frames.
+func frame_times(count: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var last := Time.get_ticks_usec()
+	for i in count:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		out.append((now - last) / 1000.0)
+		last = now
+	return out
+
+
+## Times one first use: the median of `base_frames` frames before as the baseline, then `action` (then `after` at frame `after_at`
+## of the window, a release say), then the worst of the next `frames` frames, its index, the pipelines compiled meanwhile and the
+## growth in live resources (a load from disk, a new material). The row {name, base_ms, worst_ms, over_ms, at, compiles, resources}
+## goes into the sidecar's `first_use` and is returned. Await it.
+func time_first_use(what: String, action: Callable, after := Callable(), after_at := 0, frames := 15, base_frames := 20) -> Dictionary:
+	var base := frame_stats(await frame_times(base_frames)).p50 as float
+	var compiles0 := pipeline_compiles()
+	var resources0 := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+	action.call()
+	var ms := PackedFloat32Array()
+	var last := Time.get_ticks_usec()
+	for i in frames:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		ms.append((now - last) / 1000.0)
+		last = now
+		if i == after_at and after.is_valid():
+			after.call()
+	var worst := 0.0
+	var at := 0
+	for i in ms.size():
+		if ms[i] > worst:
+			worst = ms[i]
+			at = i
+	var row := {"name": what, "base_ms": snappedf(base, 0.01), "worst_ms": snappedf(worst, 0.01),
+		"over_ms": snappedf(maxf(worst - base, 0.0), 0.01), "at": at, "compiles": pipeline_compiles() - compiles0,
+		"resources": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)) - resources0}
+	_first_use_rows.append(row)
+	say("first_use %s worst %.1f ms (base %.1f) at f%d, %d compiles, %+d resources" % [what, worst, base, at, row.compiles, row.resources])
+	return row
 
 
 ## Waits for the client's loading gate (`gate.is_open()`), when it has one.
@@ -144,6 +208,9 @@ func _run() -> void:
 	await wait_gate(120.0)
 	await _select(client.get("game"))
 	var game: Object = client.get("game")
+	if first_use:
+		await _first_use(game)
+		say("first use: %d rows" % _first_use_rows.size())
 	_start_pilot(game)
 	say("map %s mode %s players %d, warming %.0f s" % [map, mode, _players(game), warmup])
 	await wait(warmup)
@@ -297,6 +364,7 @@ func _sidecar(game: Object, players0: int) -> Dictionary:
 		"dropped_ticks": int(round(dropped)), "dropped_per_sec": snappedf(dropped / wall_s, 0.01),
 		"profiler": profiler_mode, "frame_ms": frame_stats(_frame_ms),
 		"per_frame": per_frame,
+		"first_use": _first_use_rows,
 		"nodes_added": _nodes_added, "nodes_added_per_tick": snappedf(float(_nodes_added) / maxf(ticks, 1.0), 0.001),
 	}
 	if game != null and game.get("mode") != null:
