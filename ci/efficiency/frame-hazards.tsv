@@ -1,2 +1,5 @@
 # frame-hazards
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_game/qa/dot_load_probe.gd::_columns::string_build	1
+addons/dot_game/qa/dot_load_probe.gd::_line::string_build	1
+addons/dot_game/qa/dot_load_probe.gd::_shot_path::string_build	1

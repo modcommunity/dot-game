@@ -222,6 +222,34 @@ func _test_the_sequence() -> bool:
 		"and opened its link under the server node"
 	)
 
+	_check_the_layers()
+
+	_check(_module.roster != null, "it built the roster")
+	_check(_module.game_loaded == 1, "and ran the game's own load last")
+	_check(
+		_server.console != null
+			and _server.console.find_command("testgame_status") != null,
+		"so a command the game registered is there"
+	)
+
+	# What a listing prints as the map is the game's to say, and a game on these bases
+	# says it in one call rather than reaching into the server's game manager.
+	_check(
+		_module.report_map("dm_selftest") and _server.games.current_map() == "dm_selftest",
+		"a map the game reports is the server's map",
+		_server.games.current_map()
+	)
+	_module.report_map("")
+	_check(_server.games.current_map() == "", "and \"\" clears it")
+	_check(_module._server_takes_map_groups() == (DotAddonApi.build_level("dot_server") >= 19),
+		"report_map passes groups exactly when the server's set_current_map takes them")
+
+	_done()
+	return true
+
+
+## The sequence's identity and services checks, in its order.
+func _check_the_layers() -> void:
 	_check(_module.identity != null, "it built the identity layer")
 	_check(
 		_module.identity != null and _module.identity.setup_calls == 1,
@@ -246,29 +274,6 @@ func _test_the_sequence() -> bool:
 		_module.bridge != null and _module.bridge.voice_relay_fn.is_valid(),
 		"and wired voice back onto the bridge"
 	)
-
-	_check(_module.roster != null, "it built the roster")
-	_check(_module.game_loaded == 1, "and ran the game's own load last")
-	_check(
-		_server.console != null
-			and _server.console.find_command("testgame_status") != null,
-		"so a command the game registered is there"
-	)
-
-	# What a listing prints as the map is the game's to say, and a game on these bases
-	# says it in one call rather than reaching into the server's game manager.
-	_check(
-		_module.report_map("dm_selftest") and _server.games.current_map() == "dm_selftest",
-		"a map the game reports is the server's map",
-		_server.games.current_map()
-	)
-	_module.report_map("")
-	_check(_server.games.current_map() == "", "and \"\" clears it")
-	_check(_module._server_takes_map_groups() == (DotAddonApi.build_level("dot_server") >= 19),
-		"report_map passes groups exactly when the server's set_current_map takes them")
-
-	_done()
-	return true
 
 
 # 3. The roster

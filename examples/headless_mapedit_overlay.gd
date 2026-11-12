@@ -8,6 +8,9 @@ var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
 var _sent: Array[String] = []
+var _ov: DotGameMapEditOverlay
+var _pts: Array
+var _form: DotGameMapEditForm
 
 
 func _schema() -> Array:
@@ -70,6 +73,8 @@ func _run() -> void:
 		_point("c", "both", [0, 0, 10], {"enabled": false}),
 		_point("d", "npc", [10, 0, 10], {"team": "red"}),
 	]
+	_ov = ov
+	_pts = pts
 	ov.set_points({"version": 1, "points": pts})
 	_check(ov.marker_count() == 4, "one marker per point")
 	_check(ov.color_of(pts[2]) == DotGameMapEditOverlay.DISABLED, "a disabled point is grey")
@@ -89,6 +94,22 @@ func _run() -> void:
 	var vb: PackedVector3Array = arrow_b.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	_check(vb.size() == 6 + DotGameMapEditOverlay.RING_SEGMENTS * 2 and vb[1].x < -0.9, "yaw turns the arrow and a radius adds a ring")
 
+	await _link_checks()
+	_pick_checks()
+	_panel_checks()
+	_schema_checks()
+	await _round_trip_checks()
+	await _button_checks()
+
+	print("map edit overlay: %d passed, %d failed (expected %d checks)" % [_passed, _failed, CHECKS])
+	for f in _failures:
+		print("  FAIL: ", f)
+	var ok := _failed == 0 and _passed == CHECKS
+	get_tree().quit(0 if ok else 1)
+
+
+func _link_checks() -> void:
+	var ov := _ov
 	ov.set_links({"links": {"hop": {"id": "hop", "kind": "jump", "a": [0, 0, 0], "b": [3, 1, 0]}, "bad": {"a": [1]}}})
 	_check(ov.get_node("Markers").get_child_count() == 5, "a link is one line; a malformed one is skipped")
 	ov.set_links([{"id": "x", "a": [0, 0, 0], "b": [1, 0, 0]}])
@@ -103,6 +124,10 @@ func _run() -> void:
 	await get_tree().process_frame
 	_check(ov.get_node("Markers").get_child_count() == 4, "and goes away again")
 
+
+func _pick_checks() -> void:
+	var ov := _ov
+	var pts := _pts
 	ov.set_points([_point("ok", "both", [1, 2, 3]), {"id": "nopos"}, {"pos": "x"}, 5, null])
 	_check(ov.marker_count() == 3 or ov.marker_count() == 2, "hostile entries do not crash")
 	ov.set_points({"points": pts})
@@ -113,11 +138,15 @@ func _run() -> void:
 	_check(ov.pick_ray(Vector3(10, 0.9, 30), Vector3(0, 0, -1), 5.0) == &"", "beyond the distance picks nothing")
 	_check(ov.pick_ray(Vector3(0.5, 0.9, 20), Vector3(0, 0, -1)) == &"c", "within the pick size counts")
 
+
+func _panel_checks() -> void:
+	var ov := _ov
 	var seen := []
 	ov.picked.connect(func(id: StringName) -> void: seen.append(id))
 	_check(not ov.open_panel(&"ghost"), "an unknown id opens nothing")
 	_check(ov.open_panel(&"b") and ov.panel.visible and seen == [&"b"], "opening shows the panel")
 	var form := ov.form
+	_form = form
 	_check(form.get_child_count() == _schema().size(), "one row per schema entry")
 	_check(form.widget("weight") is SpinBox and form.widget("enabled") is CheckBox and form.widget("kind") is OptionButton, "widgets follow the types")
 	_check(form.widget("pos") is HBoxContainer and form.widget("classes") is LineEdit and form.widget("meta") is Label, "vec3, list and dict")
@@ -131,6 +160,8 @@ func _run() -> void:
 	var rv: PackedVector3Array = ring.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	_check(rv.size() == 6 + DotGameMapEditOverlay.RING_SEGMENTS * 4, "the selected marker has a highlight ring")
 
+
+func _schema_checks() -> void:
 	var extra := _schema()
 	extra.append({"name": "brand_new", "type": "float", "default": 2.5})
 	var f2 := DotGameMapEditForm.new()
@@ -140,6 +171,10 @@ func _run() -> void:
 	_check(f2.changed_args() == PackedStringArray(["brand_new=4"]), "and its edit becomes an argument")
 	f2.free()
 
+
+func _round_trip_checks() -> void:
+	var ov := _ov
+	var form := _form
 	# The round trip: edit the form, send the line, let the real command set apply it.
 	var fakes: Dictionary = (load("res://examples/headless_mapedit.gd") as GDScript).get_script_constant_map()
 	var host: RefCounted = fakes["Host"].new()
@@ -180,6 +215,10 @@ func _run() -> void:
 	_check(def.classes == [&"grunt", &"brute"] and def.sight == &"hidden_from_players", "a list and an enum round trip")
 	_check(def.min_player_distance == 4.5 and def.max_player_distance == 9.0, "renamed distances round trip")
 
+
+func _button_checks() -> void:
+	var ov := _ov
+	var pts := _pts
 	_sent.clear()
 	_check(ov.toggle_selected() == "spawn_toggle b" and ov.test_selected() == "spawn_test b" and ov.remove_selected() == "spawn_remove b", "the buttons send their commands")
 	_check(_sent.size() == 3, "send_fn receives each")
@@ -195,9 +234,3 @@ func _run() -> void:
 	_check(DotGameMapEditForm.word([&"a", &"b"], "list") == "a,b", "word formats lists")
 	ov.queue_free()
 	await get_tree().process_frame
-
-	print("map edit overlay: %d passed, %d failed (expected %d checks)" % [_passed, _failed, CHECKS])
-	for f in _failures:
-		print("  FAIL: ", f)
-	var ok := _failed == 0 and _passed == CHECKS
-	get_tree().quit(0 if ok else 1)

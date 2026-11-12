@@ -24,6 +24,7 @@ const _Settings := preload("res://addons/dot_game/runtime/dot_game_client_settin
 const _Vis := preload("res://addons/dot_game/runtime/dot_game_client_vis.gd")
 const _RenderQuality := preload("res://addons/dot_game/runtime/dot_game_render_quality.gd")
 const _Profiler := preload("res://addons/dot_game/runtime/dot_game_profiler.gd")
+const _Life := preload("res://addons/dot_game/runtime/dot_game_client_life.gd")
 
 ## Whether the player's input should be off now: the cover is up, a menu or the console is open, or the chat or [member busy_fn] has the keyboard.
 signal input_blocked_changed(blocked: bool)
@@ -274,13 +275,7 @@ func _ready() -> void:
 		link = DotRegistry.get_service(LINK_SERVICE)
 	offline = offline_wanted(force_offline, link != null, OS.get_cmdline_user_args().has("--offline"), local_link)
 	if use_gate:
-		gate = _make_gate()
-		if gate != null:
-			gate.opened.connect(_refresh_blocked)
-			gate.closed.connect(_refresh_blocked)
-			if report_loading:
-				gate.opened.connect(_on_gate_cover.bind(false))
-				gate.closed.connect(_on_gate_cover.bind(true))
+		_Life.wire_gate(self)
 	_apply_user_tier()
 	DotGameClientExtras.watch_replay_tuning(self)
 	var standalone: Node = null
@@ -360,21 +355,7 @@ func _resolve_host() -> Node:
 
 ## Builds the gate under [member host]. Override for a gate of your own; null is no gate.
 func _make_gate() -> DotLoadGate:
-	var made := DotLoadGate.new()
-	made.require_camera = require_camera
-	made.warm_up_on_open = warm_up and DisplayServer.get_name() != "headless"
-	if cover != null:
-		made.cover = cover
-	elif cover_scene != null:
-		made.cover_scene = cover_scene
-	if spawned_fn.is_valid():
-		made.require(REASON_SPAWNED, spawned_fn, spawned_text)
-				# Under the host: the gate marks its parent for DotLoadGate.of. A host still readying refuses a child, so wait a frame.
-	if host.is_node_ready():
-		host.add_child(made)
-	else:
-		host.add_child.call_deferred(made)
-	return made
+	return _Life.make_gate(self)
 
 
 ## The settings, menu, console, theme, Tab, M, the chat's keyboard and the pointer. Call once, after the HUD and chat exist. A piece that cannot be built is logged and the rest go on.
@@ -394,23 +375,7 @@ func setup_stepped(between: Callable = Callable()) -> DotResult:
 		return DotResult.fail(DotError.CODE_STATE, "This game client's platform is already set up.")
 	_set_up = true
 	setup_usec.clear()
-	var pieces := _setup_pieces()
-	var stepping := between.is_valid() or (DisplayServer.get_name() != "headless" and is_inside_tree())
-	# dot-profiler is the costly piece: its script compiles on a loader thread while the pieces before it run.
-	var profiler_loading := stepping and use_profiler and is_inside_tree() and &"profiler" in pieces and _Profiler.request_script()
-	var profiler_script: Resource = null
-	for i in pieces.size():
-		if pieces[i] == &"profiler" and profiler_loading:
-			profiler_script = await _Profiler.await_script(get_tree())
-			DotLog.debug(CHANNEL, "profiler script loaded off the main thread", {"ok": profiler_script != null})
-		_run_setup_piece(pieces[i])
-		if i == pieces.size() - 1:
-			break
-		if between.is_valid():
-			await between.call(pieces[i])
-		elif DisplayServer.get_name() != "headless" and is_inside_tree():
-			await get_tree().process_frame
-	return _finish_setup()
+	return await _Life.stepped(self, between)
 
 
 func _setup_pieces() -> Array[StringName]:
@@ -419,30 +384,7 @@ func _setup_pieces() -> Array[StringName]:
 
 
 func _run_setup_piece(piece: StringName) -> void:
-	var started := Time.get_ticks_usec()
-	match piece:
-		&"chat":
-			DotGameClientExtras.wire_chat(self)
-			_wire_pointer_modals()
-		&"settings":
-			if use_settings and menu == null:
-				_build_settings()
-		&"console":
-			if use_console:
-				add_console()
-		&"profiler":
-			DotGameClientExtras.add_profiler(self)
-		&"menu":
-			_wire_menu()
-		&"look":
-			DotGameClientLook.build(self)
-		&"sounds":
-			DotGameClientExtras.add_slide_sounds(self)
-			DotGameClientExtras.add_landing(self)
-		&"quality":
-			DotGameClientExtras.add_render_quality(self)
-			DotGameClientExtras.watch_latency_net(self)
-	setup_usec[piece] = Time.get_ticks_usec() - started
+	_Life.run_piece(self, piece)
 
 
 func _finish_setup() -> DotResult:
@@ -479,10 +421,7 @@ func _follow_hud() -> void:
 func set_chat(box: Node) -> void:
 	if chat == box:
 		return
-	if chat != null and is_instance_valid(chat):
-		for signal_name: StringName in [&"typing_changed", &"opened", &"closed"]:
-			if chat.has_signal(signal_name) and chat.is_connected(signal_name, _refresh_blocked):
-				chat.disconnect(signal_name, _refresh_blocked)
+	_Life.unwire_chat(self)
 	chat = box
 	if _set_up:
 		DotGameClientExtras.wire_chat(self)
@@ -656,23 +595,12 @@ func touch_look(mute: bool = false) -> bool:
 
 ## A phone's scoreboard button, held: the board opens on the press and closes on the release. A release always closes; a press waits while a menu or the chat has the screen.
 func touch_board(down: bool) -> void:
-	var board_node: Object = board
-	if board_node == null or not is_instance_valid(board_node):
-		return
-	if not down:
-		board_node.call(&"close")
-	elif not is_menu_open() and not _chat_typing() and not is_input_blocked():
-		board_node.call(&"open")
+	_Life.touch_board(self, down)
 
 
 ## A phone's map-list button, as M. False when this game has no map menu.
 func touch_maps() -> bool:
-	if maps == null or not is_instance_valid(maps) or is_input_blocked() or is_menu_open():
-		return false
-	if &"enabled" in maps and not bool(maps.get(&"enabled")):
-		return false
-	maps.call(&"open")
-	return true
+	return _Life.touch_maps(self)
 
 
 func _look_target() -> int:
@@ -729,11 +657,7 @@ func add_combat_feel(feel: DotGameCombatFeel, crosshair: Control, arsenal_fn: Ca
 
 ## Opts this client into [DotGameHitFlinch]: a hit shakes the camera and wobbles the aim (sv_hit_*) instead of dropping the sights. [param sampler_fn] returns the active DotFpsSampler, [param camera_fn] the view's Camera3D, [param aim_fn] whether the sights are up. Feed hits with [method note_hit].
 func add_hit_flinch(sampler_fn: Callable, camera_fn: Callable, aim_fn: Callable, tunables_fn: Callable = Callable()) -> DotGameHitFlinch:
-	_hit_flinch = DotGameHitFlinch.new()
-	_hit_flinch.sampler_fn = sampler_fn
-	_hit_flinch.camera_fn = camera_fn
-	_hit_flinch.aim_fn = aim_fn
-	_hit_flinch.tunables_fn = tunables_fn
+	_hit_flinch = _Life.hit_flinch(sampler_fn, camera_fn, aim_fn, tunables_fn)
 	return _hit_flinch
 
 
@@ -828,13 +752,7 @@ func is_menu_open() -> bool:
 
 
 func _chat_typing() -> bool:
-	if chat == null or not is_instance_valid(chat):
-		return false
-	if chat.has_method(&"is_typing"):
-		return bool(chat.call(&"is_typing"))
-	if chat.has_method(&"is_open"):
-		return bool(chat.call(&"is_open"))
-	return false
+	return _Life.chat_typing(chat)
 
 
 func _busy() -> bool:
@@ -843,10 +761,7 @@ func _busy() -> bool:
 
 ## A game's own modal (a shop, a loadout) frees the pointer and blocks input until [method release_pointer] with the same [param key]. Keyed, not counted, so two modals cannot underflow it and a second menu closing cannot recapture under the first.
 func hold_pointer(key: Variant) -> void:
-	_pointer_holds[key] = true
-	if capture_pointer and _set_up and not gate_only:
-		_free_pointer()
-	_refresh_blocked()
+	_Life.hold_pointer(self, key)
 
 
 func _wire_pointer_modals() -> void:
@@ -859,27 +774,14 @@ func _on_node_added(node: Node) -> void:
 
 ## Ends [method hold_pointer]; the pointer is taken back once no hold and no menu remains.
 func release_pointer(key: Variant) -> void:
-	if not _pointer_holds.erase(key):
-		return
-	_refresh_blocked()
-	if capture_pointer and _set_up and not gate_only and not DotPlatform.is_web() \
-			and not is_menu_open() and not _chat_typing() and not _busy() and _pointer_wanted():
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_Life.release_pointer(self, key)
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_ENTER_TREE and is_node_ready():
 		_attach_screen_fit()
 	if what == NOTIFICATION_EXIT_TREE:
-		restore_map_config()
-		DotGameClientExtras.disconnect_registry_bus(self)
-		if user_tier_on:
-			# Process-wide flag: left on, it would hand the next server's addons the player's files.
-			user_tier_on = false
-			DotAddonConfig.set_user_tier(false)
-		DotGamePageGuard.clear(self, false)
-		if screen_fit != null:
-			screen_fit.detach(true)
+		_Life.exit_tree(self)
 	if not sync_on_exit:
 		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \

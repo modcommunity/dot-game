@@ -148,23 +148,9 @@ func _run() -> void:
 	say("map %s mode %s players %d, warming %.0f s" % [map, mode, _players(game), warmup])
 	await wait(warmup)
 	var recording := profiler_mode == "record"
-	profiler = DotRegistry.get_service(&"dot_profiler")
-	if profiler == null and profiler_mode != "off":
-		profiler = preload("../runtime/dot_game_profiler.gd").add(self)
-		say("client has no profiler; placed one")
-	if profiler == null and profiler_mode != "off":
-		say("dot-profiler is not in this build")
+	if not _place_profiler(game):
 		get_tree().quit(1)
 		return
-	if profiler != null and profiler_mode == "off":
-		say("--profiler off, but the client placed one")
-		get_tree().quit(1)
-		return
-	if profiler != null:
-		profiler.config.record_dir = out_dir
-		profiler.config.keep_recordings = 500
-		profiler.config.budget_ms = 33.0
-		_add_counters(game)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_record_begin()
 	_nodes_added = 0
@@ -191,6 +177,31 @@ func _run() -> void:
 	_steps1 = Engine.get_physics_frames()
 	await get_tree().process_frame
 	_record_end()
+	_write_out(game, players0, recording)
+	get_tree().quit(0)
+
+
+## False (after saying why) when --profiler disagrees with what the client has.
+func _place_profiler(game: Object) -> bool:
+	profiler = DotRegistry.get_service(&"dot_profiler")
+	if profiler == null and profiler_mode != "off":
+		profiler = preload("../runtime/dot_game_profiler.gd").add(self)
+		say("client has no profiler; placed one")
+	if profiler == null and profiler_mode != "off":
+		say("dot-profiler is not in this build")
+		return false
+	if profiler != null and profiler_mode == "off":
+		say("--profiler off, but the client placed one")
+		return false
+	if profiler != null:
+		profiler.config.record_dir = out_dir
+		profiler.config.keep_recordings = 500
+		profiler.config.budget_ms = 33.0
+		_add_counters(game)
+	return true
+
+
+func _write_out(game: Object, players0: int, recording: bool) -> void:
 	var side := _sidecar(game, players0)
 	var stamp := Time.get_datetime_string_from_system().replace(":", "-")
 	var path := out_dir.path_join("bench-%s-%s.json" % [profiler_mode, stamp])
@@ -217,7 +228,6 @@ func _run() -> void:
 	print("PERF_BENCH_REPORT %s" % JSON.stringify(report))
 	print("PERF_BENCH_SIDECAR %s" % JSON.stringify(side))
 	print("PERF_BENCH %s" % JSON.stringify({"report": ProjectSettings.globalize_path(path), "sidecar": side_path, "tag": tag}))
-	get_tree().quit(0)
 
 
 func _count_node_added(_n: Node) -> void:

@@ -7,6 +7,13 @@ const CHECKS := 68
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _host: Host = null
+var _server: FakeServer = null
+var _store: Store = null
+var _nav: Nav = null
+var _edit: DotGameMapEdit = null
+var _tests: Dictionary = {}
+var _d: Def = null
 
 
 class Def:
@@ -194,6 +201,22 @@ func _ctx_with(args: Array) -> Ctx:
 
 func _run() -> void:
 	print("dot-game: map edit commands")
+	_make()
+	await _bind_checks()
+	await _spawn_add_checks()
+	await _spawn_set_checks()
+	await _nav_and_save_checks()
+	await _import_checks()
+	await _bare_checks()
+	_check(_passed + _failed == CHECKS, "the check count is %d, ran %d" % [CHECKS, _passed + _failed])
+	print("dot-game map edit: %d passed, %d failed" % [_passed, _failed])
+	for f in _failures:
+		print("  FAIL: ", f)
+	get_tree().quit(1 if _failed > 0 else 0)
+
+
+## The fixture every phase shares: one host, store, nav and edit, bound in [method _bind_checks].
+func _make() -> void:
 	var host := Host.new()
 	var server := FakeServer.new()
 	var store := Store.new()
@@ -227,7 +250,17 @@ func _run() -> void:
 		tests["moved"].append(str(d.get("id")))
 		return DotResult.success(true)
 	edit.changed_fn = func(what: String) -> void: tests["changed"].append(what)
+	_host = host
+	_server = server
+	_store = store
+	_nav = nav
+	_edit = edit
+	_tests = tests
 
+
+func _bind_checks() -> void:
+	var host := _host
+	var edit := _edit
 	var bound := edit.bind(host)
 	_check(bound.ok and host.commands.size() == DotGameMapEdit.COMMANDS.size(), "every role registers")
 	var gated := true
@@ -241,12 +274,18 @@ func _run() -> void:
 	_check(not refused.ok, "run reports a refusal as a failure")
 	_check(allowed.ok, "and a success as one")
 
+
+func _spawn_add_checks() -> void:
+	var host := _host
+	var edit := _edit
+	var tests := _tests
 	var c := await _say(host, "spawn_list", [])
 	_check(c.last().begins_with("No authored"), "an empty set says the map's own are in use")
 
 	c = await _say(host, "spawn_add", ["npc", "id=door_a", "radius=3", "team=red", "classes=zombie,runner"])
 	_check(c.last().begins_with("Added npc 'door_a'"), "spawn_add places a point")
-	var d: Def = edit.points.find(&"door_a")
+	_d = edit.points.find(&"door_a")
+	var d := _d
 	_check(d != null and d.position == Vector3(5, 1, 6) and is_equal_approx(d.yaw, 1.5), "at the admin's feet and facing")
 	_check(d.radius == 3.0 and d.team == &"red" and d.classes.size() == 2, "settings parsed to typed values")
 	_check(d.source == &"authored" and tests["changed"].has("spawns"), "authored, and the game is told")
@@ -269,7 +308,13 @@ func _run() -> void:
 	c = await _say(host, "spawn_add", ["both", "radius=2", "weight=0"])
 	_check(edit.points.points.size() == before and c.last().contains("Refused"), "the def's own problem() has the last word")
 
-	c = await _say(host, "spawn_set", ["door_a", "weight=2.5", "pos=9,9,9", "enabled=off"])
+
+func _spawn_set_checks() -> void:
+	var host := _host
+	var edit := _edit
+	var tests := _tests
+	var d := _d
+	var c := await _say(host, "spawn_set", ["door_a", "weight=2.5", "pos=9,9,9", "enabled=off"])
 	_check(d.weight == 2.5 and d.position == Vector3(9, 9, 9) and not d.enabled, "spawn_set changes settings")
 	c = await _say(host, "spawn_set", ["door_a", "weight=7", "radius=2", "weight=0"])
 	_check(d.weight == 2.5 and d.radius == 3.0, "a refused set leaves the point as it was")
@@ -301,7 +346,14 @@ func _run() -> void:
 	c = await _say(host, "spawn_strategy", ["Bad Name!"])
 	_check(c.last().contains("not a strategy"), "a strategy name is validated first")
 
-	c = await _say(host, "nav_rebake", [])
+
+func _nav_and_save_checks() -> void:
+	var host := _host
+	var store := _store
+	var nav := _nav
+	var edit := _edit
+	var tests := _tests
+	var c := await _say(host, "nav_rebake", [])
 	_check(nav.rebakes == 1 and tests["changed"].has("nav"), "nav_rebake calls the nav tools")
 	c = await _say(host, "nav_link_add", ["jump"])
 	_check(c.last().contains("Mark"), "a link needs its start marked")
@@ -331,7 +383,13 @@ func _run() -> void:
 	c = await _say(host, "mapdata_revert", [])
 	_check(edit.points.find(&"door_a") != null and nav.links.has("lad") and not edit.dirty, "mapdata_revert restores the saved set and links")
 
-	c = await _say(host, "mapdata_export", ["box_test"])
+
+func _import_checks() -> void:
+	var host := _host
+	var server := _server
+	var store := _store
+	var edit := _edit
+	var c := await _say(host, "mapdata_export", ["box_test"])
 	_check(c.last().contains("Exported") and FileAccess.file_exists("user://map_data/export/box_test.json"), "mapdata_export writes a file")
 	await _say(host, "spawn_remove", ["door_a"])
 	c = await _say(host, "mapdata_import", ["box_test"])
@@ -366,22 +424,18 @@ func _run() -> void:
 	_check(server.audit.lines.size() > 20 and server.audit.lines[0][1] == "admin#7", "edits reach the audit with the admin's id")
 	_check(server.audit.lines.all(func(l: Array) -> bool: return l[0] != "spawn_list"), "reads are not audited")
 
+
+func _bare_checks() -> void:
 	var bare := DotGameMapEdit.new()
 	var bare_host := Host.new()
 	bare.bind(bare_host)
-	c = await _say(bare_host, "spawn_add", ["npc"])
+	var c := await _say(bare_host, "spawn_add", ["npc"])
 	_check(c.last().contains("no editable"), "no point set: a plain reply")
 	c = await _say(bare_host, "nav_rebake", [])
 	_check(c.last().contains("no navigation"), "no nav tools: a plain reply")
 	c = await _say(bare_host, "mapdata_save", [])
 	_check(c.last().contains("no map data store"), "no store: a plain reply")
 	_check(not DotGameMapEdit.new().bind(Object.new()).ok, "a host with no way to register is refused")
-
-	_check(_passed + _failed == CHECKS, "the check count is %d, ran %d" % [CHECKS, _passed + _failed])
-	print("dot-game map edit: %d passed, %d failed" % [_passed, _failed])
-	for f in _failures:
-		print("  FAIL: ", f)
-	get_tree().quit(1 if _failed > 0 else 0)
 
 
 func _write(name: String, data: Dictionary) -> void:

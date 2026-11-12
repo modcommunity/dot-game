@@ -68,30 +68,35 @@ func _process(delta: float) -> bool:
 		return false
 	_elapsed += delta
 	if _elapsed > 120.0:
-		printerr("phone_shot: %s never became ready" % _ready_property)
+		printerr("phone_shot: ", _ready_property, " never became ready")
 		quit(3)
 		return true
 	if _ready_property != "" and _ready_property in _node and not is_instance_valid(_node.get(_ready_property)):
 		return false
 	if not _called:
 		_called = true
-		for spec in _calls:
-			_call(spec)
+		# Once, not per frame: deferred calls still run before this frame is drawn.
+		_run_calls.call_deferred()
 	_seen += 1
 	if _seen < _frames:
 		return false
 	var image := root.get_texture().get_image()
 	if _is_flat(image):
 		# A null renderer or a movie writer's first frames give one colour; a file of it looks like a shot.
-		printerr("phone_shot: the frame is one flat colour (%s); not a render" % str(image.get_pixel(0, 0)))
+		printerr("phone_shot: the frame is one flat colour (", image.get_pixel(0, 0), "); not a render")
 		quit(4)
 		return true
 	var path := ProjectSettings.globalize_path(_out)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	image.save_png(path)
-	print("wrote %s (%d x %d)" % [path, image.get_width(), image.get_height()])
+	print("wrote ", path, " (", image.get_width(), " x ", image.get_height(), ")")
 	quit(0)
 	return true
+
+
+func _run_calls() -> void:
+	for spec in _calls:
+		_call(spec)
 
 
 func _call(spec: String) -> void:

@@ -27,6 +27,7 @@ const EXPORT_DIR := "user://map_data/export/"
 const MAX_LIST := 40
 const MAX_TOKENS := 32
 const MAX_TEXT := 64
+const _Parse := preload("res://addons/dot_game/runtime/dot_game_map_edit_parse.gd")
 
 const KINDS: Array[String] = ["player", "npc", "both"]
 const SIGHTS: Array[String] = ["any", "hidden_from_players", "visible_to_players"]
@@ -614,108 +615,12 @@ func _take(sections: Variant) -> DotResult:
 # --- Parsing and helpers -----------------------------------------------------
 
 func _parse_pairs(args: PackedStringArray) -> DotResult:
-	var out := {}
-
-	for a in args:
-		var at := a.find("=")
-
-		if at <= 0:
-			return DotResult.fail(DotError.CODE_INVALID, "Write settings as key=value, not '%s'." % a.left(MAX_TEXT))
-
-		out[a.left(at).to_lower()] = a.substr(at + 1)
-
-	return DotResult.success(out)
+	return _Parse.parse_pairs(args)
 
 
 ## Parses key=value words into typed values. [param allow_id] lets `id=` through (a new point only).
 func _parse_settings(args: PackedStringArray, allow_id: bool) -> DotResult:
-	var pairs := _parse_pairs(args)
-
-	if not pairs.ok:
-		return pairs
-
-	var out := {}
-
-	for key: String in pairs.value:
-		var raw: String = pairs.value[key]
-
-		if key == "id" and allow_id:
-			if not _token_ok(raw):
-				return DotResult.fail(DotError.CODE_INVALID, "A point id is up to %d lowercase letters, digits, _ or -." % MAX_TEXT)
-
-			out["id"] = raw
-			continue
-
-		if not KEYS.has(key):
-			return DotResult.fail(DotError.CODE_INVALID, "'%s' is not a spawn setting (%s)." % [key.left(MAX_TEXT), ", ".join(KEYS.keys())])
-
-		var parsed := _parse_value(key, raw)
-
-		if not parsed.ok:
-			return parsed
-
-		out[key] = parsed.value
-
-	return DotResult.success(out)
-
-
-func _parse_value(key: String, raw: String) -> DotResult:
-	var spec: Array = KEYS[key]
-	var type := str(spec[0])
-	var bad := DotResult.fail(DotError.CODE_INVALID, "%s=%s is not a valid %s." % [key, raw.left(MAX_TEXT), key])
-
-	match type:
-		"b":
-			if raw in ["1", "true", "on", "yes"]:
-				return DotResult.success(true)
-			return DotResult.success(false) if raw in ["0", "false", "off", "no"] else bad
-		"f":
-			if not raw.is_valid_float() or not is_finite(raw.to_float()):
-				return bad
-			return _ranged(key, raw.to_float(), spec)
-		"i":
-			return _ranged(key, int(raw), spec) if raw.is_valid_int() else bad
-		"v":
-			var parts := raw.split(",")
-
-			if parts.size() != 3:
-				return DotResult.fail(DotError.CODE_INVALID, "%s needs x,y,z." % key)
-
-			var v := Vector3.ZERO
-
-			for i in 3:
-				if not parts[i].is_valid_float() or not is_finite(parts[i].to_float()):
-					return bad
-				var one := _ranged(key, parts[i].to_float(), spec)
-				if not one.ok:
-					return one
-				v[i] = float(one.value)
-
-			return DotResult.success(v)
-		"s":
-			return DotResult.success(StringName(raw)) if raw == "" or _token_ok(raw) else bad
-		"l":
-			var items: Array[StringName] = []
-
-			for item in raw.split(",", false):
-				if not _token_ok(item) or items.size() >= MAX_TOKENS:
-					return bad
-				items.append(StringName(item))
-
-			return DotResult.success(items)
-		"e:kind":
-			return DotResult.success(StringName(raw)) if raw in KINDS else bad
-		"e:sight":
-			return DotResult.success(StringName(raw)) if raw in SIGHTS else bad
-
-	return bad
-
-
-func _ranged(key: String, value: float, spec: Array) -> DotResult:
-	if value < float(spec[1]) or value > float(spec[2]):
-		return DotResult.fail(DotError.CODE_INVALID, "%s must be between %s and %s." % [key, str(spec[1]), str(spec[2])])
-
-	return DotResult.success(int(value) if str(spec[0]) == "i" else value)
+	return _Parse.parse_settings(args, allow_id)
 
 
 func _apply(def: Object, settings: Dictionary) -> DotResult:
@@ -839,16 +744,7 @@ func _changed(what: String) -> void:
 
 
 static func _token_ok(text: String) -> bool:
-	if text.is_empty() or text.length() > MAX_TEXT:
-		return false
-
-	for i in text.length():
-		var c := text.unicode_at(i)
-
-		if not ((c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95 or c == 45):
-			return false
-
-	return true
+	return _Parse.token_ok(text)
 
 
 func _caller(ctx: Object) -> String:
