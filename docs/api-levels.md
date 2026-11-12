@@ -59,3 +59,4 @@ What each `DotGameApi.LEVEL` added. The bump rule is on `DotAddonApi`.
 - 55: DotGameClient.local_link (a link to this machine's own server, a solo game hosted in a second process, survives `--offline`) and the static `offline_wanted`. Suite: `examples/game_selftest.tscn`.
 - 56: `DotGameModule._map_download_groups(map_id)`: the groups `report_map` passes to dot-server's `set_current_map` (dot-server API 19, per-map download groups); an older server is called with the map alone. Suite: `examples/game_selftest.tscn`.
 - 57: `DotGameClient.setup_stepped(between)`: `setup()` one piece per frame (`SETUP_PIECES`), the caller's `between` awaited after each; `setup_usec` times each piece. Suite: `examples/game_selftest.tscn`.
+- 58: `DotGameCheckSuite.cpu_usec()` / `cpu_is_real()`: the calling thread's CPU time (wall fallback), for tick-budget checks that must not fail on a loaded box. Suite: `examples/game_selftest.tscn`.

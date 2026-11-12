@@ -11,6 +11,22 @@ func _caps(game_values: Dictionary, ceiling: Dictionary, tick := 64) -> DotNetCo
 	return c
 
 
+func _test_cpu_usec() -> void:
+	_section("DotGameCheckSuite.cpu_usec counts CPU time, not wall time")
+	var a := DotGameCheckSuite.cpu_usec()
+	var w0 := Time.get_ticks_usec()
+	var x := 0
+	while Time.get_ticks_usec() - w0 < 30000:
+		x += 1
+	var burned := DotGameCheckSuite.cpu_usec() - a
+	_check(burned >= 15000 and burned < 200000, "a 30 ms spin reads as about 30 ms", "%d us" % burned)
+	var b := DotGameCheckSuite.cpu_usec()
+	OS.delay_msec(60)
+	var slept := DotGameCheckSuite.cpu_usec() - b
+	_check(slept < 30000 or not DotGameCheckSuite.cpu_is_real(), "a 60 ms sleep costs no CPU (wall fallback excused)", "%d us" % slept)
+	_done()
+
+
 func _test_operator_net_ceiling() -> void:
 	_section("an operator's net limits are a ceiling on the game's own")
 
