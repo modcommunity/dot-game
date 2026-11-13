@@ -6,8 +6,10 @@
 #   tools/perf_bench.sh [--box staging02] [--headless] [-d] [--compat] [--tag T] [--ref owner.json] [-- perf_bench args]
 #   tools/perf_bench.sh --ab DIR_A DIR_B [-n 3] [--box staging02] [--compat] [-- perf_bench args]
 # --ab runs A,B,A,B... (n each) on one pinned box and prints per-system mean deltas.
-# A run whose world was inert (nodes_added ~0: no match, no fights) is flagged WARN, and the summary prints INVALID and exits 3;
-# --ab will not rank an inert side. PERF_BENCH_INERT_PER_TICK (default 0.05 nodes per tick) sets the limit.
+# A run whose world was inert (nodes_added ~0 AND under 3 movers: no match, no fights, nothing moving) is flagged WARN,
+# and the summary prints INVALID and exits 3; --ab will not rank an inert side. A mover is a Node3D subtree that went
+# more than 1 m during the run, so a round that adds no nodes (a deathrun, a prop hunt) still counts as playing.
+# PERF_BENCH_INERT_PER_TICK (default 0.05 nodes per tick) and PERF_BENCH_LIVE_MOVERS (default 3) set the limits.
 # DIR may carry extra bench args after "::", e.g. ~/wt/game-arena-x::--bots 15.
 # -d runs Godot with -d (debug build behaviour: script function timings for "-- --script-top N"); its
 # frame times are not comparable with a run without it, so --ab passes it to both sides.

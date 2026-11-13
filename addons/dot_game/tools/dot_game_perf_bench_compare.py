@@ -22,24 +22,27 @@ import sys
 # 0.4-1.3 for a live 32-player match. Such a run's ms/tick reads as a speedup it is not (an idle sim-host bench was
 # taken for a 20% win for a day). Below this many nodes entering the tree per physics tick, a run is INERT.
 INERT_NODES_PER_TICK = float(os.environ.get("PERF_BENCH_INERT_PER_TICK", "0.05"))
+# A game that moves its world without making nodes (runners on a trap course, hiders as props) is alive when this many
+# Node3D subtrees moved over 1 m in the window (the sidecar's `movers`; older sidecars lack it and judge by nodes alone).
+LIVE_MOVERS = int(os.environ.get("PERF_BENCH_LIVE_MOVERS", "3"))
 
 
 def activity(report, side):
-    """(nodes_added, nodes_added per tick) of the measured window, or None when the log carries neither number."""
+    """(nodes_added, nodes_added per tick, movers or -1) of the measured window, or None when the log carries no node count."""
     side = side or {}
     if "nodes_added" in side:
-        return side["nodes_added"], side.get("nodes_added_per_tick", 0.0)
+        return side["nodes_added"], side.get("nodes_added_per_tick", 0.0), side.get("movers", -1)
     eng = report.get("engine") or {}
     if "nodes_added" in eng:
-        return eng["nodes_added"], eng.get("nodes_added_per_tick", 0.0)
+        return eng["nodes_added"], eng.get("nodes_added_per_tick", 0.0), -1
     return None
 
 
 def inert_note(head):
     """A loud line when the run's world was dead (not a result), else ""."""
     if head["inert"]:
-        return "WARN INERT RUN: nodes_added %d (%.3f/tick, limit %.2f): the world did not play (no fights, no match?); its timings are INVALID, do not rank them" % (
-            head["nodes_added"], head["nodes_per_tick"], INERT_NODES_PER_TICK)
+        return "WARN INERT RUN: nodes_added %d (%.3f/tick, limit %.2f), movers %d (live from %d): the world did not play (no fights, no match?); its timings are INVALID, do not rank them" % (
+            head["nodes_added"], head["nodes_per_tick"], INERT_NODES_PER_TICK, head["movers"], LIVE_MOVERS)
     return ""
 
 
@@ -79,8 +82,8 @@ def load(path):
             rows["query." + k] = {"ms": v["ms_per_frame"], "call": v["us_each"] / 1000.0, "calls": v["per_frame"]}
     act = activity(report, side)
     head = {
-        "inert": act is not None and act[1] < INERT_NODES_PER_TICK,
-        "nodes_added": act[0] if act else -1, "nodes_per_tick": act[1] if act else -1.0,
+        "inert": act is not None and act[1] < INERT_NODES_PER_TICK and act[2] < LIVE_MOVERS,
+        "nodes_added": act[0] if act else -1, "nodes_per_tick": act[1] if act else -1.0, "movers": act[2] if act else -1,
         "p50": report.get("p50_ms", 0.0), "p95": report.get("p95_ms", 0.0), "p99": report.get("p99_ms", 0.0),
         "frames": report.get("frames", 0),
         "ticks/frame": rows.get(pre + "physics", {}).get("calls", (side or {}).get("ticks_per_frame", 0.0)),
@@ -191,7 +194,7 @@ def check(files):
         elif head["nodes_added"] < 0:
             print("%s: note: no nodes_added in this log (older bench), activity not checked" % f)
         else:
-            print("%s: world active (nodes_added %d, %.3f/tick)" % (f, head["nodes_added"], head["nodes_per_tick"]))
+            print("%s: world active (nodes_added %d, %.3f/tick, movers %d)" % (f, head["nodes_added"], head["nodes_per_tick"], head["movers"]))
         if head["first_use"]:
             first_use_table([("run", [head])])
     return code

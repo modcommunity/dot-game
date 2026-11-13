@@ -34,6 +34,11 @@ var _first_use_rows: Array[Dictionary] = []
 var args := {}
 ## Nodes that entered the tree during the measured window: a match that is playing makes thousands (bullets, effects, drops), a dead one almost none; the sidecar's `nodes_added` / `nodes_added_per_tick` let the wrapper flag an INERT run.
 var _nodes_added := 0
+## Moving things in the window: Node3D subtrees whose root moved more than MOVER_METERS while its parent did not. A game that moves
+## its world without making nodes (runners on a course, traps, props) is alive by this count where `nodes_added` reads ~0.
+const MOVER_METERS := 1.0
+var _movers := 0
+var _pos0 := {}
 var client: Node = null
 var profiler: Node = null
 ## Per-frame sums while recording, for the sidecar.
@@ -191,9 +196,17 @@ func wait_gate(limit: float) -> void:
 		t += 0.5
 
 
+## A players() method (arena) or a players Array/Dictionary property (the minigames); 0 if neither.
 func _players(game: Object) -> int:
-	if game != null and game.has_method("players"):
+	if game == null:
+		return 0
+	if game.has_method("players"):
 		return (game.call("players") as Array).size()
+	var roster: Variant = game.get("players")
+	if roster is Array:
+		return (roster as Array).size()
+	if roster is Dictionary:
+		return (roster as Dictionary).size()
 	return 0
 
 
@@ -218,10 +231,15 @@ func _run() -> void:
 	if not _place_profiler(game):
 		get_tree().quit(1)
 		return
+	# `--script-top N`: the N GDScript functions with the most self time, in the report's script_functions
+	# (dot-profiler's profiler_script_top). Needs Godot run with -d (the .sh's -d), which slows scripts: read shares, not ms.
+	if args.has("script-top") and profiler != null:
+		profiler.config.script_top = int(args["script-top"])
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_record_begin()
 	_nodes_added = 0
 	get_tree().node_added.connect(_count_node_added)
+	_pos0 = _positions()
 	_steps0 = Engine.get_physics_frames()
 	_usec0 = Time.get_ticks_usec()
 	if recording:
@@ -240,6 +258,7 @@ func _run() -> void:
 		last = now
 		_sample()
 	get_tree().node_added.disconnect(_count_node_added)
+	_movers = _count_movers(_pos0)
 	_usec1 = last
 	_steps1 = Engine.get_physics_frames()
 	await get_tree().process_frame
@@ -299,6 +318,29 @@ func _write_out(game: Object, players0: int, recording: bool) -> void:
 
 func _count_node_added(_n: Node) -> void:
 	_nodes_added += 1
+
+
+## Global position of every Node3D in the tree, by instance id.
+func _positions() -> Dictionary:
+	var out := {}
+	for n in get_tree().root.find_children("*", "Node3D", true, false):
+		out[n.get_instance_id()] = (n as Node3D).global_position
+	return out
+
+
+## How many Node3D subtrees moved more than MOVER_METERS since `before`, counting each moved subtree once, at its top.
+func _count_movers(before: Dictionary) -> int:
+	var moved := {}
+	for id: int in before:
+		var n := instance_from_id(id) as Node3D
+		if n != null and n.is_inside_tree() and n.global_position.distance_to(before[id]) > MOVER_METERS:
+			moved[id] = n
+	var count := 0
+	for id: int in moved:
+		var p := (moved[id] as Node3D).get_parent_node_3d()
+		if p == null or not moved.has(p.get_instance_id()):
+			count += 1
+	return count
 
 
 func _add(key: String, v: float) -> void:
@@ -366,6 +408,7 @@ func _sidecar(game: Object, players0: int) -> Dictionary:
 		"per_frame": per_frame,
 		"first_use": _first_use_rows,
 		"nodes_added": _nodes_added, "nodes_added_per_tick": snappedf(float(_nodes_added) / maxf(ticks, 1.0), 0.001),
+		"movers": _movers,
 	}
 	if game != null and game.get("mode") != null:
 		side["mode"] = String(game.get("mode").id)
