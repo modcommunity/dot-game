@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/dot_game/qa/dot_game_perf_bench_any.gd" id="1"]
+
+[node name="PerfBench" type="Node"]
+script = ExtResource("1")

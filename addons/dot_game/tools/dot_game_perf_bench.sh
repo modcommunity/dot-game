@@ -58,7 +58,7 @@ run_one() {
 	echo "perf_bench: $label on $box: $(basename "$dir") ${extra[*]:-} -> $log" >&2
 	# gpu.sh takes a project under GODOT_ROOT by name: the checkout's parent and its own name.
 	GODOT_ROOT=$(dirname "$dir") GPU_BOX=$box GPU_TIMEOUT=${GPU_TIMEOUT:-900} \
-		"$gpu" run "$(basename "$dir")" "${hl[@]}" res://tools/perf_bench.tscn -- --tag "$label" "$@" "${extra[@]}" \
+		"$gpu" run "$(basename "$dir")" "${hl[@]}" "${PERF_BENCH_SCENE:-res://tools/perf_bench.tscn}" -- --tag "$label" "$@" "${extra[@]}" \
 		> "$log" 2>&1 || echo "perf_bench: run exited $? (see $log)" >&2
 	grep -q '^PERF_BENCH_REPORT ' "$log" || { echo "perf_bench: no report in $log" >&2; tail -20 "$log" >&2; return 1; }
 	# A dead world (nobody fought) gives timings that read as a speedup: say so at once, per run (the table below
