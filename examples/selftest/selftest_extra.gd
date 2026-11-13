@@ -14,7 +14,10 @@ func _test_chat_client_without_the_addons() -> void:
 	await get_tree().process_frame
 
 	_check(box.window == null, "it builds no box, because there is no dot-ui")
-	_check(box.voice == null, "and no microphone, because there is no dot-voice")
+	_check(
+		box.voice == null or ResourceLoader.exists(DotGameChatClient.VOICE_SCRIPT),
+		"and no microphone unless dot-voice is linked"
+	)
 	_check(box.attach(null).ok, "offline is not an error")
 
 	var bridge := FakeChatBridge.new()

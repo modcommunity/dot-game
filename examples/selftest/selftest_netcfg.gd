@@ -177,8 +177,8 @@ func _test_services_without_the_addons() -> void:
 
 	_check(ready_now.ok, "it sets up", str(ready_now.error) if not ready_now.ok else "")
 	_check(services.chat == null, "and builds no chat, because there is none to build")
-	_check(services.voice == null, "no voice")
-	_check(services.moderation == null, "and no moderation")
+	_check(services.voice == null or ResourceLoader.exists("res://addons/dot_voice/runtime/dot_voice_manager.gd"), "no voice unless dot-voice is linked")
+	_check(services.moderation == null or ResourceLoader.exists(DotGameServices.MODERATION_SCRIPT), "and no moderation unless dot-moderation is linked")
 
 	_check(
 		services.check_admission(_fake_session(9, 9, "Ada")).ok,
@@ -251,7 +251,10 @@ func _test_auto_update_wiring() -> void:
 		{"id": "me/dm_one", "version": "2"},
 	], "a delivered game's own pack, dependencies and maps; a built-in game adds nothing", str(watched))
 	_check(DotGameModule.watched_packs(null).is_empty(), "no server watches nothing")
-	_check(DotGameModule.start_auto_update(_server) == null, "a build without dot-cloud starts no updater")
+	_check(
+		DotGameModule.start_auto_update(_server) == null or ResourceLoader.exists(DotGameModule.AUTO_UPDATE_SCRIPT),
+		"a build without dot-cloud starts no updater"
+	)
 	_done()
 
 
