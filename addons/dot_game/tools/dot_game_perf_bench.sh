@@ -3,8 +3,8 @@
 # Vulkan on the NVIDIA card), and its per-system table against a reference profile. A game's tools/perf_bench.sh is
 #   exec bash "$(dirname "$0")/../addons/dot_game/tools/dot_game_perf_bench.sh" "$@"
 # (set PERF_BENCH_REF first for the game's own reference profile). Run as gamedev, from a checkout:
-#   tools/perf_bench.sh [--box staging02] [--headless] [-d] [--compat] [--tag T] [--ref owner.json] [-- perf_bench args]
-#   tools/perf_bench.sh --ab DIR_A DIR_B [-n 3] [--box staging02] [--compat] [-- perf_bench args]
+#   tools/perf_bench.sh [--box staging02] [--headless] [-d] [--compat] [--release] [--tag T] [--ref owner.json] [-- perf_bench args]
+#   tools/perf_bench.sh --ab DIR_A DIR_B [-n 3] [--box staging02] [--compat] [--release] [-- perf_bench args]
 # --ab runs A,B,A,B... (n each) on one pinned box and prints per-system mean deltas.
 # A run whose world was inert (nodes_added ~0 AND under 3 movers: no match, no fights, nothing moving) is flagged WARN,
 # and the summary prints INVALID and exits 3; --ab will not rank an inert side. A mover is a Node3D subtree that went
@@ -13,16 +13,20 @@
 # DIR may carry extra bench args after "::", e.g. ~/wt/game-arena-x::--bots 15.
 # -d runs Godot with -d (debug build behaviour: script function timings for "-- --script-top N"); its
 # frame times are not comparable with a run without it, so --ab passes it to both sides.
+# --release benches a release export (what players run; ~27% faster client frame than the editor binary, FC 2026-11-13) instead
+# of the editor binary: gpu.sh exports it once per content key behind a dispatcher main scene and caches it (GPU_RELEASE=1,
+# tools/gpu-release-export.sh in dot-bootstrap); -d is editor-only and refused with it. Logs get a -release suffix.
 # --compat draws with gl_compatibility on OpenGL (the browser shell's renderer) instead of Forward+ on Vulkan; both --ab sides.
 set -euo pipefail
 
-here=$(cd "$(dirname "$0")/../../.." && pwd)
+here=$(cd "${PERF_BENCH_PROJECT:-$(dirname "$0")/../../..}" && pwd)
 self=$(dirname "$0")
 gpu=${GPU_SH:-/home/gamedev/godot/dot-bootstrap/tools/gpu.sh}
 box=staging02
 headless=0
 debug=0
 compat=0
+release=0
 tag=""
 ref=${PERF_BENCH_REF:-}
 logs=${PERF_BENCH_LOGS:-/home/gamedev/perf-bench}
@@ -33,6 +37,7 @@ while [[ $# -gt 0 ]]; do
 		--headless) headless=1; shift ;;
 		-d|--debug) debug=1; shift ;;
 		--compat) compat=1; shift ;;
+		--release) release=1; shift ;;
 		--tag) tag=$2; shift 2 ;;
 		--ref) ref=$2; shift 2 ;;
 		--ab) ab=1; dir_a=$2; dir_b=$3; shift 3 ;;
@@ -41,7 +46,9 @@ while [[ $# -gt 0 ]]; do
 		*) echo "perf_bench: unknown option $1" >&2; exit 2 ;;
 	esac
 done
+[[ $release == 1 && $debug == 1 ]] && { echo "perf_bench: -d needs the editor binary, not --release" >&2; exit 2; }
 mkdir -p "$logs"
+export GPU_RELEASE=$release
 # Present through a headless Xorg, not Xvfb (gpu.sh ensure_xorg): about 10 ms/frame less on the NVIDIA driver. GPU_XORG=0 for Xvfb.
 export GPU_XORG=${GPU_XORG:-1}
 
@@ -52,7 +59,7 @@ run_one() {
 	dir=${spec%%::*}
 	[[ $spec == *::* ]] && read -ra extra <<< "${spec#*::}"
 	dir=$(cd "$dir" && pwd)
-	log="$logs/$(date +%Y%m%d-%H%M%S)-$box-$(basename "$dir")-$label$([[ $headless == 1 ]] && echo -headless)$([[ $debug == 1 ]] && echo -d)$([[ $compat == 1 ]] && echo -compat).log"
+	log="$logs/$(date +%Y%m%d-%H%M%S)-$box-$(basename "$dir")-$label$([[ $headless == 1 ]] && echo -headless)$([[ $debug == 1 ]] && echo -d)$([[ $compat == 1 ]] && echo -compat)$([[ $release == 1 ]] && echo -release).log"
 	local hl=()
 	[[ $headless == 1 ]] && hl=(--headless)
 	[[ $debug == 1 ]] && hl+=(-d)
